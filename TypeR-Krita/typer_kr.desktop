@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=typer_kr
+X-Python-2-Compatible=false
+X-Krita-Manual=Manual.html
+Name=TypeR for Krita
+Comment=Read a script (Word .docx / .odt / .txt), step through it line by line and place it as a text layer.

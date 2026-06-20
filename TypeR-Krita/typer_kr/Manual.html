@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>TypeR for Krita</title></head>
+<body>
+<h1>TypeR for Krita</h1>
+<p><b>Language / Sprache:</b> Oben im Docker lässt sich die Sprache der
+Oberfläche umschalten (English / Deutsch). Die Auswahl wird gespeichert.</p>
+<p>Dieses Plugin liest Übersetzungs-Skripte ein und platziert sie zeilenweise
+als Textebene in Krita. Es ist an das Photoshop-Plugin <em>TypeR</em> angelehnt.</p>
+
+<h2>Ablauf (Auto-Modus – empfohlen)</h2>
+<ol>
+  <li><b>Skript laden</b> – Word <code>.docx</code>, Excel <code>.xlsx</code>,
+      LibreOffice <code>.odt</code>
+      oder <code>.txt</code>/<code>.md</code>. Text lässt sich auch direkt
+      einfügen. Danach <b>„Analysieren · JP↔EN paaren"</b> klicken (beim Laden
+      passiert das automatisch).</li>
+  <li>In der Tabelle stehen <b>Japanisch (Quelle)</b> und <b>Übersetzung</b>
+      nebeneinander – so ist sofort sichtbar, welche Übersetzung zu welcher
+      Zeile gehört. Klick auf eine Zeile wählt die Einheit; alternativ
+      <b>Zurück</b>/<b>Weiter</b>.</li>
+  <li><b>Wohin:</b> mit einem Auswahlwerkzeug die Sprechblase markieren.</li>
+  <li><b>Welche Font:</b> oben ins Suchfeld tippen, Schrift in der Liste wählen
+      (zuletzt benutzte stehen mit ★ oben). Optional Farbe.</li>
+  <li><b>Übersetzung einfügen.</b> Der englische Text bricht automatisch um,
+      wird gleichmäßig verteilt und auf die größte passende Größe skaliert –
+      mittig in der Auswahl. Danach springt das Plugin zur nächsten Einheit.</li>
+</ol>
+<p>„Automatisch in Auswahl einpassen" ist standardmäßig an. <b>Max. Größe</b>
+begrenzt die Schrift nach oben, <b>Innenabstand</b> ist die Luft zum Blasenrand,
+<b>Zeilenabstand</b> der Abstand zwischen den Zeilen.</p>
+
+<h2>Seiten („Page"-Markierungen)</h2>
+<p>Übersetzungs-Skripte trennen die Dialoge meist je Manga-Seite durch eine
+Markierungszeile. Beim Einlesen sucht TypeR nach dem Stichwort <b>Page</b> und
+merkt sich, zu welcher Seite jede Zeile gehört. Erkannt werden – je eigene Zeile,
+Groß-/Kleinschreibung egal – z. B.:</p>
+<pre>Page 1     PAGE 01     Page1     --- Page 3 ---
+[Page 5]   === PAGE 12 ===   Page 4-5 (Doppelseite)
+Seite 7    Page (ohne Nummer → wird automatisch nummeriert)</pre>
+<p>Nur eine Zeile, die im Wesentlichen nur aus dem Stichwort (plus optionaler
+Nummer und Dekoration) besteht, gilt als Markierung – normaler Dialog wie
+„Turn the page" wird also nicht fälschlich erkannt.</p>
+<p>Zusätzlich werden die <b>Seitenzahlen plausibilisiert</b>: Echte Seitenzahlen
+werden nie kleiner, daher behält TypeR nur Markierungen, die eine aufsteigende
+Reihenfolge bilden (möglichst fortlaufend). Steht auf Seite 3 eine Zeile, die nur
+„Page 5" lautet, während die nächste echte Markierung „Page 4" ist, wird dieses
+„Page 5" als normaler Dialog behandelt statt als Seitenumbruch. Du erhältst:</p>
+<ul>
+  <li>eine <b>Seitenanzeige</b> neben den Navigationsknöpfen, z. B. „Seite 3 / 20",
+      die immer die Seite der aktiven Zeile zeigt;</li>
+  <li>ein Klappmenü <b>Zu Seite springen</b>, mit dem du direkt zur ersten Zeile
+      einer beliebigen Seite springst;</li>
+  <li>die Markierungszeilen selbst tauchen nicht in der Übersetzungstabelle auf,
+      sodass dort nur echte Dialog-Einheiten stehen.</li>
+</ul>
+<p>Enthält ein Skript keine „Page"-Markierungen, bleiben die Seiten-Bedienelemente
+ausgeblendet und alles andere funktioniert wie zuvor.</p>
+
+<h2>Schrift-Auswahl bei vielen Fonts</h2>
+<p>Die Schriftliste ist auf tausende Fonts ausgelegt: Tippen im Suchfeld
+filtert sofort, und es wird – anders als beim Standard-Auswahlfeld – nicht
+jeder Eintrag in seiner eigenen Schrift gezeichnet (das ist langsam). Nur die
+aktuell gewählte Schrift wird in der Vorschau angezeigt. Zuletzt benutzte
+Schriften erscheinen mit ★ ganz oben und bleiben über Sitzungen erhalten.</p>
+
+<h2>Japanisch / Englisch</h2>
+<p>Pro Zeile wird die Sprache erkannt (Kana/Kanji = Japanisch, lateinische
+Buchstaben = Englisch) und Quelle + Übersetzung werden gepaart. Eingefügt wird
+die Übersetzung; das Japanische bleibt als Referenz in der linken Spalte. Die
+Reihenfolge im Skript (erst Japanisch oder erst Englisch) wird automatisch
+erkannt. Reine englische Skripte funktionieren weiterhin – dann ist die linke
+Spalte leer.</p>
+
+<h2>Sprache der Oberfläche</h2>
+<p>Oben links lässt sich die Oberfläche zwischen <b>Deutsch</b> und
+<b>Englisch</b> umschalten; die Wahl wird gespeichert.</p>
+
+<h2>Schriftstil</h2>
+<p>Mit <b>Fett</b>, <b>Kursiv</b> und <b>Unterstrichen</b> wählst du die Variante
+der Schrift (die meisten Fonts haben mehrere). Fett wird auch bei der
+automatischen Größenanpassung korrekt berücksichtigt, da fetter Text breiter ist.</p>
+
+<h2>Einzelne Wörter fett (Auswahl-Fett)</h2>
+<p>Du musst nicht den ganzen Text fett setzen: markiere im aktiven Feld ein paar
+Wörter und klicke <b>Auswahl fett</b>. Die markierten Stellen werden dann mit
+<code>**…**</code> umschlossen und nur sie erscheinen fett – in der
+Live-Vorschau wie in der eingefügten Ebene. Ein erneuter Klick auf dieselbe
+Auswahl entfernt das Fett wieder. Du kannst die <code>**</code>-Marker auch von
+Hand tippen. Beispiel: <code>Das ist **wichtig** für dich</code> macht nur
+„wichtig" fett. (Ein einzelnes <code>*</code> bleibt normaler Text.)</p>
+
+<h2>Excel-Tabellen</h2>
+<p><code>.xlsx</code> wird unterstützt. Jede nicht-leere Zelle wird zu einer
+Zeile (von links nach rechts, Zeile für Zeile). Steht Japanisch in einer Spalte
+und Englisch in der nächsten, ergibt sich Quelle/Übersetzung automatisch
+hintereinander und wird korrekt gepaart.</p>
+
+<h2>Kontur (Outline)</h2>
+<p>Haken bei <b>Kontur</b> setzen, <b>Konturfarbe</b> und <b>Breite (px)</b>
+wählen. Der Text bekommt dann eine Umrandung – z. B. eine weiße Kontur, damit
+schwarzer Text auch auf dunklem Hintergrund lesbar bleibt. Technisch wird die
+Kontur als zweite Textkopie unter der Füllung gezeichnet, sodass die Buchstaben
+in voller Stärke erhalten bleiben.</p>
+
+<h2>Ausrichtung</h2>
+<p>Über <b>Ausrichtung</b> wählst du linksbündig, zentriert oder rechtsbündig.
+Zentriert ist der übliche Sprechblasen-Look.</p>
+
+<h2>Runde Sprechblasen</h2>
+<p>Mit <b>Runde Sprechblase (Ellipse)</b> wird der Text in die in die Auswahl
+eingeschriebene Ellipse eingepasst – die Zeilen oben und unten werden
+automatisch kürzer, sodass nichts über eine runde Blase hinausragt. Wirkt nur
+bei aktiver Auto-Anpassung.</p>
+
+<h2>Bessere Zeilenumbrüche</h2>
+<p>Der Umbruch verteilt die Wörter so, dass die Zeilen möglichst gleich lang
+sind (ruhige, ovale Blockform) und keine einzelne kurze Zeile oben hängt.</p>
+
+<h2>Schreibung &amp; Typografie</h2>
+<p>Über das Klappmenü <b>Schreibung</b> wählst du, wie der Text gesetzt wird:
+<b>Normal</b> (unverändert), <b>GROSSBUCHSTABEN</b> (Versalien, im Comic-Lettering
+üblich) oder <b>kleinbuchstaben</b> (alles klein). <b>Typografie verbessern</b>
+wandelt gerade Anführungszeichen in typografische, <code>...</code> in
+<code>…</code> und <code>--</code> in <code>—</code> um.</p>
+
+<h2>Gespeicherte Einstellungen</h2>
+<p>Größe, Abstände, Stil, Ausrichtung, Kontur und die übrigen Optionen werden
+beim Einfügen gespeichert und beim nächsten Start wiederhergestellt.</p>
+
+<h2>Schatten</h2>
+<p>Haken bei <b>Schatten</b> setzen, <b>Schattenfarbe</b> und <b>Versatz X / Y</b>
+(in Pixel) wählen. Der Schatten wird als versetzte Kopie hinter Text und Kontur
+gezeichnet und übernimmt die Konturstärke, damit er zur Silhouette passt.</p>
+
+<h2>Presets (Font-Konfigurationen)</h2>
+<p>Eine ganze Konfiguration – Schrift, Farbe, Kontur, Schatten, Stil,
+Ausrichtung, Größe, Abstände usw. – lässt sich als <b>Preset</b> speichern und
+jederzeit umschalten:</p>
+<ul>
+  <li><b>Drei Ebenen:</b> Presets sind verschachtelt nach
+      <b>Manga → Character → Stil-Preset</b>. Wähle oben das <b>Manga</b>, darunter
+      den <b>Character</b> (jede Figur hat eigene Schriften), darunter das
+      <b>Stil-Preset</b> – die eigentliche Konfiguration je Sprechweise (z. B.
+      Normal, Schreien, Denken, Flüstern).</li>
+  <li><b>Neues Manga … / Manga löschen</b>, <b>Neuer Charakter … / Charakter
+      löschen</b> verwalten die oberen beiden Ebenen. Ein neues Manga bekommt
+      automatisch einen ersten Character.</li>
+  <li><b>Auswählen:</b> ein Stil-Preset im untersten Klappmenü wählen, um es
+      sofort anzuwenden.</li>
+  <li><b>Speichern …</b> – aktuelle Einstellungen unter einem Namen beim
+      <b>aktuellen Character</b> ablegen (gleicher Name überschreibt).</li>
+  <li><b>Löschen</b> – das gewählte Stil-Preset entfernen.</li>
+  <li><b>Importieren … / Exportieren …</b> – die gesamte Bibliothek (alle Mangas,
+      Charaktere und Stile) als <code>.json</code>-Datei teilen oder einlesen.
+      Ältere Dateien (flach oder nur mit Gruppen) werden automatisch in die
+      Manga-/Character-Struktur überführt.</li>
+</ul>
+<p>Presets werden dauerhaft gespeichert und stehen beim nächsten Start wieder
+zur Verfügung.</p>
+
+<h2>Schneller Arbeitsablauf (Blase für Blase)</h2>
+<p>Nach dem Analysieren arbeitest du die Seite Zeile für Zeile ab:</p>
+<ul>
+  <li><b>◀ / ▶</b> und der Zähler (z. B. „3 / 40 ✓ 5") führen durch die Liste;
+      die Tabelle und das aktive Feld bleiben synchron.</li>
+  <li>Das <b>aktive Textfeld</b> (schmal) zeigt die aktuelle Übersetzung und ist
+      <b>editierbar</b> – du kannst den Wortlaut anpassen oder mit <b>Enter</b>
+      einen <b>manuellen Zeilenumbruch</b> setzen, der genau so übernommen wird.</li>
+  <li>Direkt darunter zeigt die <b>Live-Vorschau</b>, wie der Text mit der
+      gewählten <b>Schrift</b> und allen Einstellungen (Farbe, Kontur, Schatten,
+      Ausrichtung, Großbuchstaben, Zeilenumbruch) tatsächlich aussehen wird –
+      gerendert in derselben Reihenfolge wie die eingefügte Ebene
+      (Schatten → Kontur → Füllung). Sie aktualisiert sich sofort bei jeder
+      Änderung. Das hellgraue Schachbrettmuster ist nur die Vorschaufläche und
+      sorgt dafür, dass helle wie dunkle Textfarben gut sichtbar sind; die
+      Schriftgröße wird automatisch auf die Vorschau eingepasst.</li>
+  <li><b>Einfügen</b> (Knopf) oder <b>Doppelklick</b> auf eine Tabellenzeile legt
+      die Textebene an und springt automatisch zur nächsten Zeile.</li>
+  <li>Bereits gesetzte Zeilen werden in der Tabelle <b>grün markiert</b>, damit du
+      auf vollen Seiten den Überblick behältst. <b>Fortschritt zurücksetzen</b>
+      löscht die Markierungen.</li>
+  <li>Jede Ebene erhält einen <b>sprechenden Namen</b> wie
+      „TypeR 03 — DON'T MOVE", sodass die Ebenenliste übersichtlich bleibt.</li>
+</ul>
+
+<h2>Vertikale Ausrichtung</h2>
+<p>Neben der horizontalen Ausrichtung legt <b>Vertikal</b> fest, ob der Textblock
+in der Auswahl <b>oben</b>, in der <b>Mitte</b> oder <b>unten</b> sitzt – nützlich,
+wenn Text am oberen Rand einer Blase oder in einer Bildunterschrift sitzen soll.</p>
+
+<h2>Fester Modus</h2>
+<p>Haken bei „Automatisch in Auswahl einpassen" entfernen: Dann wird die exakt
+eingestellte Größe verwendet (mittig in Auswahl bzw. Bild), ohne automatischen
+Umbruch.</p>
+
+<h2>Warum keine Zeichenfehler?</h2>
+<p>Eine <code>.docx</code>/<code>.odt</code> ist in Wirklichkeit ein ZIP aus
+XML. Das Plugin liest sie korrekt als XML (echtes Unicode) statt als reinen
+Text. Bei <code>.txt</code> werden mehrere Kodierungen probiert
+(UTF-8, Windows-1252, latin-1), sodass keine einzelne Zeichen-Lesefehler
+auftreten.</p>
+
+<h2>Hinweis</h2>
+<p>Das alte <code>.doc</code>-Format (Word 97–2003) wird nicht unterstützt.
+Bitte in Word/LibreOffice als <code>.docx</code> oder <code>.txt</code>
+speichern.</p>
+</body></html>

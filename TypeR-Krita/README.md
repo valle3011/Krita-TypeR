@@ -1,0 +1,146 @@
+# TypeR for Krita
+
+A Krita docker for typesetting manga/comic translations. It recreates the core
+of the Photoshop plugin *TypeR* as far as Krita's Python API allows: load a
+translation script, step through it line by line, and drop each line into the
+image as a text layer that auto-fits the speech bubble you selected.
+
+The user interface is bilingual (**English / Deutsch**) and switchable at the
+top of the docker; the choice is remembered between sessions.
+
+> Only modules from the Python standard library are used (`zipfile`,
+> `xml.etree`, …). Nothing extra has to be installed.
+
+---
+
+## Installation
+
+1. Copy the `typer_kr` folder **and** `typer_kr.desktop` into Krita's
+   `pykrita` resource folder:
+   - Windows: `%APPDATA%\krita\pykrita\`
+   - Linux: `~/.local/share/krita/pykrita/`
+   - macOS: `~/Library/Application Support/krita/pykrita/`
+2. Start Krita and enable the plugin under
+   **Settings → Configure Krita → Python Plugin Manager → "TypeR for Krita"**.
+3. Restart Krita and open the docker via **Settings → Dockers → TypeR for Krita**.
+
+---
+
+## Quick start (auto mode – recommended)
+
+1. **Load a script** – Word `.docx`, Excel `.xlsx`, LibreOffice `.odt`, or
+   `.txt`/`.md`. You can also paste text directly into the input box. The script
+   is analyzed automatically on load (or click **Analyze**).
+2. The table shows **Japanese (source)** and **Translation** side by side, so it
+   is obvious which translation belongs to which line. Click a row to select it,
+   or use **◀ Back** / **Next ▶**.
+3. **Where:** select the speech bubble with a selection tool.
+4. **Which font:** type in the search box, pick a font from the list (recently
+   used fonts are pinned to the top with ★). Optionally choose a color.
+5. **Insert translation.** The text wraps automatically, is balanced evenly and
+   scaled to the largest size that fits – centered in the selection. The plugin
+   then advances to the next unit.
+
+---
+
+## Pages ("Page N" markers)
+
+Translation scripts usually separate the dialogue per manga page with a marker
+line. When the script is read in, TypeR scans for the keyword **Page** and uses
+those markers to track which page each line belongs to.
+
+**Recognized marker formats** (case-insensitive, one per line):
+
+```
+Page 1
+PAGE 01
+Page1
+--- Page 3 ---
+[Page 5]
+=== PAGE 12 ===
+Page 4-5        (a spread)
+Seite 7         (German keyword also works)
+Page            (no number -> auto-numbered)
+```
+
+A line only counts as a marker when the whole line is essentially just the
+keyword (plus an optional number and decoration). Normal dialogue such as
+`Turn the page` or `Pages of history` is **not** mistaken for a marker.
+
+**Page numbers are also sanity-checked.** Real page numbers never decrease, so
+TypeR keeps only the markers that form an increasing sequence (preferring
+consecutive pages). If a character on page 3 has a line that is literally
+`Page 5` while the next real marker is `Page 4`, the out-of-order `Page 5` is
+treated as ordinary dialogue rather than a page break.
+
+What you get:
+
+- A **page indicator** next to the navigation buttons shows the page of the
+  current line, e.g. `Page 3 / 20`.
+- A **Jump to page** dropdown lets you jump straight to the first line of any
+  page.
+- The marker lines themselves are kept out of the translation table, so only
+  real dialogue units are listed.
+
+If a script contains no `Page` markers, the page controls stay hidden and
+everything else works exactly as before.
+
+---
+
+## Features
+
+- **Readers without character errors.** A `.docx`/`.odt`/`.xlsx` is really a ZIP
+  of XML; TypeR parses it as real Unicode instead of plain text. For `.txt`
+  several encodings are tried (UTF-8, Windows-1252, latin-1), so no single
+  character can cause a read error. (The old binary `.doc`/`.xls` format is not
+  supported – save as `.docx`/`.xlsx` or `.txt`.)
+- **Japanese / English pairing.** Each line's language is detected
+  (kana/kanji = Japanese, latin letters = English). Source and translation are
+  paired automatically and the script's order (JA-first or EN-first) is detected
+  on its own. Pure English scripts work too (the left column is then empty).
+- **Fast font picker** that scales to thousands of fonts: an instant text
+  filter, recently used fonts on top, and a preview only for the selected font.
+- **Auto-fit** to the selection (size + wrapping), with **even line balancing**
+  for a calm, oval block, and an optional **round-bubble (ellipse)** mode.
+- **Live preview** that renders the active line with the chosen font and every
+  setting (color, outline, shadow, alignment, case, wrapping) in the same order
+  as the inserted layer.
+- **Styling:** bold / italic / underline, per-word bold via `**…**`, horizontal
+  and vertical alignment, letter case (Normal / UPPERCASE / lowercase), smart
+  punctuation, line spacing and inner padding.
+- **Outline** and **drop shadow** for readability on busy backgrounds.
+- **Presets** in three levels – **Manga → Character → style preset** – that can
+  be saved, switched, imported and exported as `.json`.
+- **Progress tracking:** inserted lines are marked green in the table; each
+  layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
+- Larger, comfortable **script input box** so a pasted/parsed script is easy to
+  read and edit.
+
+---
+
+## Workflow tips
+
+- After analyzing, work bubble by bubble: the counter (e.g. `3 / 40 ✓ 5`), the
+  table and the active field stay in sync.
+- The **active text field** is editable – adjust the wording, or press **Enter**
+  to insert a manual line break that is kept verbatim.
+- **Insert** (button) or **double-click** a table row creates the layer and
+  jumps to the next line.
+- Turn off **Auto-fit** for a fixed size (centered in the selection/image,
+  without automatic wrapping).
+
+---
+
+## Project layout
+
+| File | Purpose |
+| --- | --- |
+| `typer_kr/typer_kr.py` | Docker UI, readers, text-layer insertion |
+| `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
+| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit |
+| `typer_kr/__init__.py` | Registers the docker with Krita |
+| `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |
+| `typer_kr.desktop` | Krita plugin descriptor |
+
+All code comments and docstrings are in English; the user interface remains
+available in both English and German.
