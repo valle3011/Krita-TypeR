@@ -87,6 +87,34 @@ everything else works exactly as before.
 
 ---
 
+## Different script styles
+
+Translation scripts are written in many different ways. TypeR normalizes the
+common variations automatically, so nothing ends up shifted, doubled or with
+stray markup inside a bubble:
+
+- **Plain alternating lines** – Japanese line, then its English line, repeated
+  (the typical `.txt`/`.docx` script). Paired directly.
+- **Two-column spreadsheets** (`.xlsx`) – Japanese in one column, English in the
+  next; cells are read left to right, top to bottom and paired the same way.
+- **`JP` / `EN` column headers** – some scripts repeat a literal `JP` and `EN`
+  header line under every page. These are recognized as headers and skipped, so
+  they never appear as empty/garbled units.
+- **Bubble-type prefixes** – scripts that tag each line with the kind of bubble,
+  e.g. `{}: thought`, `“”: speech`, `(): whisper`, `[]: narration`, `//: note`,
+  `SFX: sound`, `ST:`. The leading tag is stripped automatically, so only the
+  real text goes into the bubble. Only this fixed set of tags is removed –
+  genuine text like `Act93: Takaya` (where `Act93` is content) is left intact.
+- **English-only scripts** – every line simply becomes its own unit; the
+  Japanese column stays empty.
+
+> Edge case: if a script lays out a whole **block of Japanese followed by a
+> block of English** (e.g. a character-profile box) instead of alternating line
+> by line, the lines are still all present but may not pair up one-to-one. Use
+> the editable active field / the JP reference to line them up.
+
+---
+
 ## Features
 
 - **Readers without character errors.** A `.docx`/`.odt`/`.xlsx` is really a ZIP
@@ -115,6 +143,28 @@ everything else works exactly as before.
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
   read and edit.
+- **Adjustable layout** (see below) – resize or hide the bigger parts of the
+  docker to taste.
+
+---
+
+## Layout & sizes (customizing the docker)
+
+Everyone likes a different layout, so the big parts of the docker can be resized
+or switched off. Click the **⚙ Layout & sizes** button near the top of the
+docker to open a small panel where you can, for each of these parts:
+
+- **Live preview**, **Script box**, **JP/EN table** and **Font list** –
+- tick/untick the checkbox to **show or hide** it, and
+- set its **height in pixels** with the spinner next to it.
+
+For example, if you find the preview too tall, lower its height; if you don't
+need it at all, untick it and it disappears completely. **Reset layout** puts
+everything back to the defaults. Your choices are remembered across restarts.
+
+The whole docker now lives in a scroll area, so shrinking or hiding parts never
+squishes or clips anything – it just scrolls if the content is taller than the
+panel.
 
 ---
 

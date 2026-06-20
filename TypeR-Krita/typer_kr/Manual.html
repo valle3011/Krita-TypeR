@@ -71,9 +71,52 @@ Reihenfolge im Skript (erst Japanisch oder erst Englisch) wird automatisch
 erkannt. Reine englische Skripte funktionieren weiterhin – dann ist die linke
 Spalte leer.</p>
 
+<h2>Verschiedene Skript-Stile</h2>
+<p>TL-Skripte sind sehr unterschiedlich geschrieben. TypeR gleicht die
+häufigsten Varianten automatisch an, damit nichts verschoben wird, doppelt
+erscheint oder fremde Zeichen in der Sprechblase landen:</p>
+<ul>
+  <li><b>Abwechselnde Zeilen</b> (Japanisch, dann Englisch) – der typische Fall.</li>
+  <li><b>Zwei-Spalten-Tabellen</b> (<code>.xlsx</code>): Japanisch in einer
+      Spalte, Englisch in der nächsten – Zelle für Zelle gepaart.</li>
+  <li><b>„JP"/„EN"-Kopfzeilen</b>: Skripte, die unter jeder Seite eine reine
+      <code>JP</code>- und <code>EN</code>-Zeile als Spaltenüberschrift wieder­
+      holen. Diese werden als Kopfzeilen erkannt und übersprungen.</li>
+  <li><b>Blasen-Typ-Präfixe</b>: Skripte, die jede Zeile mit der Art der Blase
+      markieren, z. B. <code>{}: Gedanke</code>, <code>“”: Sprechblase</code>,
+      <code>(): Flüstern</code>, <code>[]: Erzähltext</code>, <code>//: Notiz</code>,
+      <code>SFX: Geräusch</code>, <code>ST:</code>. Das vorangestellte Kürzel wird
+      automatisch entfernt – nur ein fester Satz an Kürzeln, echter Text wie
+      <code>Act93: Takaya</code> bleibt unangetastet.</li>
+  <li><b>Reine englische Skripte</b>: jede Zeile wird zu einer eigenen Einheit,
+      die japanische Spalte bleibt leer.</li>
+</ul>
+<p>Sonderfall: Liegt im Skript ein ganzer <b>Block Japanisch und danach ein
+Block Englisch</b> (z. B. ein Charakter-Profilkasten) statt Zeile für Zeile,
+bleiben alle Zeilen erhalten, paaren sich aber evtl. nicht 1:1 – nutze dann das
+editierbare aktive Feld bzw. die JP-Referenz.</p>
+
 <h2>Sprache der Oberfläche</h2>
 <p>Oben links lässt sich die Oberfläche zwischen <b>Deutsch</b> und
 <b>Englisch</b> umschalten; die Wahl wird gespeichert.</p>
+
+<h2>Layout &amp; Größen (Docker anpassen)</h2>
+<p>Jeder mag ein anderes Layout, daher lassen sich die großen Teile des Dockers
+in der Größe ändern oder ganz ausblenden. Oben im Docker öffnet der Knopf
+<b>⚙ Layout &amp; Größen</b> ein kleines Feld. Dort kannst du für
+<b>Vorschau</b>, <b>Skript-Feld</b>, <b>JP/EN-Tabelle</b> und
+<b>Schriftliste</b> jeweils:</p>
+<ul>
+  <li>per Häkchen das Element <b>einblenden oder ausblenden</b> und</li>
+  <li>mit dem Drehfeld daneben seine <b>Höhe in Pixeln</b> einstellen.</li>
+</ul>
+<p>Findest du z. B. die Vorschau zu groß, verringere ihre Höhe; brauchst du sie
+gar nicht, nimm das Häkchen weg und sie verschwindet komplett. <b>Layout
+zurücksetzen</b> stellt die Standardwerte wieder her. Deine Einstellungen
+bleiben über Neustarts erhalten.</p>
+<p>Der gesamte Docker liegt jetzt in einem Scrollbereich – verkleinerst oder
+versteckst du Teile, wird nichts gestaucht oder abgeschnitten; bei Bedarf wird
+einfach gescrollt.</p>
 
 <h2>Schriftstil</h2>
 <p>Mit <b>Fett</b>, <b>Kursiv</b> und <b>Unterstrichen</b> wählst du die Variante

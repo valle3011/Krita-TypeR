@@ -177,6 +177,63 @@ def split_page_segments(lines):
     return segments
 
 
+# ---------------------------------------------------------------------------
+# Line cleaning
+#
+# Scripts come in many shapes. Two very common extras would otherwise end up as
+# stray/garbled units, so they are filtered before pairing:
+#   * column headers like a bare "JP" / "EN" line that label the source and
+#     translation columns (they are not dialogue);
+#   * leading "type" tags that mark the kind of bubble rather than being part of
+#     the text, e.g. "{}: ", "“”: ", "SFX: ", "//: ", "[]: ".
+# Only a fixed set of tags is stripped, so genuine text such as
+# "Act93: Takaya" (where "Act93" is content, not a tag) is left untouched.
+# ---------------------------------------------------------------------------
+
+# bare column-header lines (case-insensitive, optional trailing colon)
+_HEADER_TOKENS = {
+    "jp", "en", "jpn", "eng", "jap", "japanese", "english",
+    "raw", "tl", "translation", "source", "target", "kr", "kor", "cn",
+}
+
+# known leading bubble-type tags: {} [] () <> "" "" 「」 『』 // SFX FX ST TN SE
+_TYPE_PREFIX_RE = re.compile(
+    r'^\s*'
+    r'(?:\{\}|\[\]|\(\)|<>|""|“”|「」|『』|//|'
+    r'SFX|FX|ST|TN|SE)'
+    r'\s*[:：]\s*',
+    re.IGNORECASE,
+)
+
+
+def is_header_line(text):
+    """True for a standalone column header such as 'JP' or 'EN:' that labels the
+    source/translation columns rather than carrying dialogue."""
+    t = text.strip().strip(":：").strip().lower()
+    return t in _HEADER_TOKENS
+
+
+def strip_type_prefix(text):
+    """Remove a known leading bubble-type tag like '{}: ', 'SFX: ' or
+    '“”: '. Only the fixed tag set is stripped, so real text such as
+    'Act93: Takaya' (where 'Act93' is content) is left untouched."""
+    return _TYPE_PREFIX_RE.sub("", text, count=1)
+
+
+def clean_lines(lines):
+    """Drop column-header lines and strip bubble-type prefixes, returning the
+    text lines that actually carry dialogue/translation."""
+    out = []
+    for t in lines:
+        if t.strip() == "" or is_header_line(t):
+            continue
+        c = strip_type_prefix(t)
+        if c.strip() == "":
+            continue
+        out.append(c)
+    return out
+
+
 def pair_lines(lines):
     """Group lines into (japanese, english) pairs.
 
@@ -185,10 +242,14 @@ def pair_lines(lines):
     in the dominant source language plus every following line of the other
     language as its translation.
 
+    Column headers (bare 'JP'/'EN') and bubble-type prefixes ('{}: ', 'SFX: ',
+    …) are removed first via :func:`clean_lines`, so they neither show up as
+    stray units nor end up inside a bubble.
+
     Returns a list of (ja, en); either part may be an empty string.
     For monolingual scripts every line becomes its own unit.
     """
-    toks = [(detect_lang(t), t) for t in lines if t.strip() != ""]
+    toks = [(detect_lang(t), t) for t in clean_lines(lines)]
     n = len(toks)
     if n == 0:
         return []

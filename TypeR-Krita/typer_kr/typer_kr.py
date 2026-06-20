@@ -37,7 +37,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit, QSpinBox, QCheckBox, QFileDialog, QColorDialog,
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
-    QInputDialog,
+    QInputDialog, QScrollArea,
 )
 from PyQt5.QtGui import QFontDatabase
 
@@ -76,7 +76,14 @@ LANG = {
         "page_jump": "Jump to page:",
         "page_item": "Page {label}",
         "page_status": "Page {cur} / {n}",
-        "page_status_intro": "before page 1",
+        "page_status_intro": "before first page",
+        "view_toggle": "⚙ Layout & sizes",
+        "view_hint": "Show, resize or hide parts of this panel:",
+        "view_preview": "Preview",
+        "view_editor": "Script box",
+        "view_table": "JP/EN table",
+        "view_fonts": "Font list",
+        "view_reset": "Reset layout",
         "font": "Font:",
         "font_search_ph": "Search font … (type to filter)",
         "style": "Style:",
@@ -203,7 +210,14 @@ LANG = {
         "page_jump": "Zu Seite springen:",
         "page_item": "Seite {label}",
         "page_status": "Seite {cur} / {n}",
-        "page_status_intro": "vor Seite 1",
+        "page_status_intro": "vor erster Seite",
+        "view_toggle": "⚙ Layout & Größen",
+        "view_hint": "Teile dieses Panels zeigen, vergrößern/verkleinern oder ausblenden:",
+        "view_preview": "Vorschau",
+        "view_editor": "Skript-Feld",
+        "view_table": "JP/EN-Tabelle",
+        "view_fonts": "Schriftliste",
+        "view_reset": "Layout zurücksetzen",
         "font": "Schrift:",
         "font_search_ph": "Schrift suchen … (Tippen filtert)",
         "style": "Stil:",
@@ -1259,6 +1273,69 @@ class TyperDocker(DockWidget):
         lang_row.addWidget(self.lang_combo, 1)
         layout.addLayout(lang_row)
 
+        # --- collapsible "Layout & sizes" panel ---
+        # Lets the user resize or hide the big parts of the docker (preview,
+        # script box, JP/EN table, font list) and remembers it across restarts.
+        v = self._load_view()
+        defaults = self._view_defaults()
+        for k, dv in defaults.items():
+            v.setdefault(k, dv)
+
+        self.view_toggle = QPushButton()
+        self.view_toggle.setCheckable(True)
+        self.view_toggle.setChecked(bool(v["open"]))
+        layout.addWidget(self.view_toggle)
+
+        self.view_box = QWidget()
+        view_lay = QVBoxLayout()
+        view_lay.setContentsMargins(6, 2, 6, 2)
+        view_lay.setSpacing(4)
+        self.view_box.setLayout(view_lay)
+        self.view_hint = QLabel()
+        self.view_hint.setStyleSheet("color: gray;")
+        self.view_hint.setWordWrap(True)
+        view_lay.addWidget(self.view_hint)
+        view_grid = QGridLayout()
+        view_grid.setHorizontalSpacing(8)
+
+        def _view_row(r, chk_attr, spin_attr, lo, hi, val, show):
+            chk = QCheckBox()
+            chk.setChecked(bool(show))
+            spin = QSpinBox()
+            spin.setRange(lo, hi)
+            spin.setSingleStep(10)
+            spin.setValue(int(val))
+            spin.setSuffix(" px")
+            setattr(self, chk_attr, chk)
+            setattr(self, spin_attr, spin)
+            view_grid.addWidget(chk, r, 0)
+            view_grid.addWidget(spin, r, 1)
+
+        _view_row(0, "v_preview_chk", "v_preview_h", 40, 1200,
+                  v["preview_h"], v["preview_show"])
+        _view_row(1, "v_editor_chk", "v_editor_h", 40, 1200,
+                  v["editor_h"], v["editor_show"])
+        _view_row(2, "v_table_chk", "v_table_h", 60, 1600,
+                  v["table_h"], v["table_show"])
+        _view_row(3, "v_fonts_chk", "v_fonts_h", 40, 1200,
+                  v["fonts_h"], v["fonts_show"])
+        view_grid.setColumnStretch(0, 1)
+        view_lay.addLayout(view_grid)
+        self.view_reset_btn = QPushButton()
+        self.view_reset_btn.clicked.connect(self._on_view_reset)
+        view_lay.addWidget(self.view_reset_btn)
+        layout.addWidget(self.view_box)
+        self.view_box.setVisible(self.view_toggle.isChecked())
+
+        # wire up after the initial values are set, so nothing fires early
+        self.view_toggle.toggled.connect(self._on_view_toggle)
+        for _w in (self.v_preview_chk, self.v_editor_chk, self.v_table_chk,
+                   self.v_fonts_chk):
+            _w.toggled.connect(self._on_view_changed)
+        for _w in (self.v_preview_h, self.v_editor_h, self.v_table_h,
+                   self.v_fonts_h):
+            _w.valueChanged.connect(self._on_view_changed)
+
         # --- presets (grouped) ---
         self.lbl_preset = QLabel()
         layout.addWidget(self.lbl_preset)
@@ -1543,7 +1620,14 @@ class TyperDocker(DockWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
-        self.setWidget(main)
+        # Wrap everything in a scroll area so resizing/hiding parts never
+        # squishes or clips the rest – the docker just scrolls if needed.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(main)
+        self.setWidget(scroll)
+
         self._apply_settings(self._load_settings())
         self._on_outline_toggle()
         self._on_shadow_toggle()
@@ -1555,6 +1639,7 @@ class TyperDocker(DockWidget):
         self._wire_preview()
         self._retranslate()
         self._refresh_view()
+        self._apply_view()
         self._update_text_preview()
 
     # -- language --
@@ -1586,6 +1671,13 @@ class TyperDocker(DockWidget):
         t = self._tr
         self.setWindowTitle(t("title"))
         self.lang_label.setText(t("language"))
+        self.view_toggle.setText(t("view_toggle"))
+        self.view_hint.setText(t("view_hint"))
+        self.v_preview_chk.setText(t("view_preview"))
+        self.v_editor_chk.setText(t("view_editor"))
+        self.v_table_chk.setText(t("view_table"))
+        self.v_fonts_chk.setText(t("view_fonts"))
+        self.view_reset_btn.setText(t("view_reset"))
         self.load_btn.setText(t("load_btn"))
         self.lbl_script.setText(t("script_label"))
         self.editor.setPlaceholderText(t("editor_ph"))
@@ -1710,6 +1802,109 @@ class TyperDocker(DockWidget):
     def _set_status(self, msg, error=False):
         self.status.setStyleSheet("color: #c0392b;" if error else "color: gray;")
         self.status.setText(msg)
+
+    # -- layout / view (sizes + show/hide of docker parts) --
+
+    _QWIDGET_MAX = 16777215  # Qt's QWIDGETSIZE_MAX (no height cap)
+
+    def _view_defaults(self):
+        return {
+            "open": False,
+            "preview_show": True, "preview_h": 120,
+            "editor_show": True, "editor_h": 200,
+            "table_show": True, "table_h": 240,
+            "fonts_show": True, "fonts_h": 160,
+        }
+
+    def _load_view(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "view", "")
+            data = json.loads(raw) if raw else {}
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_view(self):
+        try:
+            Krita.instance().writeSetting("typer_kr", "view", json.dumps({
+                "open": self.view_toggle.isChecked(),
+                "preview_show": self.v_preview_chk.isChecked(),
+                "preview_h": self.v_preview_h.value(),
+                "editor_show": self.v_editor_chk.isChecked(),
+                "editor_h": self.v_editor_h.value(),
+                "table_show": self.v_table_chk.isChecked(),
+                "table_h": self.v_table_h.value(),
+                "fonts_show": self.v_fonts_chk.isChecked(),
+                "fonts_h": self.v_fonts_h.value(),
+            }))
+        except Exception:
+            pass
+
+    def _apply_view(self):
+        """Apply the chosen visibility + heights to the docker widgets.
+
+        Fixed-height parts (preview, script box, font list) are pinned to their
+        value; the JP/EN table uses the value as a minimum and still expands to
+        fill spare space. A widget's label is hidden together with it."""
+        if not hasattr(self, "preview"):
+            return
+
+        def fixed(w, h):
+            w.setMinimumHeight(h)
+            w.setMaximumHeight(h)
+
+        pv = self.v_preview_chk.isChecked()
+        self.lbl_preview.setVisible(pv)
+        self.preview.setVisible(pv)
+        fixed(self.preview, self.v_preview_h.value())
+        self.v_preview_h.setEnabled(pv)
+
+        ev = self.v_editor_chk.isChecked()
+        self.lbl_script.setVisible(ev)
+        self.editor.setVisible(ev)
+        fixed(self.editor, self.v_editor_h.value())
+        self.v_editor_h.setEnabled(ev)
+
+        tv = self.v_table_chk.isChecked()
+        self.lbl_align.setVisible(tv)
+        self.table.setVisible(tv)
+        self.table.setMinimumHeight(self.v_table_h.value())
+        self.table.setMaximumHeight(self._QWIDGET_MAX)
+        self.v_table_h.setEnabled(tv)
+
+        fv = self.v_fonts_chk.isChecked()
+        self.lbl_font.setVisible(fv)
+        self.font_picker.setVisible(fv)
+        fixed(self.font_picker.list, self.v_fonts_h.value())
+        self.v_fonts_h.setEnabled(fv)
+
+    def _on_view_toggle(self, checked):
+        self.view_box.setVisible(checked)
+        self._save_view()
+
+    def _on_view_changed(self, *_a):
+        self._apply_view()
+        self._save_view()
+
+    def _on_view_reset(self):
+        d = self._view_defaults()
+        widgets = (self.v_preview_chk, self.v_editor_chk, self.v_table_chk,
+                   self.v_fonts_chk, self.v_preview_h, self.v_editor_h,
+                   self.v_table_h, self.v_fonts_h)
+        for w in widgets:
+            w.blockSignals(True)
+        self.v_preview_chk.setChecked(d["preview_show"])
+        self.v_preview_h.setValue(d["preview_h"])
+        self.v_editor_chk.setChecked(d["editor_show"])
+        self.v_editor_h.setValue(d["editor_h"])
+        self.v_table_chk.setChecked(d["table_show"])
+        self.v_table_h.setValue(d["table_h"])
+        self.v_fonts_chk.setChecked(d["fonts_show"])
+        self.v_fonts_h.setValue(d["fonts_h"])
+        for w in widgets:
+            w.blockSignals(False)
+        self._apply_view()
+        self._save_view()
 
     # -- actions --
 
