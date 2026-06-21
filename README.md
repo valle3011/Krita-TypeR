@@ -107,6 +107,12 @@ stray markup inside a bubble:
   genuine text like `Act93: Takaya` (where `Act93` is content) is left intact.
 - **English-only scripts** – every line simply becomes its own unit; the
   Japanese column stays empty.
+- **Speaker prefixes** – lines like `Sakamoto: Hi there`. With **Auto-character**
+  enabled (checkbox under the character dropdown, on by default), if the speaker
+  name matches one of your characters in the current manga, TypeR switches to
+  that character and applies its first style preset – and removes the `Name:`
+  prefix from the inserted text. A name that matches no character is left alone,
+  so unrelated `Word:` lines are never touched.
 
 > Edge case: if a script lays out a whole **block of Japanese followed by a
 > block of English** (e.g. a character-profile box) instead of alternating line
