@@ -184,6 +184,10 @@ LANG = {
         "hyph_auto": "Auto",
         "hyph_en": "English",
         "hyph_de": "Deutsch",
+        "hyph_es": "Español",
+        "hyph_fr": "Français",
+        "hyph_pt": "Português",
+        "hyph_it": "Italiano",
         "insert_btn": "Insert translation  ⏎  (and go to next)",
         "color_dlg": "Choose text color",
         "outline_color_dlg": "Choose outline color",
@@ -331,6 +335,10 @@ LANG = {
         "hyph_auto": "Auto",
         "hyph_en": "English",
         "hyph_de": "Deutsch",
+        "hyph_es": "Español",
+        "hyph_fr": "Français",
+        "hyph_pt": "Português",
+        "hyph_it": "Italiano",
         "insert_btn": "Übersetzung einfügen  ⏎  (und zur nächsten)",
         "color_dlg": "Textfarbe wählen",
         "outline_color_dlg": "Konturfarbe wählen",
@@ -353,9 +361,192 @@ LANG = {
         "st_no_font": "Keine Schrift gewählt.",
         "preview_empty": "(leer)",
     },
+    # Core localization for additional UI languages; any key not listed here
+    # falls back to English via _tr().
+    "es": {
+        "title": "TypeR para Krita",
+        "language": "Idioma:",
+        "load_btn": "Cargar guion (.docx / .xlsx / .odt / .txt)",
+        "script_label": "Guion (carga un archivo o pega directamente):",
+        "skip_empty": "Omitir líneas vacías",
+        "analyze_btn": "Analizar · emparejar JP↔EN",
+        "align_label": "Japonés  ↔  Traducción   (clic para elegir la línea)",
+        "col_source": "Japonés (origen)",
+        "col_translation": "Traducción",
+        "prev": "◀ Atrás",
+        "next": "Siguiente ▶",
+        "reset_btn": "Reiniciar progreso",
+        "font": "Fuente:",
+        "style": "Estilo:",
+        "bold": "Negrita",
+        "italic": "Cursiva",
+        "underline": "Subrayado",
+        "align": "Alineación:",
+        "align_left": "Izquierda",
+        "align_center": "Centro",
+        "align_right": "Derecha",
+        "valign_label": "Vertical:",
+        "valign_top": "Arriba",
+        "valign_middle": "Centro",
+        "valign_bottom": "Abajo",
+        "case_label": "Mayúsculas:",
+        "case_none": "Normal",
+        "case_upper": "MAYÚSCULAS",
+        "case_lower": "minúsculas",
+        "tidy": "Tipografía",
+        "round": "Globo redondo (elipse)",
+        "shadow": "Sombra",
+        "outline": "Contorno",
+        "auto": "Ajustar a la selección (tamaño + salto)",
+        "hyphenate": "Dividir palabras largas",
+        "hyph_lang": "Idioma de división:",
+        "size_max": "Tamaño máx. (px):",
+        "size_fixed": "Tamaño (px):",
+        "color_btn": "Color …",
+        "padding": "Margen interior (%):",
+        "spacing": "Interlineado (%):",
+        "page_jump": "Ir a la página:",
+        "insert_btn": "Insertar traducción  ⏎  (y siguiente)",
+    },
+    "fr": {
+        "title": "TypeR pour Krita",
+        "language": "Langue :",
+        "load_btn": "Charger le script (.docx / .xlsx / .odt / .txt)",
+        "script_label": "Script (chargez un fichier ou collez directement) :",
+        "skip_empty": "Ignorer les lignes vides",
+        "analyze_btn": "Analyser · associer JP↔EN",
+        "align_label": "Japonais  ↔  Traduction   (clic pour choisir la ligne)",
+        "col_source": "Japonais (source)",
+        "col_translation": "Traduction",
+        "prev": "◀ Retour",
+        "next": "Suivant ▶",
+        "reset_btn": "Réinitialiser la progression",
+        "font": "Police :",
+        "style": "Style :",
+        "bold": "Gras",
+        "italic": "Italique",
+        "underline": "Souligné",
+        "align": "Alignement :",
+        "align_left": "Gauche",
+        "align_center": "Centré",
+        "align_right": "Droite",
+        "valign_label": "Vertical :",
+        "valign_top": "Haut",
+        "valign_middle": "Milieu",
+        "valign_bottom": "Bas",
+        "case_label": "Casse :",
+        "case_none": "Normal",
+        "case_upper": "MAJUSCULES",
+        "case_lower": "minuscules",
+        "tidy": "Typographie",
+        "round": "Bulle ronde (ellipse)",
+        "shadow": "Ombre",
+        "outline": "Contour",
+        "auto": "Ajuster à la sélection (taille + retour)",
+        "hyphenate": "Couper les mots longs",
+        "hyph_lang": "Langue de césure :",
+        "size_max": "Taille max. (px) :",
+        "size_fixed": "Taille (px) :",
+        "color_btn": "Couleur …",
+        "padding": "Marge intérieure (%) :",
+        "spacing": "Interligne (%) :",
+        "page_jump": "Aller à la page :",
+        "insert_btn": "Insérer la traduction  ⏎  (et suivant)",
+    },
+    "pt": {
+        "title": "TypeR para Krita",
+        "language": "Idioma:",
+        "load_btn": "Carregar roteiro (.docx / .xlsx / .odt / .txt)",
+        "script_label": "Roteiro (carregue um arquivo ou cole direto):",
+        "skip_empty": "Ignorar linhas vazias",
+        "analyze_btn": "Analisar · parear JP↔EN",
+        "align_label": "Japonês  ↔  Tradução   (clique para escolher a linha)",
+        "col_source": "Japonês (origem)",
+        "col_translation": "Tradução",
+        "prev": "◀ Voltar",
+        "next": "Próximo ▶",
+        "reset_btn": "Reiniciar progresso",
+        "font": "Fonte:",
+        "style": "Estilo:",
+        "bold": "Negrito",
+        "italic": "Itálico",
+        "underline": "Sublinhado",
+        "align": "Alinhamento:",
+        "align_left": "Esquerda",
+        "align_center": "Centro",
+        "align_right": "Direita",
+        "valign_label": "Vertical:",
+        "valign_top": "Topo",
+        "valign_middle": "Meio",
+        "valign_bottom": "Base",
+        "case_label": "Caixa:",
+        "case_none": "Normal",
+        "case_upper": "MAIÚSCULAS",
+        "case_lower": "minúsculas",
+        "tidy": "Tipografia",
+        "round": "Balão redondo (elipse)",
+        "shadow": "Sombra",
+        "outline": "Contorno",
+        "auto": "Ajustar à seleção (tamanho + quebra)",
+        "hyphenate": "Hifenizar palavras longas",
+        "hyph_lang": "Idioma da hifenização:",
+        "size_max": "Tamanho máx. (px):",
+        "size_fixed": "Tamanho (px):",
+        "color_btn": "Cor …",
+        "padding": "Margem interna (%):",
+        "spacing": "Entrelinha (%):",
+        "page_jump": "Ir para a página:",
+        "insert_btn": "Inserir tradução  ⏎  (e próximo)",
+    },
+    "it": {
+        "title": "TypeR per Krita",
+        "language": "Lingua:",
+        "load_btn": "Carica script (.docx / .xlsx / .odt / .txt)",
+        "script_label": "Script (carica un file o incolla direttamente):",
+        "skip_empty": "Salta righe vuote",
+        "analyze_btn": "Analizza · abbina JP↔EN",
+        "align_label": "Giapponese  ↔  Traduzione   (clic per scegliere la riga)",
+        "col_source": "Giapponese (origine)",
+        "col_translation": "Traduzione",
+        "prev": "◀ Indietro",
+        "next": "Avanti ▶",
+        "reset_btn": "Azzera avanzamento",
+        "font": "Carattere:",
+        "style": "Stile:",
+        "bold": "Grassetto",
+        "italic": "Corsivo",
+        "underline": "Sottolineato",
+        "align": "Allineamento:",
+        "align_left": "Sinistra",
+        "align_center": "Centro",
+        "align_right": "Destra",
+        "valign_label": "Verticale:",
+        "valign_top": "Alto",
+        "valign_middle": "Centro",
+        "valign_bottom": "Basso",
+        "case_label": "Maiuscole:",
+        "case_none": "Normale",
+        "case_upper": "MAIUSCOLO",
+        "case_lower": "minuscolo",
+        "tidy": "Tipografia",
+        "round": "Nuvoletta tonda (ellisse)",
+        "shadow": "Ombra",
+        "outline": "Contorno",
+        "auto": "Adatta alla selezione (dimensione + a capo)",
+        "hyphenate": "Sillaba le parole lunghe",
+        "hyph_lang": "Lingua sillabazione:",
+        "size_max": "Dimensione max (px):",
+        "size_fixed": "Dimensione (px):",
+        "color_btn": "Colore …",
+        "padding": "Margine interno (%):",
+        "spacing": "Interlinea (%):",
+        "page_jump": "Vai alla pagina:",
+        "insert_btn": "Inserisci traduzione  ⏎  (e avanti)",
+    },
 }
 
-LANG_ORDER = [("en", "English"), ("de", "Deutsch")]
+LANG_ORDER = [("en", "English"), ("de", "Deutsch"), ("es", "Español"),
+              ("fr", "Français"), ("pt", "Português"), ("it", "Italiano")]
 
 
 # ---------------------------------------------------------------------------
@@ -1699,7 +1890,8 @@ class TyperDocker(DockWidget):
         self.lbl_hyph_lang = QLabel()
         hyph_row.addWidget(self.lbl_hyph_lang)
         self.hyph_lang_combo = QComboBox()
-        for code in ("auto", "en", "de"):
+        # only offer languages whose hyphenation patterns are bundled
+        for code in ("auto",) + L.HYPH_LANGS:
             self.hyph_lang_combo.addItem("", code)
         self.hyph_lang_combo.currentIndexChanged.connect(
             lambda *_a: self._update_text_preview())
@@ -1895,9 +2087,10 @@ class TyperDocker(DockWidget):
         self.hyph_chk.setText(t("hyphenate"))
         self.hyph_chk.setToolTip(t("hyphenate_tip"))
         self.lbl_hyph_lang.setText(t("hyph_lang"))
-        self.hyph_lang_combo.setItemText(0, t("hyph_auto"))
-        self.hyph_lang_combo.setItemText(1, t("hyph_en"))
-        self.hyph_lang_combo.setItemText(2, t("hyph_de"))
+        for i in range(self.hyph_lang_combo.count()):
+            code = self.hyph_lang_combo.itemData(i)
+            self.hyph_lang_combo.setItemText(
+                i, t("hyph_auto" if code == "auto" else "hyph_" + str(code)))
         self.insert_btn.setText(t("insert_btn"))
         # re-label the page combo / status in the new language
         self._refresh_pages_combo()
@@ -2659,12 +2852,30 @@ class TyperDocker(DockWidget):
         self._update_text_preview()
 
     def _hyph_lang_for(self, text):
-        """Resolve the hyphenation language; 'auto' -> German if the text has
-        ä/ö/ü/ß, else English."""
+        """Resolve the hyphenation language. An explicit choice wins. 'Auto'
+        prefers the UI language (when its patterns are bundled), then a simple
+        accent heuristic, then English."""
         code = self.hyph_lang_combo.currentData() or "auto"
         if code != "auto":
             return code
-        return "de" if any(c in "äöüßÄÖÜ" for c in (text or "")) else "en"
+        if self._lang in L.HYPH_LANGS:
+            return self._lang
+        return self._accent_lang(text) or "en"
+
+    @staticmethod
+    def _accent_lang(text):
+        """Very rough language guess from a few distinctive accents (only used
+        when the UI language has no bundled patterns). None if undecided."""
+        t = text or ""
+        if any(c in "ñ¡¿" for c in t):
+            return "es"
+        if any(c in "ãõ" for c in t):
+            return "pt"
+        if any(c in "œ" for c in t):
+            return "fr"
+        if any(c in "äöüßÄÖÜ" for c in t):
+            return "de"
+        return None
 
     def _current_text(self):
         # prefer the (possibly edited) content of the active field

@@ -110,13 +110,32 @@ def runs_text(runs):
 # ---------------------------------------------------------------------------
 
 _HYPH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hyph")
+# lang -> (pattern file, exception file or None). All files are bundled and
+# freely licensed (see hyph/LICENSE.txt).
 _HYPH_FILES = {
     "en": ("hyph-en-us.pat.txt", "hyph-en-us.hyp.txt"),
     "de": ("hyph-de-1996.pat.txt", None),
+    "es": ("hyph-es.pat.txt", None),
+    "fr": ("hyph-fr.pat.txt", None),
+    "pt": ("hyph-pt.pat.txt", "hyph-pt.hyp.txt"),
+    "it": ("hyph-it.pat.txt", None),
+}
+# language codes whose patterns ship with the plugin (UI offers only these)
+HYPH_LANGS = ("en", "de", "es", "fr", "pt", "it")
+# per-language minimum letters before/after a break (from each file's header)
+_HYPH_MINS = {
+    "en": (2, 3), "de": (2, 2), "es": (2, 2),
+    "fr": (2, 2), "pt": (2, 3), "it": (2, 2),
 }
 _hyphenators = {}                       # lang -> _Hyphenator (or False = failed)
 _DIGITS_RE = re.compile(r"[0-9]")
 _WORD_RE = re.compile(r"^[^\W\d_]+(?:[''’-][^\W\d_]+)*$", re.UNICODE)
+
+
+def _norm_lang(lang):
+    """Map a code/locale (e.g. 'de_DE', 'pt-BR') to a bundled language key."""
+    code = str(lang or "").lower().replace("-", "_").split("_")[0]
+    return code if code in _HYPH_FILES else "en"
 
 
 class _Hyphenator(object):
@@ -189,7 +208,7 @@ class _Hyphenator(object):
 
 
 def _get_hyphenator(lang):
-    lang = "de" if str(lang).lower().startswith("de") else "en"
+    lang = _norm_lang(lang)
     if lang in _hyphenators:
         return _hyphenators[lang] or None
     pat_name, hyp_name = _HYPH_FILES[lang]
@@ -209,11 +228,17 @@ def _get_hyphenator(lang):
     return h or None
 
 
-def hyphenate(word, lang="en", left=2, right=3):
+def hyphenate(word, lang="en", left=None, right=None):
     """Return the sorted character indices inside `word` where a hyphen may be
     placed (valid syllable breaks), honoring a minimum of `left` letters before
-    and `right` letters after a break. Empty list if the word is too short, not
-    a plain word, or patterns are unavailable."""
+    and `right` letters after a break. When left/right are None the language's
+    own minima are used. Empty list if the word is too short, not a plain word,
+    or patterns are unavailable."""
+    dl, dr = _HYPH_MINS.get(_norm_lang(lang), (2, 3))
+    if left is None:
+        left = dl
+    if right is None:
+        right = dr
     if not word or len(word) < left + right:
         return []
     if not _WORD_RE.match(word):
