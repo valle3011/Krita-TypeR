@@ -5,7 +5,7 @@ of the Photoshop plugin *TypeR* as far as Krita's Python API allows: load a
 translation script, step through it line by line, and drop each line into the
 image as a text layer that auto-fits the speech bubble you selected.
 
-The user interface is bilingual (**English / Deutsch**) and switchable at the
+The user interface is bilingual and switchable at the
 top of the docker; the choice is remembered between sessions.
 
 > Only modules from the Python standard library are used (`zipfile`,
@@ -210,12 +210,18 @@ LibreOffice and browsers use) together with the bundled pattern files in
 
 | Language | File | Source / license |
 | --- | --- | --- |
-| English (US) | `hyph-en-us.pat.txt`, `hyph-en-us.hyp.txt` | hyph-utf8 / tex-hyphen, © G. D. C. Kuiken – free redistribution permitted |
+| English (US) | `hyph-en-us.pat.txt`, `.hyp.txt` | hyph-utf8 / tex-hyphen, © G. D. C. Kuiken – free redistribution permitted |
 | German (1996) | `hyph-de-1996.pat.txt` | hyph-utf8 / tex-hyphen – MIT |
+| Spanish | `hyph-es.pat.txt` | hyph-utf8 / tex-hyphen, © Javier Bezos – MIT/X11 |
+| French | `hyph-fr.pat.txt` | hyph-utf8 / tex-hyphen – MIT |
+| Portuguese | `hyph-pt.pat.txt`, `.hyp.txt` | hyph-utf8 / tex-hyphen – BSD 3-clause |
+| Italian | `hyph-it.pat.txt` | hyph-utf8 / tex-hyphen, © C. Beccari – LPPL/MIT |
 
 The full notices are in `typer_kr/hyph/LICENSE.txt`. Nothing needs to be
-installed; everything ships with the plugin. The “Auto” language guesses German
-when the text contains ä/ö/ü/ß, otherwise English.
+installed; everything ships with the plugin. Pick the language in the
+**hyphenation language dropdown** (only languages with bundled patterns are
+offered); “Auto” uses the interface language when its patterns exist, otherwise
+a small accent heuristic, otherwise English.
 
 ---
 
@@ -231,5 +237,10 @@ when the text contains ä/ö/ü/ß, otherwise English.
 | `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |
 | `typer_kr.desktop` | Krita plugin descriptor |
 
-All code comments and docstrings are in English; the user interface remains
-available in both English and German.
+All code comments and docstrings are in English. The user interface is
+available in **English, German, Spanish, French, Portuguese and Italian**
+(switchable at the top of the docker). English and German are fully translated;
+the other languages cover the core/most-visible strings and **fall back to
+English** for the rest, so the UI is always complete — native-speaker review is
+welcome to finish them. Adding a language = add a block to the `LANG` dict in
+`typer_kr.py` and an entry to `LANG_ORDER`.
