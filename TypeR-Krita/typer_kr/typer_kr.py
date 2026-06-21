@@ -178,6 +178,12 @@ LANG = {
         "outline_width": "Width (px):",
         "auto": "Auto-fit to selection (size + wrap)",
         "auto_tip": "On: select a speech bubble, pick a font – the text wraps and scales to the largest size that fits.\nOff: fixed size, centered in the image/selection.",
+        "hyphenate": "Hyphenate long words",
+        "hyphenate_tip": "Split words that are too wide at correct syllable points (with a “-”). Lets the text reach a bigger size in narrow bubbles. Only with auto-fit.",
+        "hyph_lang": "Hyphenation language:",
+        "hyph_auto": "Auto",
+        "hyph_en": "English",
+        "hyph_de": "Deutsch",
         "insert_btn": "Insert translation  ⏎  (and go to next)",
         "color_dlg": "Choose text color",
         "outline_color_dlg": "Choose outline color",
@@ -319,6 +325,12 @@ LANG = {
         "outline_width": "Breite (px):",
         "auto": "Automatisch in Auswahl einpassen (Größe + Umbruch)",
         "auto_tip": "An: Auswahl als Sprechblase markieren, Font wählen – der Text bricht um und wird auf die größte passende Größe skaliert.\nAus: feste Größe, in der Bild-/Auswahlmitte.",
+        "hyphenate": "Lange Wörter trennen",
+        "hyphenate_tip": "Zu breite Wörter an korrekten Silbengrenzen trennen (mit „-“). So passt der Text in schmale Blasen größer. Nur mit Auto-Anpassung.",
+        "hyph_lang": "Trennsprache:",
+        "hyph_auto": "Auto",
+        "hyph_en": "English",
+        "hyph_de": "Deutsch",
         "insert_btn": "Übersetzung einfügen  ⏎  (und zur nächsten)",
         "color_dlg": "Textfarbe wählen",
         "outline_color_dlg": "Konturfarbe wählen",
@@ -772,7 +784,8 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       bold=False, italic=False, underline=False,
                       align="center", case="none", tidy=False, shape="rect",
                       shadow=False, shadow_color=None, shadow_dx=0.0,
-                      shadow_dy=0.0, valign="middle", layer_index=None):
+                      shadow_dy=0.0, valign="middle", layer_index=None,
+                      hyphenate=False, hyph_lang="en"):
     """Insert a single line of text as a text layer.
 
     auto_fit=True: the line is wrapped automatically, balanced and scaled to the
@@ -821,7 +834,8 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
 
     if auto_fit:
         result = L.fit_text(clean, measurer, box_w, box_h, max_px, 6,
-                            padding_frac, shape, mask)
+                            padding_frac, shape, mask,
+                            hyphenate=hyphenate, lang=hyph_lang)
         if result is None:
             return False, "st_empty_line", {}
         font_px, text_lines, line_h, ascent, descent, fitted = result
@@ -1071,6 +1085,8 @@ class TextPreview(QWidget):
             "shadow_color": QColor(d._shadow_color),
             "shadow_dx": float(d.shadow_x_spin.value()),
             "shadow_dy": float(d.shadow_y_spin.value()),
+            "hyphenate": d.hyph_chk.isChecked() and d.auto_chk.isChecked(),
+            "hyph_lang": d._hyph_lang_for(self._text),
         }
 
     def _fonts(self, o, px):
@@ -1096,25 +1112,68 @@ class TextPreview(QWidget):
         return (sum(self._word_w(w, fmn, fmb, gbold) for w in words)
                 + space_w * (len(words) - 1))
 
-    def _wrap_words(self, paras, fmn, fmb, gbold, space_w, avail_w):
-        """Greedily wrap words (with bold runs) to width, per paragraph."""
+    def _hyph_split(self, word, avail, fmn, fmb, gbold, lang):
+        """Split `word` (preview) so the first part incl. hyphen fits `avail`;
+        latest valid break wins. Returns (left, right) or None."""
+        breaks = L.hyphenate(word.text, lang)
+        if not breaks:
+            return None
+        best = None
+        for b in breaks:
+            left, right = L.split_word(word, b)
+            if self._word_w(left, fmn, fmb, gbold) <= avail:
+                best = (left, right)
+            else:
+                break
+        return best
+
+    def _wrap_words(self, paras, fmn, fmb, gbold, space_w, avail_w, hyph=None):
+        """Greedily wrap words (with bold runs) to width, per paragraph. With
+        `hyph` (a language code) an over-wide word is split at a syllable break,
+        so the preview matches the inserted result."""
         lines = []
         for words in paras:
             if not words:
                 lines.append([])
                 continue
             cur, cur_w = [], 0.0
-            for wd in words:
+            queue = list(words)
+            guard = 0
+            while queue and guard < 100000:
+                guard += 1
+                wd = queue.pop(0)
                 ww = self._word_w(wd, fmn, fmb, gbold)
                 if not cur:
-                    cur, cur_w = [wd], ww
+                    if ww <= avail_w:
+                        cur, cur_w = [wd], ww
+                    else:
+                        res = (self._hyph_split(wd, avail_w, fmn, fmb, gbold, hyph)
+                               if hyph else None)
+                        if res:
+                            left, right = res
+                            lines.append([left])
+                            queue.insert(0, right)
+                            cur, cur_w = [], 0.0
+                        else:
+                            cur, cur_w = [wd], ww
                 elif cur_w + space_w + ww <= avail_w:
                     cur.append(wd)
                     cur_w += space_w + ww
                 else:
-                    lines.append(cur)
-                    cur, cur_w = [wd], ww
-            lines.append(cur)
+                    avail = avail_w - cur_w - space_w
+                    res = (self._hyph_split(wd, avail, fmn, fmb, gbold, hyph)
+                           if hyph else None)
+                    if res:
+                        left, right = res
+                        cur.append(left)
+                        lines.append(cur)
+                        queue.insert(0, right)
+                        cur, cur_w = [], 0.0
+                    else:
+                        lines.append(cur)
+                        cur, cur_w = [wd], ww
+            if cur:
+                lines.append(cur)
         return lines
 
     def _fit(self, o, paras, avail_w, avail_h):
@@ -1122,13 +1181,15 @@ class TextPreview(QWidget):
         Returns (px, lines); lines is a list of word lists."""
         lo, hi, best = 6, 160, 6
         best_lines = [[]]
+        hyph = o["hyph_lang"] if o.get("hyphenate") else None
         while lo <= hi:
             mid = (lo + hi) // 2
             fn, fb = self._fonts(o, mid)
             fmn, fmb = QFontMetricsF(fn), QFontMetricsF(fb)
             space_w = fmn.horizontalAdvance(" ")
             line_h = fmn.height() * o["spacing"]
-            lines = self._wrap_words(paras, fmn, fmb, o["bold"], space_w, avail_w)
+            lines = self._wrap_words(paras, fmn, fmb, o["bold"], space_w,
+                                     avail_w, hyph)
             total_h = line_h * len(lines)
             maxw = max((self._line_w(ws, fmn, fmb, o["bold"], space_w)
                         for ws in lines), default=0.0)
@@ -1630,6 +1691,21 @@ class TyperDocker(DockWidget):
         self.round_chk.stateChanged.connect(self._on_auto_toggle)
         layout.addWidget(self.round_chk)
 
+        # --- hyphenation (split long words at syllable points) ---
+        self.hyph_chk = QCheckBox()
+        self.hyph_chk.stateChanged.connect(self._on_hyph_toggle)
+        layout.addWidget(self.hyph_chk)
+        hyph_row = QHBoxLayout()
+        self.lbl_hyph_lang = QLabel()
+        hyph_row.addWidget(self.lbl_hyph_lang)
+        self.hyph_lang_combo = QComboBox()
+        for code in ("auto", "en", "de"):
+            self.hyph_lang_combo.addItem("", code)
+        self.hyph_lang_combo.currentIndexChanged.connect(
+            lambda *_a: self._update_text_preview())
+        hyph_row.addWidget(self.hyph_lang_combo, 1)
+        layout.addLayout(hyph_row)
+
         self.insert_btn = QPushButton()
         self.insert_btn.clicked.connect(self.on_insert)
         layout.addWidget(self.insert_btn)
@@ -1816,6 +1892,12 @@ class TyperDocker(DockWidget):
         self.lbl_outline_width.setText(t("outline_width"))
         self.auto_chk.setText(t("auto"))
         self.auto_chk.setToolTip(t("auto_tip"))
+        self.hyph_chk.setText(t("hyphenate"))
+        self.hyph_chk.setToolTip(t("hyphenate_tip"))
+        self.lbl_hyph_lang.setText(t("hyph_lang"))
+        self.hyph_lang_combo.setItemText(0, t("hyph_auto"))
+        self.hyph_lang_combo.setItemText(1, t("hyph_en"))
+        self.hyph_lang_combo.setItemText(2, t("hyph_de"))
         self.insert_btn.setText(t("insert_btn"))
         # re-label the page combo / status in the new language
         self._refresh_pages_combo()
@@ -2020,6 +2102,8 @@ class TyperDocker(DockWidget):
             "shadow_x": self.shadow_x_spin.value(),
             "shadow_y": self.shadow_y_spin.value(),
             "shadow_color": self._shadow_color.name(),
+            "hyphenate": self.hyph_chk.isChecked(),
+            "hyph_lang": self.hyph_lang_combo.currentData() or "auto",
         }
 
     def _save_settings(self):
@@ -2081,6 +2165,11 @@ class TyperDocker(DockWidget):
             if "shadow_color" in d:
                 self._shadow_color = QColor(d["shadow_color"])
                 self._update_shadow_btn()
+            if "hyphenate" in d:
+                self.hyph_chk.setChecked(bool(d["hyphenate"]))
+            if d.get("hyph_lang") in ("auto", "en", "de"):
+                hidx = {"auto": 0, "en": 1, "de": 2}[d["hyph_lang"]]
+                self.hyph_lang_combo.setCurrentIndex(hidx)
         except Exception:
             pass
 
@@ -2559,6 +2648,23 @@ class TyperDocker(DockWidget):
             self._tr("size_max") if auto else self._tr("size_fixed"))
         self.pad_spin.setEnabled(auto)
         self.round_chk.setEnabled(auto)
+        if hasattr(self, "hyph_chk"):
+            self.hyph_chk.setEnabled(auto)
+            self.hyph_lang_combo.setEnabled(auto and self.hyph_chk.isChecked())
+        self._update_text_preview()
+
+    def _on_hyph_toggle(self):
+        self.hyph_lang_combo.setEnabled(
+            self.auto_chk.isChecked() and self.hyph_chk.isChecked())
+        self._update_text_preview()
+
+    def _hyph_lang_for(self, text):
+        """Resolve the hyphenation language; 'auto' -> German if the text has
+        ä/ö/ü/ß, else English."""
+        code = self.hyph_lang_combo.currentData() or "auto"
+        if code != "auto":
+            return code
+        return "de" if any(c in "äöüßÄÖÜ" for c in (text or "")) else "en"
 
     def _current_text(self):
         # prefer the (possibly edited) content of the active field
@@ -2648,6 +2754,8 @@ class TyperDocker(DockWidget):
             self.shadow_y_spin.value(),
             self.valign_combo.currentData() or "middle",
             self._index + 1,
+            hyphenate=self.hyph_chk.isChecked(),
+            hyph_lang=self._hyph_lang_for(text),
         )
         self._set_status(self._tr(key).format(**fmt), error=not ok)
         if ok:

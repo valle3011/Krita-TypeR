@@ -136,6 +136,14 @@ stray markup inside a bubble:
   filter, recently used fonts on top, and a preview only for the selected font.
 - **Auto-fit** to the selection (size + wrapping), with **even line balancing**
   for a calm, oval block, and an optional **round-bubble (ellipse)** mode.
+- **Automatic hyphenation** (new, optional): long words that don't fit are split
+  at **linguistically correct syllable points** (with a “-”), so the text can
+  reach a bigger size in narrow bubbles – e.g. `hy-phen-ation`, `type-set-ting`.
+  Uses Liang's algorithm with bundled, freely-licensed TeX patterns for
+  **English and German** (see *Hyphenation* below). Minimum 2 letters before / 3
+  after a break; words under 5–6 letters are never split. Toggle it with the
+  **“Hyphenate long words”** checkbox + a language dropdown (Auto / English /
+  Deutsch). Off by default → exactly the old behavior.
 - **Live preview** that renders the active line with the chosen font and every
   setting (color, outline, shadow, alignment, case, wrapping) in the same order
   as the inserted layer.
@@ -187,13 +195,38 @@ panel.
 
 ---
 
+## Hyphenation
+
+Hyphenation is **opt-in** (the “Hyphenate long words” checkbox, only active with
+auto-fit). When on, a word that is wider than the line is split at a valid
+syllable point and a “-” is added, which usually lets the whole text grow to a
+noticeably bigger size in narrow bubbles. Bold/italic and per-word `**bold**`
+are preserved across the split, and normal paragraphs keep their even balancing
+(hyphenation only kicks in when a word truly doesn't fit).
+
+The break points come from **Liang's algorithm** (the same method TeX,
+LibreOffice and browsers use) together with the bundled pattern files in
+`typer_kr/hyph/`:
+
+| Language | File | Source / license |
+| --- | --- | --- |
+| English (US) | `hyph-en-us.pat.txt`, `hyph-en-us.hyp.txt` | hyph-utf8 / tex-hyphen, © G. D. C. Kuiken – free redistribution permitted |
+| German (1996) | `hyph-de-1996.pat.txt` | hyph-utf8 / tex-hyphen – MIT |
+
+The full notices are in `typer_kr/hyph/LICENSE.txt`. Nothing needs to be
+installed; everything ships with the plugin. The “Auto” language guesses German
+when the text contains ä/ö/ü/ß, otherwise English.
+
+---
+
 ## Project layout
 
 | File | Purpose |
 | --- | --- |
 | `typer_kr/typer_kr.py` | Docker UI, readers, text-layer insertion |
 | `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
-| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit |
+| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation** |
+| `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
 | `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |
 | `typer_kr.desktop` | Krita plugin descriptor |

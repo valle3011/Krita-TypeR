@@ -8,6 +8,8 @@ Text widths come from a 'measurer(px)' function that returns:
 """
 
 import math
+import os
+import re
 
 
 # ---------------------------------------------------------------------------
@@ -98,25 +100,229 @@ def runs_text(runs):
 
 
 
-def wrap_greedy(words, width_of, space_w, max_w):
-    """Greedily wrap words into lines, each line <= max_w."""
-    lines = []
-    cur = []
+# ---------------------------------------------------------------------------
+# Hyphenation (Liang's algorithm with bundled, freely-licensed TeX patterns)
+#
+# The pattern files live in the "hyph" subfolder and come from the free
+# hyph-utf8 / tex-hyphen project (see hyph/LICENSE.txt). `hyphenate()` returns
+# the linguistically valid break positions of a word; `split_word()` splits a
+# Word object there while keeping its bold runs intact.
+# ---------------------------------------------------------------------------
+
+_HYPH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hyph")
+_HYPH_FILES = {
+    "en": ("hyph-en-us.pat.txt", "hyph-en-us.hyp.txt"),
+    "de": ("hyph-de-1996.pat.txt", None),
+}
+_hyphenators = {}                       # lang -> _Hyphenator (or False = failed)
+_DIGITS_RE = re.compile(r"[0-9]")
+_WORD_RE = re.compile(r"^[^\W\d_]+(?:[''’-][^\W\d_]+)*$", re.UNICODE)
+
+
+class _Hyphenator(object):
+    """Liang's hyphenation algorithm over a tree of competing patterns."""
+
+    def __init__(self, pattern_lines, exception_lines=()):
+        self.tree = {}
+        for pat in pattern_lines:
+            pat = pat.strip()
+            if pat and not pat.startswith("%"):
+                self._insert(pat)
+        self.exceptions = {}
+        for ex in exception_lines:
+            ex = ex.strip().lower()
+            if not ex or ex.startswith("%"):
+                continue
+            key = ex.replace("-", "")
+            pts = [0]
+            for piece in ex.split("-"):
+                pts.extend([0] * (len(piece) - 1))
+                pts.append(1)
+            if pts:
+                pts[-1] = 0             # never break after the last piece
+            self.exceptions[key] = pts
+
+    def _insert(self, pattern):
+        # "a1bc3d" -> chars "abcd", points [0,1,0,3,0]
+        chars = _DIGITS_RE.sub("", pattern)
+        points = [0] * (len(chars) + 1)
+        ci = 0
+        for ch in pattern:
+            if ch.isdigit():
+                points[ci] = int(ch)
+            else:
+                ci += 1
+        node = self.tree
+        for c in chars:
+            node = node.setdefault(c, {})
+        node[None] = points
+
+    def split(self, word):
+        """Split `word` into its syllable pieces (lowercased internally)."""
+        w = word.lower()
+        if w in self.exceptions:
+            points = self.exceptions[w]
+            offset = 1
+        else:
+            work = "." + w + "."
+            points = [0] * (len(work) + 1)
+            for i in range(len(work)):
+                node = self.tree
+                for c in work[i:]:
+                    node = node.get(c)
+                    if node is None:
+                        break
+                    pts = node.get(None)
+                    if pts:
+                        for off, p in enumerate(pts):
+                            if p > points[i + off]:
+                                points[i + off] = p
+            points[0] = points[1] = 0
+            points[-1] = points[-2] = 0
+            offset = 2
+        pieces = [""]
+        for k, c in enumerate(w):
+            pieces[-1] += c
+            if points[k + offset] % 2:
+                pieces.append("")
+        return [p for p in pieces if p]
+
+
+def _get_hyphenator(lang):
+    lang = "de" if str(lang).lower().startswith("de") else "en"
+    if lang in _hyphenators:
+        return _hyphenators[lang] or None
+    pat_name, hyp_name = _HYPH_FILES[lang]
+    try:
+        with open(os.path.join(_HYPH_DIR, pat_name), encoding="utf-8") as fh:
+            pat_lines = fh.read().splitlines()
+        hyp_lines = []
+        if hyp_name:
+            p = os.path.join(_HYPH_DIR, hyp_name)
+            if os.path.exists(p):
+                with open(p, encoding="utf-8") as fh:
+                    hyp_lines = fh.read().splitlines()
+        h = _Hyphenator(pat_lines, hyp_lines)
+    except Exception:
+        h = False
+    _hyphenators[lang] = h
+    return h or None
+
+
+def hyphenate(word, lang="en", left=2, right=3):
+    """Return the sorted character indices inside `word` where a hyphen may be
+    placed (valid syllable breaks), honoring a minimum of `left` letters before
+    and `right` letters after a break. Empty list if the word is too short, not
+    a plain word, or patterns are unavailable."""
+    if not word or len(word) < left + right:
+        return []
+    if not _WORD_RE.match(word):
+        return []
+    h = _get_hyphenator(lang)
+    if h is None:
+        return []
+    pieces = h.split(word)
+    if len(pieces) < 2:
+        return []
+    breaks = []
+    pos = 0
+    for p in pieces[:-1]:
+        pos += len(p)
+        if left <= pos <= len(word) - right:
+            breaks.append(pos)
+    return breaks
+
+
+def split_word(word, i):
+    """Split a Word at character index i; append a hyphen to the first part.
+    Returns (left, right) as Word objects, preserving the bold runs."""
+    left_runs, right_runs = [], []
+    pos = 0
+    for (t, b) in word.runs:
+        end = pos + len(t)
+        if end <= i:
+            left_runs.append((t, b))
+        elif pos >= i:
+            right_runs.append((t, b))
+        else:
+            cut = i - pos
+            left_runs.append((t[:cut], b))
+            right_runs.append((t[cut:], b))
+        pos = end
+    if left_runs:
+        lt, lb = left_runs[-1]
+        left_runs[-1] = (lt + "-", lb)          # hyphen inherits previous bold
+    else:
+        left_runs = [("-", False)]
+    left_text = "".join(t for t, _ in left_runs)
+    right_text = "".join(t for t, _ in right_runs)
+    left = Word(left_text, any(b for _, b in left_runs), left_runs)
+    right = Word(right_text, any(b for _, b in right_runs), right_runs)
+    return left, right
+
+
+def _split_to_fit(word, avail, width_of, hyph):
+    """Hyphenate `word` so its first part (incl. hyphen) is <= avail.
+    Picks the latest valid break that still fits. Returns (left, right) or
+    None. `hyph(word)` -> list of break indices."""
+    breaks = hyph(word)
+    if not breaks:
+        return None
+    best = None
+    for b in breaks:                            # ascending -> latest that fits
+        left, right = split_word(word, b)
+        if width_of(left) <= avail:
+            best = (left, right)
+        else:
+            break
+    return best
+
+
+def wrap_greedy(words, width_of, space_w, max_w, hyph=None):
+    """Greedily wrap words into lines, each line <= max_w. With `hyph` (a
+    callable word -> break indices) a word that does not fit is split at a valid
+    syllable break instead of overflowing."""
+    lines = [[]]
     cur_w = 0.0
-    for w in words:
+    queue = list(words)
+    guard = 0
+    while queue and guard < 100000:
+        guard += 1
+        w = queue.pop(0)
         ww = width_of(w)
+        cur = lines[-1]
         if not cur:
-            cur = [w]
-            cur_w = ww
+            if ww <= max_w:
+                cur.append(w)
+                cur_w = ww
+            else:                               # too wide for a whole line
+                res = _split_to_fit(w, max_w, width_of, hyph) if hyph else None
+                if res:
+                    left, right = res
+                    cur.append(left)
+                    lines.append([])
+                    cur_w = 0.0
+                    queue.insert(0, right)
+                else:
+                    cur.append(w)               # give up -> overflow (as before)
+                    cur_w = ww
         elif cur_w + space_w + ww <= max_w:
             cur.append(w)
             cur_w += space_w + ww
         else:
-            lines.append(cur)
-            cur = [w]
-            cur_w = ww
-    if cur:
-        lines.append(cur)
+            avail = max_w - cur_w - space_w
+            res = _split_to_fit(w, avail, width_of, hyph) if hyph else None
+            if res:
+                left, right = res
+                cur.append(left)
+                lines.append([])
+                cur_w = 0.0
+                queue.insert(0, right)
+            else:
+                lines.append([w])
+                cur_w = ww
+    if lines and not lines[-1]:
+        lines.pop()
     return lines
 
 
@@ -200,9 +406,17 @@ def _ellipse_line_widths(k, line_h, a, b):
     return out
 
 
-def _wrap_schedule(words, width_of, space_w, widths):
+def _line_width(words, width_of, space_w):
+    """Total width of a line of words (with single spaces between them)."""
+    if not words:
+        return 0.0
+    return (sum(width_of(w) for w in words) + space_w * (len(words) - 1))
+
+
+def _wrap_schedule(words, width_of, space_w, widths, hyph=None):
     """Wrap greedily where line i may be at most widths[i] wide (extra lines use
-    the narrowest/last width). Returns None if a single word does not even fit
+    the narrowest/last width). With `hyph` an over-wide word is split at a valid
+    syllable break instead of failing. Returns None if a word still does not fit
     on its own line."""
     def maxw(i):
         if not widths:
@@ -212,28 +426,41 @@ def _wrap_schedule(words, width_of, space_w, widths):
     lines = []
     cur = []
     cur_w = 0.0
-    for word in words:
+    queue = list(words)
+    guard = 0
+    while queue and guard < 100000:
+        guard += 1
+        word = queue.pop(0)
         ww = width_of(word)
+        limit = maxw(len(lines))
         if not cur:
-            if ww > maxw(len(lines)):
+            if ww <= limit:
+                cur = [word]
+                cur_w = ww
+            elif hyph:
+                res = _split_to_fit(word, limit, width_of, hyph)
+                if not res:
+                    return None
+                left, right = res
+                lines.append([left])
+                queue.insert(0, right)
+                cur, cur_w = [], 0.0
+            else:
                 return None
-            cur = [word]
-            cur_w = ww
-        elif cur_w + space_w + ww <= maxw(len(lines)):
+        elif cur_w + space_w + ww <= limit:
             cur.append(word)
             cur_w += space_w + ww
         else:
+            # current line is full: close it and retry the word on a fresh line
             lines.append(cur)
-            if ww > maxw(len(lines)):
-                return None
-            cur = [word]
-            cur_w = ww
+            cur, cur_w = [], 0.0
+            queue.insert(0, word)
     if cur:
         lines.append(cur)
     return lines
 
 
-def wrap_ellipse(words, width_of, space_w, a, b, line_h):
+def wrap_ellipse(words, width_of, space_w, a, b, line_h, hyph=None):
     """Wrap words so they fit inside an ellipse (semi-axes a, b). Fixed-point
     iteration over the line count, because the allowed widths depend on the
     (centered) line count. Only a self-consistent result is returned (every
@@ -241,11 +468,11 @@ def wrap_ellipse(words, width_of, space_w, a, b, line_h):
     the caller picks a smaller font."""
     if not words:
         return []
-    init = wrap_greedy(words, width_of, space_w, 2.0 * a)
+    init = wrap_greedy(words, width_of, space_w, 2.0 * a, hyph)
     k = max(1, len(init))
     for _ in range(12):
         widths = _ellipse_line_widths(k, line_h, a, b)
-        res = _wrap_schedule(words, width_of, space_w, widths)
+        res = _wrap_schedule(words, width_of, space_w, widths, hyph)
         if res is None:
             return None
         if len(res) == k:
@@ -257,7 +484,7 @@ def wrap_ellipse(words, width_of, space_w, a, b, line_h):
 
 
 def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
-             shape="rect", mask=None):
+             shape="rect", mask=None, hyphenate=False, lang="en"):
     """Find the largest font size at which the wrapped text fits.
 
     shape='rect'    : rectangular box, evenly balanced lines. Embedded line
@@ -270,11 +497,21 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     mask: optional list of bool with the same length as text - marks bold
     characters (for partially bold text). None -> nothing bold.
 
+    hyphenate: when True, words that are too wide for a line are split at valid
+    syllable breaks (using `lang`'s patterns) instead of just forcing a smaller
+    font. Default False keeps the exact previous behavior.
+
     Returns: (font_px, lines, line_h, ascent, descent, fitted)
     'lines' is a list of run lists ([(subtext, bold), ...] per line).
     """
     if mask is None:
         mask = [False] * len(text)
+
+    # word -> valid break indices (None disables hyphenation entirely)
+    hyph_fn = None
+    if hyphenate:
+        def hyph_fn(wd):
+            return hyphenate_word_breaks(wd, lang)
 
     usable_w = box_w * (1.0 - pad_frac)
     usable_h = box_h * (1.0 - pad_frac)
@@ -292,7 +529,7 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
 
         def fits(px):
             width_of, space_w, line_h, _asc, _desc = measurer(px)
-            res = wrap_ellipse(words, width_of, space_w, a, b, line_h)
+            res = wrap_ellipse(words, width_of, space_w, a, b, line_h, hyph_fn)
             if res is None:
                 return None
             if len(res) * line_h > usable_h:
@@ -313,11 +550,14 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
                 if not words:
                     all_lines.append([])           # intentional blank line
                     continue
-                if max(width_of(w) for w in words) > usable_w:
-                    return None
-                all_lines.extend(wrap_greedy(words, width_of, space_w, usable_w))
+                all_lines.extend(
+                    wrap_greedy(words, width_of, space_w, usable_w, hyph_fn))
             if len(all_lines) * line_h > usable_h:
                 return None
+            # an unbreakable word wider than the box -> does not fit
+            for ln in all_lines:
+                if _line_width(ln, width_of, space_w) > usable_w + 0.5:
+                    return None
             return all_lines
 
     lo = int(min_px)
@@ -340,9 +580,9 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     width_of, space_w, line_h, ascent, descent = measurer(best)
     if shape == "ellipse":
         res = wrap_ellipse(words, width_of, space_w,
-                           usable_w / 2.0, usable_h / 2.0, line_h)
+                           usable_w / 2.0, usable_h / 2.0, line_h, hyph_fn)
         if res is None:
-            res = wrap_greedy(words, width_of, space_w, usable_w)
+            res = wrap_greedy(words, width_of, space_w, usable_w, hyph_fn)
         line_lists = res
     else:
         line_lists = []
@@ -350,10 +590,22 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
             if not words:
                 line_lists.append([])
                 continue
-            k = len(wrap_greedy(words, width_of, space_w, usable_w))
-            line_lists.extend(balance_even(words, width_of, space_w, usable_w, k))
+            # keep the even balancing for normal paragraphs; only fall back to
+            # the hyphenating greedy wrap when a word is too wide to fit at all.
+            if hyph_fn is not None and any(width_of(w) > usable_w for w in words):
+                line_lists.extend(
+                    wrap_greedy(words, width_of, space_w, usable_w, hyph_fn))
+            else:
+                k = len(wrap_greedy(words, width_of, space_w, usable_w))
+                line_lists.extend(
+                    balance_even(words, width_of, space_w, usable_w, k))
     lines = [line_runs(ws) for ws in line_lists]
     return best, lines, line_h, ascent, descent, fitted
+
+
+def hyphenate_word_breaks(word, lang="en"):
+    """Helper: break indices for a Word object (uses its plain text)."""
+    return hyphenate(getattr(word, "text", str(word)), lang)
 
 
 def vertical_start(valign, box_y, box_h, pad_frac, k, line_h, ascent, descent):
