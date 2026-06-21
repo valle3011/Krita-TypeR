@@ -147,6 +147,12 @@ LANG = {
         "char_new": "New character …",
         "char_del": "Delete character",
         "char_default": "Character 1",
+        "auto_char": "Auto-pick character from “Name:”",
+        "auto_char_tip": ("If a line starts with a speaker name like “Sakamoto: …” "
+                          "and that name matches one of your characters, switch to "
+                          "that character (and apply its first style preset). The "
+                          "name is also removed from the inserted text."),
+        "st_auto_char": "Auto-character: switched to ‘{name}’.",
         "char_new_dlg": "New character",
         "char_name_prompt": "Character name:",
         "style_label": "Style preset:",
@@ -281,6 +287,13 @@ LANG = {
         "char_new": "Neuer Charakter …",
         "char_del": "Charakter löschen",
         "char_default": "Charakter 1",
+        "auto_char": "Charakter aus „Name:“ automatisch wählen",
+        "auto_char_tip": ("Beginnt eine Zeile mit einem Sprechernamen wie "
+                          "„Sakamoto: …“ und passt der Name zu einem deiner "
+                          "Charaktere, wird zu diesem Charakter gewechselt (und "
+                          "sein erstes Stil-Preset angewendet). Der Name wird "
+                          "außerdem aus dem eingefügten Text entfernt."),
+        "st_auto_char": "Auto-Charakter: zu ‚{name}‘ gewechselt.",
         "char_new_dlg": "Neuer Charakter",
         "char_name_prompt": "Charakter-Name:",
         "style_label": "Stil-Preset:",
@@ -1365,6 +1378,11 @@ class TyperDocker(DockWidget):
         char_row.addWidget(self.char_new_btn)
         char_row.addWidget(self.char_del_btn)
         layout.addLayout(char_row)
+        # Auto-pick character from a "Name:" speaker prefix (optional)
+        self.auto_char_chk = QCheckBox()
+        self.auto_char_chk.setChecked(self._load_auto_char())
+        self.auto_char_chk.toggled.connect(self._on_auto_char_toggle)
+        layout.addWidget(self.auto_char_chk)
         preset_row = QHBoxLayout()
         self.preset_combo = QComboBox()
         self.preset_combo.currentIndexChanged.connect(self._on_preset_selected)
@@ -1661,6 +1679,53 @@ class TyperDocker(DockWidget):
         except Exception:
             pass
 
+    def _load_auto_char(self):
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "autoChar", "true") != "false"
+        except Exception:
+            return True
+
+    def _on_auto_char_toggle(self, checked):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "autoChar", "true" if checked else "false")
+        except Exception:
+            pass
+        if checked:
+            self._show_current()      # auf die aktuelle Zeile sofort anwenden
+
+    def _maybe_auto_character(self, text):
+        """If 'auto character' is on and the line starts with a speaker name
+        ('Name: …') that matches a character in the current manga, switch to
+        that character (and apply its first style preset). Returns the text
+        without the speaker prefix so the bubble stays clean; otherwise the
+        text unchanged."""
+        chk = getattr(self, "auto_char_chk", None)
+        if chk is None or not chk.isChecked():
+            return text
+        name, rest = LP.split_speaker(text)
+        if not name:
+            return text
+        match = None
+        for ch in self._cur_chars():
+            if ch.lower() == name.lower():
+                match = ch
+                break
+        if not match:
+            return text
+        if match != self._char:
+            self._char = match
+            self._refresh_chars_combo(select=match)
+            self._refresh_presets_combo()
+            presets = self._cur_presets()
+            if presets:
+                first = sorted(presets.keys(), key=lambda s: s.lower())[0]
+                self._apply_preset(presets[first])
+                self._refresh_presets_combo(select=first)
+            self._set_status(self._tr("st_auto_char").format(name=match))
+        return rest
+
     def _on_lang_change(self):
         self._lang = self.lang_combo.currentData() or "en"
         self._save_lang()
@@ -1727,6 +1792,8 @@ class TyperDocker(DockWidget):
         self.lbl_char.setText(t("char"))
         self.char_new_btn.setText(t("char_new"))
         self.char_del_btn.setText(t("char_del"))
+        self.auto_char_chk.setText(t("auto_char"))
+        self.auto_char_chk.setToolTip(t("auto_char_tip"))
         self.preset_save_btn.setText(t("preset_save"))
         self.preset_del_btn.setText(t("preset_del"))
         self.preset_import_btn.setText(t("preset_import"))
@@ -2608,6 +2675,8 @@ class TyperDocker(DockWidget):
             self._index + 1, total, len(self._done)))
         ja, en = self._pairs[self._index]
         main_txt = en if en.strip() else ja
+        # optional: pick the character from a "Name:" speaker prefix and strip it
+        main_txt = self._maybe_auto_character(main_txt)
         self.active_edit.blockSignals(True)
         self.active_edit.setPlainText(main_txt)
         self.active_edit.blockSignals(False)

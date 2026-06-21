@@ -234,6 +234,43 @@ def clean_lines(lines):
     return out
 
 
+# A leading speaker label such as "Sakamoto: Hi there". Conservative: the name
+# must be letters (plus spaces/'/-/.), no digits, 1-4 words, with non-empty
+# dialogue after the colon. So "Act93: ..." (digits) is NOT a speaker.
+_SPEAKER_RE = re.compile(r"^\s*([A-Za-z][A-Za-z .'\-]{0,23}?)\s*:\s*(\S.*)$")
+
+
+def split_speaker(text):
+    """If `text` looks like 'Speaker: dialogue' with a plausible speaker name,
+    return (speaker, dialogue); otherwise (None, text).
+
+    Deliberately conservative – this only *detects* a possible speaker. The
+    caller decides whether to act on it (e.g. only when the name matches a
+    known character), so the occasional false positive is harmless."""
+    text = text or ""
+    # a known bubble-type tag ('SFX:', 'ST:', …) is not a speaker
+    if strip_type_prefix(text) != text:
+        return None, text
+    m = _SPEAKER_RE.match(text)
+    if not m:
+        return None, text
+    name = m.group(1).strip(" .")
+    rest = m.group(2).strip()
+    if not name or not rest:
+        return None, text
+    if any(ch.isdigit() for ch in name) or is_header_line(name):
+        return None, text
+    if not (1 <= len(name.split()) <= 4):
+        return None, text
+    return name, rest
+
+
+def speaker_name(text):
+    """The speaker label of a 'Speaker: dialogue' line, or None. See
+    :func:`split_speaker`."""
+    return split_speaker(text)[0]
+
+
 def pair_lines(lines):
     """Group lines into (japanese, english) pairs.
 
