@@ -371,3 +371,129 @@ def unit_text(pair):
     source (JA)."""
     ja, en = pair
     return en if en.strip() else ja
+
+
+# ---------------------------------------------------------------------------
+# Loose normalization (shared by manga / preset matching)
+# ---------------------------------------------------------------------------
+
+def _norm_loose(text):
+    """Lowercase, replace every non-alphanumeric char with a space and collapse
+    runs of whitespace. Keeps unicode letters/digits, so accented or Japanese
+    names still match. '' for empty input."""
+    out = []
+    for ch in (text or "").lower():
+        out.append(ch if (ch.isalnum() or ch.isspace()) else " ")
+    return re.sub(r"\s+", " ", "".join(out)).strip()
+
+
+# ---------------------------------------------------------------------------
+# Manga detection
+#
+# When a translation script is loaded we try to recognise which of the user's
+# saved mangas it belongs to, so the docker can switch to it automatically
+# (just like "auto character" switches to a speaker's character). Sources are
+# tried in order of trust:
+#   1) the file name (scripts are often named "<Manga> ch12.docx"),
+#   2) explicit header lines ("Title:", "Manga:", "Series:" and localized
+#      variants),
+#   3) the first ~10 non-empty content lines.
+# Matching is done on the loose-normalized form and a saved name must appear as
+# a substring. Among several matches the longest (most specific) saved name
+# wins; a hit in the file name beats a hit in the body. Saved names shorter
+# than 3 characters are ignored to avoid accidental matches.
+# ---------------------------------------------------------------------------
+
+_MANGA_HEADER_RE = re.compile(
+    r'^\s*(?:title|manga|series|serie|titel|t[ií]tulo|titre|s[eé]rie|'
+    r'titolo|obra|werk)\s*[:：]\s*(.+)$',
+    re.IGNORECASE,
+)
+
+
+def _manga_header_values(lines):
+    """Explicit 'Title:'/'Manga:'/… values found in `lines`."""
+    vals = []
+    for ln in lines:
+        m = _MANGA_HEADER_RE.match(ln or "")
+        if m:
+            vals.append(m.group(1))
+    return vals
+
+
+def detect_manga(saved_names, script_text, filename=""):
+    """Return the saved manga name that best matches the loaded script, or None.
+
+    Priority: file name > explicit header lines > first ~10 content lines.
+    Within a source the longest matching saved name wins. Saved names shorter
+    than 3 characters are ignored. See the section comment above for details.
+    """
+    names = [n for n in (saved_names or []) if n and len(n.strip()) >= 3]
+    if not names:
+        return None
+    # longest first so the most specific name wins on a tie
+    names_sorted = sorted(names, key=lambda s: len(s), reverse=True)
+
+    def first_hit(haystack):
+        h = _norm_loose(haystack)
+        if not h:
+            return None
+        for name in names_sorted:
+            if _norm_loose(name) in h:
+                return name
+        return None
+
+    # 1) file name (without directory and extension)
+    base = re.sub(r'.*[\\/]', '', filename or "")     # strip path
+    base = re.sub(r'\.[A-Za-z0-9]+$', '', base)        # strip extension
+    hit = first_hit(base)
+    if hit:
+        return hit
+
+    lines = [ln for ln in (script_text or "").splitlines() if ln.strip()]
+    # 2) explicit header lines (scan the first ~20 non-empty lines for headers)
+    hit = first_hit("\n".join(_manga_header_values(lines[:20])))
+    if hit:
+        return hit
+
+    # 3) first ~10 non-empty content lines
+    return first_hit("\n".join(lines[:10]))
+
+
+# ---------------------------------------------------------------------------
+# Default preset picking
+#
+# When the docker switches to a character we auto-select that character's
+# "default" dialogue preset. Priority:
+#   1) a preset whose name contains a known dialogue keyword ('normal talking',
+#      'normal', 'talking', 'speech', 'default', …), most specific first;
+#   2) the most-used preset (optional usage mapping name -> count);
+#   3) the first preset (alphabetical) that is not literally 'none'.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_PRESET_KEYWORDS = (
+    "normal talking", "normal speech", "normal", "talking", "speech", "default",
+)
+
+
+def default_preset_for(preset_names, usage=None):
+    """Pick the best 'default' preset name for a character, or None when the
+    character has no real preset. See the section comment above for the order."""
+    names = [n for n in (preset_names or [])
+             if n and str(n).strip().lower() != "none"]
+    if not names:
+        return None
+    norm = {n: _norm_loose(n) for n in names}
+    # 1) keyword match (most specific first); ties -> alphabetical
+    for kw in _DEFAULT_PRESET_KEYWORDS:
+        hits = sorted((n for n in names if kw in norm[n]), key=lambda s: s.lower())
+        if hits:
+            return hits[0]
+    # 2) most used
+    if usage:
+        used = sorted((n for n in names if usage.get(n)),
+                      key=lambda n: (-usage.get(n, 0), n.lower()))
+        if used:
+            return used[0]
+    # 3) first alphabetical
+    return sorted(names, key=lambda s: s.lower())[0]

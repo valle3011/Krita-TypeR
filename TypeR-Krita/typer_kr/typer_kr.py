@@ -47,6 +47,40 @@ from . import layout as L
 from . import langpair as LP
 
 
+# ---------------------------------------------------------------------------
+# Wheel-safe widgets
+#
+# A QComboBox/QSpinBox changes its value on a mouse-wheel tick even when it
+# only happens to be under the cursor while the user scrolls the panel. That
+# silently switches the manga/character/preset/etc. by accident. These
+# subclasses only react to the wheel when they actually have keyboard focus
+# (i.e. the user clicked into them first); otherwise the wheel event is passed
+# on so the surrounding scroll area scrolls instead.
+# ---------------------------------------------------------------------------
+class NoScrollComboBox(QComboBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def wheelEvent(self, event):
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
+class NoScrollSpinBox(QSpinBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def wheelEvent(self, event):
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
 class OldDocError(Exception):
     """Old binary format (.doc/.xls) that cannot be read directly."""
 
@@ -153,6 +187,13 @@ LANG = {
                           "that character (and apply its first style preset). The "
                           "name is also removed from the inserted text."),
         "st_auto_char": "Auto-character: switched to ‘{name}’.",
+        "auto_manga": "Auto-pick manga from the script",
+        "auto_manga_tip": ("When loading a script, detect the manga from its file "
+                           "name, a “Title:”/“Manga:” header or the first lines, and "
+                           "switch to that saved manga automatically (if it matches "
+                           "one). The character's default style preset is then "
+                           "selected as well."),
+        "st_auto_manga": "Auto-manga: switched to ‘{name}’.",
         "char_new_dlg": "New character",
         "char_name_prompt": "Character name:",
         "style_label": "Style preset:",
@@ -304,6 +345,13 @@ LANG = {
                           "sein erstes Stil-Preset angewendet). Der Name wird "
                           "außerdem aus dem eingefügten Text entfernt."),
         "st_auto_char": "Auto-Charakter: zu ‚{name}‘ gewechselt.",
+        "auto_manga": "Manga aus dem Script automatisch wählen",
+        "auto_manga_tip": ("Beim Laden eines Scripts den Manga am Dateinamen, an "
+                           "einer „Title:“/„Manga:“-Kopfzeile oder den ersten "
+                           "Zeilen erkennen und automatisch zu diesem gespeicherten "
+                           "Manga wechseln (sofern einer passt). Danach wird auch "
+                           "das Standard-Stil-Preset des Charakters gewählt."),
+        "st_auto_manga": "Auto-Manga: zu ‚{name}‘ gewechselt.",
         "char_new_dlg": "Neuer Charakter",
         "char_name_prompt": "Charakter-Name:",
         "style_label": "Stil-Preset:",
@@ -1515,6 +1563,8 @@ class TyperDocker(DockWidget):
         self._groups = self._load_groups()
         self._group = ""
         self._char = ""
+        self._script_path = ""             # file name of the last loaded script
+        self._preset_usage = self._load_preset_usage()
 
         main = QWidget()
         layout = QVBoxLayout()
@@ -1525,7 +1575,7 @@ class TyperDocker(DockWidget):
         # --- language selector ---
         lang_row = QHBoxLayout()
         self.lang_label = QLabel()
-        self.lang_combo = QComboBox()
+        self.lang_combo = NoScrollComboBox()
         for code, name in LANG_ORDER:
             self.lang_combo.addItem(name, code)
         start = 0
@@ -1566,7 +1616,7 @@ class TyperDocker(DockWidget):
         def _view_row(r, chk_attr, spin_attr, lo, hi, val, show):
             chk = QCheckBox()
             chk.setChecked(bool(show))
-            spin = QSpinBox()
+            spin = NoScrollSpinBox()
             spin.setRange(lo, hi)
             spin.setSingleStep(10)
             spin.setValue(int(val))
@@ -1607,7 +1657,7 @@ class TyperDocker(DockWidget):
         group_row = QHBoxLayout()
         self.lbl_group = QLabel()
         group_row.addWidget(self.lbl_group)
-        self.group_combo = QComboBox()
+        self.group_combo = NoScrollComboBox()
         self.group_combo.currentIndexChanged.connect(self._on_group_selected)
         group_row.addWidget(self.group_combo, 1)
         self.group_new_btn = QPushButton()
@@ -1620,7 +1670,7 @@ class TyperDocker(DockWidget):
         char_row = QHBoxLayout()
         self.lbl_char = QLabel()
         char_row.addWidget(self.lbl_char)
-        self.char_combo = QComboBox()
+        self.char_combo = NoScrollComboBox()
         self.char_combo.currentIndexChanged.connect(self._on_char_selected)
         char_row.addWidget(self.char_combo, 1)
         self.char_new_btn = QPushButton()
@@ -1635,8 +1685,13 @@ class TyperDocker(DockWidget):
         self.auto_char_chk.setChecked(self._load_auto_char())
         self.auto_char_chk.toggled.connect(self._on_auto_char_toggle)
         layout.addWidget(self.auto_char_chk)
+        # Auto-pick manga from the script's file name / header / first lines
+        self.auto_manga_chk = QCheckBox()
+        self.auto_manga_chk.setChecked(self._load_auto_manga())
+        self.auto_manga_chk.toggled.connect(self._on_auto_manga_toggle)
+        layout.addWidget(self.auto_manga_chk)
         preset_row = QHBoxLayout()
-        self.preset_combo = QComboBox()
+        self.preset_combo = NoScrollComboBox()
         self.preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         preset_row.addWidget(self.preset_combo, 1)
         self.preset_save_btn = QPushButton()
@@ -1717,7 +1772,7 @@ class TyperDocker(DockWidget):
         # --- page indicator + jump (only shown when the script has "Page" markers) ---
         page_row = QHBoxLayout()
         self.lbl_page = QLabel()
-        self.page_combo = QComboBox()
+        self.page_combo = NoScrollComboBox()
         # 'activated' fires only on user interaction, so syncing the combo to the
         # current page while navigating does not trigger another jump.
         self.page_combo.activated.connect(self.on_jump_page)
@@ -1775,7 +1830,7 @@ class TyperDocker(DockWidget):
         align_row = QHBoxLayout()
         self.lbl_alignment = QLabel()
         align_row.addWidget(self.lbl_alignment)
-        self.align_combo = QComboBox()
+        self.align_combo = NoScrollComboBox()
         for code in ("left", "center", "right"):
             self.align_combo.addItem("", code)
         self.align_combo.setCurrentIndex(1)  # center
@@ -1785,7 +1840,7 @@ class TyperDocker(DockWidget):
         valign_row = QHBoxLayout()
         self.lbl_valign = QLabel()
         valign_row.addWidget(self.lbl_valign)
-        self.valign_combo = QComboBox()
+        self.valign_combo = NoScrollComboBox()
         for code in ("top", "middle", "bottom"):
             self.valign_combo.addItem("", code)
         self.valign_combo.setCurrentIndex(1)  # middle
@@ -1794,7 +1849,7 @@ class TyperDocker(DockWidget):
 
         text_row = QHBoxLayout()
         self.case_label = QLabel()
-        self.case_combo = QComboBox()
+        self.case_combo = NoScrollComboBox()
         for code in ("none", "upper", "lower"):
             self.case_combo.addItem("", code)
         self.case_combo.setCurrentIndex(0)
@@ -1809,7 +1864,7 @@ class TyperDocker(DockWidget):
         grid = QGridLayout()
         self.size_label = QLabel()
         grid.addWidget(self.size_label, 0, 0)
-        self.size_spin = QSpinBox()
+        self.size_spin = NoScrollSpinBox()
         self.size_spin.setRange(4, 2000)
         self.size_spin.setValue(72)
         grid.addWidget(self.size_spin, 0, 1)
@@ -1821,14 +1876,14 @@ class TyperDocker(DockWidget):
 
         self.lbl_pad = QLabel()
         grid.addWidget(self.lbl_pad, 1, 0)
-        self.pad_spin = QSpinBox()
+        self.pad_spin = NoScrollSpinBox()
         self.pad_spin.setRange(0, 45)
         self.pad_spin.setValue(12)
         grid.addWidget(self.pad_spin, 1, 1)
 
         self.lbl_spacing = QLabel()
         grid.addWidget(self.lbl_spacing, 2, 0)
-        self.spacing_spin = QSpinBox()
+        self.spacing_spin = NoScrollSpinBox()
         self.spacing_spin.setRange(80, 250)
         self.spacing_spin.setValue(105)
         grid.addWidget(self.spacing_spin, 2, 1)
@@ -1844,7 +1899,7 @@ class TyperDocker(DockWidget):
         out_row.addWidget(self.outline_color_btn)
         self.lbl_outline_width = QLabel()
         out_row.addWidget(self.lbl_outline_width)
-        self.outline_spin = QSpinBox()
+        self.outline_spin = NoScrollSpinBox()
         self.outline_spin.setRange(1, 200)
         self.outline_spin.setValue(4)
         out_row.addWidget(self.outline_spin)
@@ -1861,10 +1916,10 @@ class TyperDocker(DockWidget):
         sh_row.addWidget(self.shadow_color_btn)
         self.lbl_shadow_off = QLabel()
         sh_row.addWidget(self.lbl_shadow_off)
-        self.shadow_x_spin = QSpinBox()
+        self.shadow_x_spin = NoScrollSpinBox()
         self.shadow_x_spin.setRange(-100, 100)
         self.shadow_x_spin.setValue(3)
-        self.shadow_y_spin = QSpinBox()
+        self.shadow_y_spin = NoScrollSpinBox()
         self.shadow_y_spin.setRange(-100, 100)
         self.shadow_y_spin.setValue(3)
         sh_row.addWidget(self.shadow_x_spin)
@@ -1889,7 +1944,7 @@ class TyperDocker(DockWidget):
         hyph_row = QHBoxLayout()
         self.lbl_hyph_lang = QLabel()
         hyph_row.addWidget(self.lbl_hyph_lang)
-        self.hyph_lang_combo = QComboBox()
+        self.hyph_lang_combo = NoScrollComboBox()
         # only offer languages whose hyphenation patterns are bundled
         for code in ("auto",) + L.HYPH_LANGS:
             self.hyph_lang_combo.addItem("", code)
@@ -1963,10 +2018,42 @@ class TyperDocker(DockWidget):
         if checked:
             self._show_current()      # auf die aktuelle Zeile sofort anwenden
 
+    def _load_auto_manga(self):
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "autoManga", "true") != "false"
+        except Exception:
+            return True
+
+    def _on_auto_manga_toggle(self, checked):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "autoManga", "true" if checked else "false")
+        except Exception:
+            pass
+
+    def _maybe_auto_manga(self, text, filename=""):
+        """If 'auto manga' is on, detect which saved manga this script belongs
+        to (file name / header / first lines) and switch to it. Does nothing
+        when the feature is off or no manga matches."""
+        chk = getattr(self, "auto_manga_chk", None)
+        if chk is None or not chk.isChecked():
+            return
+        match = LP.detect_manga(list(self._groups.keys()), text, filename)
+        if not match or match == self._group:
+            return
+        self._group = match
+        self._char = ""
+        self._refresh_groups_combo(select=match)
+        self._refresh_chars_combo()
+        self._refresh_presets_combo()
+        self._apply_default_preset()      # default style for the new character
+        self._set_status(self._tr("st_auto_manga").format(name=match))
+
     def _maybe_auto_character(self, text):
         """If 'auto character' is on and the line starts with a speaker name
         ('Name: …') that matches a character in the current manga, switch to
-        that character (and apply its first style preset). Returns the text
+        that character (and apply its default style preset). Returns the text
         without the speaker prefix so the bubble stays clean; otherwise the
         text unchanged."""
         chk = getattr(self, "auto_char_chk", None)
@@ -1985,14 +2072,48 @@ class TyperDocker(DockWidget):
         if match != self._char:
             self._char = match
             self._refresh_chars_combo(select=match)
-            self._refresh_presets_combo()
-            presets = self._cur_presets()
-            if presets:
-                first = sorted(presets.keys(), key=lambda s: s.lower())[0]
-                self._apply_preset(presets[first])
-                self._refresh_presets_combo(select=first)
+            self._apply_default_preset()
             self._set_status(self._tr("st_auto_char").format(name=match))
         return rest
+
+    # ---- preset usage learning (per manga/character) ----
+    def _load_preset_usage(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "presetUsage", "")
+            data = json.loads(raw) if raw else {}
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_preset_usage(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "presetUsage", json.dumps(self._preset_usage))
+        except Exception:
+            pass
+
+    def _record_preset_usage(self, manga, char, preset):
+        """Count that `preset` was used for (manga, char) so the default-preset
+        picker can learn the most-used style over time."""
+        if not (manga and char and preset):
+            return
+        by_manga = self._preset_usage.setdefault(manga, {})
+        by_char = by_manga.setdefault(char, {})
+        by_char[preset] = int(by_char.get(preset, 0)) + 1
+        self._save_preset_usage()
+
+    def _apply_default_preset(self):
+        """Auto-select the current character's default preset (normal/talking,
+        else most-used, else first non-none). Does nothing if the character has
+        no real preset."""
+        presets = self._cur_presets()
+        usage = self._preset_usage.get(self._group, {}).get(self._char, {})
+        name = LP.default_preset_for(list(presets.keys()), usage)
+        if name and name in presets:
+            self._apply_preset(presets[name])
+            self._refresh_presets_combo(select=name)
+        else:
+            self._refresh_presets_combo()
 
     def _on_lang_change(self):
         self._lang = self.lang_combo.currentData() or "en"
@@ -2062,6 +2183,8 @@ class TyperDocker(DockWidget):
         self.char_del_btn.setText(t("char_del"))
         self.auto_char_chk.setText(t("auto_char"))
         self.auto_char_chk.setToolTip(t("auto_char_tip"))
+        self.auto_manga_chk.setText(t("auto_manga"))
+        self.auto_manga_chk.setToolTip(t("auto_manga_tip"))
         self.preset_save_btn.setText(t("preset_save"))
         self.preset_del_btn.setText(t("preset_del"))
         self.preset_import_btn.setText(t("preset_import"))
@@ -2534,7 +2657,7 @@ class TyperDocker(DockWidget):
         ch = self.char_combo.currentData()
         if ch is not None and ch in self._cur_chars():
             self._char = ch
-            self._refresh_presets_combo()
+            self._apply_default_preset()   # auto-select the default style
 
     def on_char_new(self):
         name, ok = QInputDialog.getText(
@@ -2585,6 +2708,7 @@ class TyperDocker(DockWidget):
         name = self.preset_combo.currentData()
         if name and name in self._cur_presets():
             self._apply_preset(self._cur_presets()[name])
+            self._record_preset_usage(self._group, self._char, name)
             self._set_status(self._tr("st_preset_applied").format(name=name))
 
     def on_preset_save(self):
@@ -2689,6 +2813,7 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)
             return
 
+        self._script_path = path           # used by auto-manga detection
         self.editor.setPlainText(text)
         self.analyze()
         self._set_status(self._tr("st_loaded").format(
@@ -2701,6 +2826,9 @@ class TyperDocker(DockWidget):
         self._pairs, self._pair_pages, self._pages = LP.pair_lines_paged(lines)
         self._index = 0
         self._done = set()
+        # auto-switch the manga before the first line is shown (auto-character
+        # then runs against the right character set)
+        self._maybe_auto_manga(self.editor.toPlainText(), self._script_path)
         self._populate_table()
         self._refresh_pages_combo()
         self._refresh_view()
