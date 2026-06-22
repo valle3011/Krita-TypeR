@@ -5,9 +5,6 @@ of the Photoshop plugin *TypeR* as far as Krita's Python API allows: load a
 translation script, step through it line by line, and drop each line into the
 image as a text layer that auto-fits the speech bubble you selected.
 
-The user interface is bilingual and switchable at the
-top of the docker; the choice is remembered between sessions.
-
 > Only modules from the Python standard library are used (`zipfile`,
 > `xml.etree`, …). Nothing extra has to be installed.
 
