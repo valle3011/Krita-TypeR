@@ -5,6 +5,7 @@ and detection of "Page" markers inside a translation script.
 Kept free of any Qt dependency so it can be unit-tested in isolation.
 """
 
+import os
 import re
 
 
@@ -474,6 +475,58 @@ def detect_manga(saved_names, script_text, filename=""):
 _DEFAULT_PRESET_KEYWORDS = (
     "normal talking", "normal speech", "normal", "talking", "speech", "default",
 )
+
+
+# ---------------------------------------------------------------------------
+# Script "tabs" / sessions
+#
+# The docker can keep several loaded scripts open at once, each in its own tab.
+# These helpers are the Qt-free part of that: normalizing a path so the same
+# file isn't opened twice, deriving a tab label from a file name, and numbering
+# unnamed scripts ("Untitled", "Untitled 2", …).
+# ---------------------------------------------------------------------------
+
+def norm_script_path(path):
+    """Normalized, comparable form of a file path (for de-duplicating open
+    scripts). An empty path stays empty, so pasted/unsaved scripts never match
+    one another."""
+    if not path:
+        return ""
+    try:
+        return os.path.normcase(os.path.abspath(path))
+    except Exception:
+        return os.path.normcase(path)
+
+
+def find_session_by_path(sessions, path):
+    """Index of the session whose 'path' matches `path` (after normalization),
+    or -1. A blank path never matches (unsaved scripts are always new tabs)."""
+    key = norm_script_path(path)
+    if not key:
+        return -1
+    for i, s in enumerate(sessions or []):
+        if norm_script_path((s or {}).get("path", "")) == key:
+            return i
+    return -1
+
+
+def default_tab_label(path):
+    """Tab label from a file path: the file name without its directory or
+    extension. Falls back to 'Untitled' for an empty path."""
+    base = os.path.basename(path or "")
+    name = os.path.splitext(base)[0]
+    return name or "Untitled"
+
+
+def unique_untitled(existing, base="Untitled"):
+    """A name like 'Untitled', 'Untitled 2', … that is not in `existing`."""
+    taken = set(existing or [])
+    if base not in taken:
+        return base
+    n = 2
+    while ("%s %d" % (base, n)) in taken:
+        n += 1
+    return "%s %d" % (base, n)
 
 
 def default_preset_for(preset_names, usage=None):

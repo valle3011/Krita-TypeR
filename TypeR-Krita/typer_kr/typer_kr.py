@@ -37,7 +37,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit, QSpinBox, QCheckBox, QFileDialog, QColorDialog,
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
-    QInputDialog, QScrollArea,
+    QInputDialog, QScrollArea, QTabBar,
 )
 from PyQt5.QtGui import QFontDatabase
 
@@ -79,6 +79,19 @@ class NoScrollSpinBox(QSpinBox):
             super().wheelEvent(event)
         else:
             event.ignore()
+
+
+class ScriptTabBar(QTabBar):
+    """Tab bar for the loaded scripts. Adds browser-style middle-click-to-close
+    on top of the normal close button."""
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            idx = self.tabAt(event.pos())
+            if idx >= 0:
+                self.tabCloseRequested.emit(idx)
+                return
+        super().mousePressEvent(event)
 
 
 class OldDocError(Exception):
@@ -247,6 +260,10 @@ LANG = {
         "st_old_doc": "The old {fmt} format can't be read directly. Please open it and save as .docx/.xlsx or .txt.",
         "st_read_fail": "Could not read the file: {exc}",
         "st_loaded": "Loaded: {name}  ({n} units)",
+        "st_already_open": "‘{name}’ is already open – switched to its tab.",
+        "tab_untitled": "Untitled",
+        "tab_rename_dlg": "Rename tab",
+        "tab_rename_prompt": "Tab name:",
         "st_nothing": "Nothing loaded. Paste a script and click ‘Analyze’.",
         "st_no_font": "No font selected.",
         "preview_empty": "(empty)",
@@ -405,6 +422,10 @@ LANG = {
         "st_old_doc": "Das alte {fmt}-Format kann nicht direkt gelesen werden. Bitte öffnen und als .docx/.xlsx oder .txt speichern.",
         "st_read_fail": "Konnte Datei nicht lesen: {exc}",
         "st_loaded": "Geladen: {name}  ({n} Einheiten)",
+        "st_already_open": "‚{name}‘ ist schon offen – zum Tab gewechselt.",
+        "tab_untitled": "Unbenannt",
+        "tab_rename_dlg": "Tab umbenennen",
+        "tab_rename_prompt": "Tab-Name:",
         "st_nothing": "Nichts geladen. Erst Skript einfügen und ‚Analysieren‘ klicken.",
         "st_no_font": "Keine Schrift gewählt.",
         "preview_empty": "(leer)",
@@ -1563,8 +1584,16 @@ class TyperDocker(DockWidget):
         self._groups = self._load_groups()
         self._group = ""
         self._char = ""
-        self._script_path = ""             # file name of the last loaded script
+        self._script_path = ""             # file name of the active script
         self._preset_usage = self._load_preset_usage()
+        # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
+        # id; the QTabBar stores that id as tab data, so tab order and the
+        # session list stay decoupled (reordering tabs is harmless). The live
+        # self._pairs/_index/_done/… always mirror the ACTIVE session and are
+        # snapshotted back into it on every tab switch/close.
+        self._sessions = []
+        self._active_sid = None
+        self._next_sid = 1
 
         main = QWidget()
         layout = QVBoxLayout()
@@ -1719,6 +1748,19 @@ class TyperDocker(DockWidget):
         # Generously sized so the parsed/pasted script is easy to read and edit.
         self.lbl_script = QLabel()
         layout.addWidget(self.lbl_script)
+        # Tabs for several loaded scripts (browser-style: closable + middle-click,
+        # reorderable, eliding long names, with scroll buttons in a narrow dock).
+        self.script_tabs = ScriptTabBar()
+        self.script_tabs.setTabsClosable(True)
+        self.script_tabs.setMovable(True)
+        self.script_tabs.setExpanding(False)
+        self.script_tabs.setDrawBase(False)
+        self.script_tabs.setElideMode(Qt.ElideMiddle)
+        self.script_tabs.setUsesScrollButtons(True)
+        self.script_tabs.currentChanged.connect(self._on_tab_changed)
+        self.script_tabs.tabCloseRequested.connect(self._close_tab)
+        self.script_tabs.tabBarDoubleClicked.connect(self._rename_tab)
+        layout.addWidget(self.script_tabs)
         self.editor = QPlainTextEdit()
         self.editor.setMinimumHeight(170)
         self.editor.setMaximumHeight(320)
@@ -1982,6 +2024,7 @@ class TyperDocker(DockWidget):
         self._refresh_view()
         self._apply_view()
         self._update_text_preview()
+        self._init_first_session()         # start with one empty "Untitled" tab
 
     # -- language --
 
@@ -2785,6 +2828,147 @@ class TyperDocker(DockWidget):
         self._refresh_presets_combo()
         self._set_status(self._tr("st_preset_imported").format(n=count))
 
+    # ==================================================================
+    #  Script tabs (several loaded scripts at once)
+    # ==================================================================
+    def _session_index(self, sid):
+        """Index of the session with id `sid` in self._sessions, or -1."""
+        for i, s in enumerate(self._sessions):
+            if s["id"] == sid:
+                return i
+        return -1
+
+    def _tab_index(self, sid):
+        """Index of the tab carrying session id `sid`, or -1."""
+        for i in range(self.script_tabs.count()):
+            if self.script_tabs.tabData(i) == sid:
+                return i
+        return -1
+
+    def _snapshot_active(self):
+        """Save the live editor text + parse state into the active session."""
+        i = self._session_index(self._active_sid)
+        if i < 0:
+            return
+        s = self._sessions[i]
+        s["text"] = self.editor.toPlainText()
+        s["pairs"] = self._pairs
+        s["pair_pages"] = self._pair_pages
+        s["pages"] = self._pages
+        s["index"] = self._index
+        s["done"] = self._done
+        s["path"] = self._script_path
+
+    def _restore_by_sid(self, sid):
+        """Load the session with id `sid` into the live view (no re-parsing)."""
+        i = self._session_index(sid)
+        if i < 0:
+            return
+        s = self._sessions[i]
+        self._active_sid = sid
+        self._script_path = s["path"]
+        self._pairs = s["pairs"]
+        self._pair_pages = s["pair_pages"]
+        self._pages = s["pages"]
+        self._index = s["index"]
+        self._done = s["done"]
+        self.editor.blockSignals(True)
+        self.editor.setPlainText(s["text"])
+        self.editor.blockSignals(False)
+        self._populate_table()
+        self._repaint_done()
+        self._refresh_pages_combo()
+        self._refresh_view()
+
+    def _add_session(self, name, path, text, do_analyze):
+        """Create a new session + tab and make it active."""
+        self._snapshot_active()
+        sid = self._next_sid
+        self._next_sid += 1
+        self._sessions.append({
+            "id": sid, "name": name, "path": path, "text": text,
+            "pairs": [], "pair_pages": [], "pages": [], "index": 0, "done": set(),
+        })
+        self._active_sid = sid
+        self._script_path = path
+        self.editor.blockSignals(True)
+        self.editor.setPlainText(text)
+        self.editor.blockSignals(False)
+        if do_analyze:
+            self.analyze()                 # fills the live state from the text
+        else:
+            self._pairs, self._pair_pages, self._pages = [], [], []
+            self._index = 0
+            self._done = set()
+            self._populate_table()
+            self._refresh_pages_combo()
+            self._refresh_view()
+        self._snapshot_active()            # store the parsed state in the session
+        self.script_tabs.blockSignals(True)
+        idx = self.script_tabs.addTab(name)
+        self.script_tabs.setTabData(idx, sid)
+        self.script_tabs.setTabToolTip(idx, path or name)
+        self.script_tabs.setCurrentIndex(idx)
+        self.script_tabs.blockSignals(False)
+
+    def _new_untitled(self):
+        """Add an empty, unnamed script tab."""
+        name = LP.unique_untitled([s["name"] for s in self._sessions],
+                                  base=self._tr("tab_untitled"))
+        self._add_session(name, "", "", do_analyze=False)
+
+    def _init_first_session(self):
+        """Ensure exactly one tab exists at startup."""
+        if not self._sessions:
+            self._new_untitled()
+
+    def _on_tab_changed(self, tab_i):
+        if tab_i < 0:
+            return
+        sid = self.script_tabs.tabData(tab_i)
+        if sid is None or sid == self._active_sid:
+            return
+        self._snapshot_active()
+        self._restore_by_sid(sid)
+
+    def _close_tab(self, tab_i):
+        sid = self.script_tabs.tabData(tab_i)
+        if sid is None:
+            return
+        self._snapshot_active()
+        i = self._session_index(sid)
+        if i >= 0:
+            del self._sessions[i]
+        self.script_tabs.blockSignals(True)
+        self.script_tabs.removeTab(tab_i)
+        self.script_tabs.blockSignals(False)
+        if not self._sessions:
+            self._active_sid = None
+            self._new_untitled()           # never leave zero tabs
+            return
+        # activate whatever tab Qt now shows as current
+        cur = self.script_tabs.currentIndex()
+        self._active_sid = None            # force a full restore
+        self._restore_by_sid(self.script_tabs.tabData(cur))
+
+    def _rename_tab(self, tab_i):
+        if tab_i < 0:
+            return
+        sid = self.script_tabs.tabData(tab_i)
+        i = self._session_index(sid)
+        if i < 0:
+            return
+        name, ok = QInputDialog.getText(
+            self.widget(), self._tr("tab_rename_dlg"),
+            self._tr("tab_rename_prompt"), text=self._sessions[i]["name"])
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            return
+        self._sessions[i]["name"] = name
+        self.script_tabs.setTabText(tab_i, name)
+
     def on_load(self):
         path, _ = QFileDialog.getOpenFileName(
             self.widget(),
@@ -2793,6 +2977,14 @@ class TyperDocker(DockWidget):
             self._tr("file_filter"),
         )
         if not path:
+            return
+        # already open? -> just switch to its tab instead of opening twice
+        existing = LP.find_session_by_path(self._sessions, path)
+        if existing >= 0:
+            self.script_tabs.setCurrentIndex(
+                self._tab_index(self._sessions[existing]["id"]))
+            self._set_status(self._tr("st_already_open").format(
+                name=os.path.basename(path)))
             return
         try:
             text = read_script(path)
@@ -2813,9 +3005,7 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)
             return
 
-        self._script_path = path           # used by auto-manga detection
-        self.editor.setPlainText(text)
-        self.analyze()
+        self._add_session(LP.default_tab_label(path), path, text, do_analyze=True)
         self._set_status(self._tr("st_loaded").format(
             name=os.path.basename(path), n=len(self._pairs)))
 

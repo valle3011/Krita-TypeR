@@ -43,6 +43,24 @@ top of the docker; the choice is remembered between sessions.
 
 ---
 
+## Multiple scripts (tabs)
+
+You can keep several scripts open at once. Each loaded script gets its own
+**tab** above the script box (browser-style):
+
+- **Switch** tabs to work on a different script — its text, parsed JP/EN units,
+  page navigation, current line and the green "done" marks are all kept per tab
+  and restored instantly (the file is not re-read).
+- Loading a file that's **already open** just jumps to its existing tab instead
+  of opening it twice.
+- **Close** a tab with its × (or middle-click), like a browser tab. Closing the
+  last one leaves an empty *Untitled* tab.
+- Tabs show the **file name**; **double-click** a tab to give it your own name.
+  The full path is shown as a tooltip. Tabs can be dragged to reorder.
+
+Not (yet) done: open tabs are **not** remembered across a Krita restart, and
+re-running *Analyze* on a tab re-parses it and resets that tab's "done" marks.
+
 ## Pages ("Page N" markers)
 
 Translation scripts usually separate the dialogue per manga page with a marker

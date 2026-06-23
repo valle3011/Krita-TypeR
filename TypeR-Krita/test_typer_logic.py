@@ -70,5 +70,25 @@ check("empty -> None", LP.default_preset_for([]) is None)
 check("keyword beats usage",
       LP.default_preset_for(["Normal", "Loud"], {"Loud": 99}) == "Normal")
 
+# --- script-tab helpers ----------------------------------------------------
+import os as _os
+check("default_tab_label strips dir + extension",
+      LP.default_tab_label(_os.path.join("x", "y", "Spy x Family ch12.docx"))
+      == "Spy x Family ch12")
+check("default_tab_label empty -> Untitled", LP.default_tab_label("") == "Untitled")
+check("unique_untitled counts up",
+      LP.unique_untitled(["Untitled"]) == "Untitled 2" and
+      LP.unique_untitled(["Untitled", "Untitled 2"]) == "Untitled 3" and
+      LP.unique_untitled([]) == "Untitled")
+_sess = [{"path": _os.path.abspath("a/b/one.txt")}, {"path": ""}]
+check("find_session_by_path matches same file",
+      LP.find_session_by_path(_sess, _os.path.abspath("a/b/one.txt")) == 0)
+check("find_session_by_path matches via relative/normalized form",
+      LP.find_session_by_path(_sess, "a/b/../b/one.txt") == 0)
+check("find_session_by_path: unknown -> -1",
+      LP.find_session_by_path(_sess, "a/b/two.txt") == -1)
+check("find_session_by_path: blank path never matches",
+      LP.find_session_by_path(_sess, "") == -1)
+
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)
