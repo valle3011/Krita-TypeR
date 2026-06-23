@@ -5,6 +5,7 @@ of the Photoshop plugin *TypeR* as far as Krita's Python API allows: load a
 translation script, step through it line by line, and drop each line into the
 image as a text layer that auto-fits the speech bubble you selected.
 
+
 > Only modules from the Python standard library are used (`zipfile`,
 > `xml.etree`, …). Nothing extra has to be installed.
 
@@ -39,6 +40,24 @@ image as a text layer that auto-fits the speech bubble you selected.
    then advances to the next unit.
 
 ---
+
+## Multiple scripts (tabs)
+
+You can keep several scripts open at once. Each loaded script gets its own
+**tab** above the script box (browser-style):
+
+- **Switch** tabs to work on a different script — its text, parsed JP/EN units,
+  page navigation, current line and the green "done" marks are all kept per tab
+  and restored instantly (the file is not re-read).
+- Loading a file that's **already open** just jumps to its existing tab instead
+  of opening it twice.
+- **Close** a tab with its × (or middle-click), like a browser tab. Closing the
+  last one leaves an empty *Untitled* tab.
+- Tabs show the **file name**; **double-click** a tab to give it your own name.
+  The full path is shown as a tooltip. Tabs can be dragged to reorder.
+
+Not (yet) done: open tabs are **not** remembered across a Krita restart, and
+re-running *Analyze* on a tab re-parses it and resets that tab's "done" marks.
 
 ## Pages ("Page N" markers)
 
