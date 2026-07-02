@@ -5,8 +5,8 @@ of the Photoshop plugin *TypeR* as far as Krita's Python API allows: load a
 translation script, step through it line by line, and drop each line into the
 image as a text layer that auto-fits the speech bubble you selected.
 
-The user interface is bilingual (**English / Deutsch**) and switchable at the
-top of the docker; the choice is remembered between sessions.
+The user interface is bilingual (**English / Deutsch**) and switchable on the
+**Setup** tab; the choice is remembered between sessions.
 
 > Only modules from the Python standard library are used (`zipfile`,
 > `xml.etree`, …). Nothing extra has to be installed.
@@ -26,6 +26,26 @@ top of the docker; the choice is remembered between sessions.
 
 ---
 
+## The docker: four tabs
+
+The docker is organized into four top-level tabs so the everyday workflow stays
+uncluttered — nothing was removed, everything is one click away:
+
+- **Type** – the everyday loop: load script, pick a line in the JP/EN table,
+  navigate, edit the active line, pick font + color, live preview, **Insert**
+  and **TextShapR**.
+- **Style** – bold/italic/underline, alignment, letter case, smart punctuation,
+  size / padding / line spacing, outline and shadow (each with a small
+  settings popup), auto-fit, round bubble, hyphenation.
+- **Presets** – Manga → Character → style preset; save/delete/import/export
+  live in the **⋯** menu next to the preset list.
+- **Setup** – interface language, the "Layout & sizes" panel, and behavior
+  toggles like **"Replace previously inserted line"** (re-inserting a line
+  replaces its earlier layer instead of stacking a copy; default on) and
+  **"Organize presets by character"** (see *Presets* below; default on).
+
+The last-used tab is remembered across restarts.
+
 ## Quick start (auto mode – recommended)
 
 1. **Load a script** – Word `.docx`, Excel `.xlsx`, LibreOffice `.odt`, or
@@ -40,6 +60,30 @@ top of the docker; the choice is remembered between sessions.
 5. **Insert translation.** The text wraps automatically, is balanced evenly and
    scaled to the largest size that fits – centered in the selection. The plugin
    then advances to the next unit.
+
+## TextShapR – pick the text shape
+
+The **TextShapR …** button (next to *Insert*) opens a picker that shows the
+current line arranged into **several candidate shapes**: the same text wrapped
+into different line counts and proportions, each auto-fitted to the largest
+size that fits the current selection.
+
+- **Mode bar:** **Balanced** (evenly balanced lines), **Round** (fit the
+  ellipse of a round bubble), **Tall** (more lines / narrow block first),
+  **Wide** (fewer lines first) — plus **Hyphenation** as a toggle that splits
+  long words at correct syllable points so narrower shapes become possible.
+- **Numbered cards** (2 columns): click one to select it (blue frame), or press
+  **1–9/0**. **Apply** inserts the selected shape as a text layer, **Apply +
+  next** also advances to the next unit, **Shift+number** does both at once.
+- What you see is what you get: the chosen line breaks (including hyphens) are
+  baked in and the size is capped at the previewed size, so the inserted layer
+  matches the card exactly — same `TypeR NN — …` layer naming and green "done"
+  marking as the normal insert.
+- **Trying several shapes replaces, not stacks:** inserting a line that was
+  already inserted first deletes the layer(s) TypeR created for it earlier
+  (recognized by the `TypeR NN — ` name prefix, so your own layers are never
+  touched). This applies to the normal Insert too and can be turned off with
+  **"Replace previously inserted line"** on the **Setup** tab (default: on).
 
 ---
 
@@ -113,8 +157,13 @@ stray markup inside a bubble:
 
 - **Plain alternating lines** – Japanese line, then its English line, repeated
   (the typical `.txt`/`.docx` script). Paired directly.
-- **Two-column spreadsheets** (`.xlsx`) – Japanese in one column, English in the
-  next; cells are read left to right, top to bottom and paired the same way.
+- **Two-column tables** (`.docx` table or `.xlsx`) – source in one column, the
+  translation in the next. These are paired **by column**, so the source column
+  can be **any language** (Japanese, but also French, Chinese, English, …) and
+  TypeR still inserts the right translation. A chapter that mixes languages in
+  the source column works fine. (Internally a table row is read as one
+  `source⇥translation` line – a tab marks the column boundary; you can also paste
+  tab-separated columns.)
 - **`JP` / `EN` column headers** – some scripts repeat a literal `JP` and `EN`
   header line under every page. These are recognized as headers and skipped, so
   they never appear as empty/garbled units.
@@ -170,7 +219,13 @@ stray markup inside a bubble:
   punctuation, line spacing and inner padding.
 - **Outline** and **drop shadow** for readability on busy backgrounds.
 - **Presets** in three levels – **Manga → Character → style preset** – that can
-  be saved, switched, imported and exported as `.json`.
+  be saved, switched, imported and exported as `.json`. Not every manga needs
+  per-character fonts: turning **"Organize presets by character"** off (Setup
+  tab) hides the character level, and the preset dropdown directly lists **all
+  text presets of the manga** (duplicate names are shown as
+  `Name (Character)`). This is only a view – the stored data and
+  import/export format stay the same, so you can switch back and forth
+  freely; new presets are then saved under the manga's default character.
 - **Progress tracking:** inserted lines are marked green in the table; each
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
@@ -183,8 +238,8 @@ stray markup inside a bubble:
 ## Layout & sizes (customizing the docker)
 
 Everyone likes a different layout, so the big parts of the docker can be resized
-or switched off. Click the **⚙ Layout & sizes** button near the top of the
-docker to open a small panel where you can, for each of these parts:
+or switched off. Click the **⚙ Layout & sizes** button on the **Setup** tab to
+open a small panel where you can, for each of these parts:
 
 - **Live preview**, **Script box**, **JP/EN table** and **Font list** –
 - tick/untick the checkbox to **show or hide** it, and
@@ -194,9 +249,9 @@ For example, if you find the preview too tall, lower its height; if you don't
 need it at all, untick it and it disappears completely. **Reset layout** puts
 everything back to the defaults. Your choices are remembered across restarts.
 
-The whole docker now lives in a scroll area, so shrinking or hiding parts never
-squishes or clips anything – it just scrolls if the content is taller than the
-panel.
+Each tab page lives in its own scroll area, so shrinking or hiding parts never
+squishes or clips anything – a page just scrolls if its content is taller than
+the panel.
 
 ---
 
@@ -210,6 +265,10 @@ panel.
   jumps to the next line.
 - Turn off **Auto-fit** for a fixed size (centered in the selection/image,
   without automatic wrapping).
+- Inserted text **stays put when you edit it with Krita's text tool** – the
+  lines are positioned with an absolute x (default `start` anchor) instead of
+  `text-anchor="middle"`, which Krita would otherwise drop and snap the text to
+  the corner.
 
 ---
 
@@ -249,7 +308,7 @@ a small accent heuristic, otherwise English.
 | --- | --- |
 | `typer_kr/typer_kr.py` | Docker UI, readers, text-layer insertion |
 | `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
-| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation** |
+| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation**, **TextShapR shape candidates** |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
 | `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |

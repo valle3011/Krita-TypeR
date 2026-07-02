@@ -272,20 +272,78 @@ def speaker_name(text):
     return split_speaker(text)[0]
 
 
+# ---------------------------------------------------------------------------
+# Explicit columns (tabular scripts)
+#
+# Many scripts are a two-column table: column 1 = source, column 2 = the
+# translation. The source column is usually Japanese, but a chapter may mix in
+# other languages (French, Chinese, English …) – and a French source line looks
+# exactly like an English translation, so language detection alone can't tell
+# them apart. When the file readers keep the table structure (one row per line,
+# columns separated by a TAB), we pair by COLUMN instead, which works for ANY
+# source language.
+# ---------------------------------------------------------------------------
+
+def split_columns(line):
+    """If `line` is an explicit two-column row ('source<TAB>translation'),
+    return (source, translation); otherwise None. Extra tab-separated cells are
+    folded into the translation side."""
+    if "\t" not in (line or ""):
+        return None
+    parts = (line or "").split("\t")
+    left = parts[0].strip()
+    right = " ".join(p.strip() for p in parts[1:] if p.strip())
+    return left, right
+
+
 def pair_lines(lines):
-    """Group lines into (japanese, english) pairs.
+    """Group lines into (source, translation) pairs.
+
+    Two modes, freely mixed:
+      * EXPLICIT columns – a line containing a TAB is 'source<TAB>translation'
+        and is paired by column. This works for ANY source language (e.g. a
+        2-column Word/Excel table whose left column isn't Japanese).
+      * LANGUAGE-BASED – tab-less lines are paired the original way (auto-detect
+        JA/EN order). Pasted/plain scripts keep working exactly as before.
+
+    Column header rows ('JP'<TAB>'EN') and bubble-type prefixes are removed.
+    Returns a list of (ja, en); either part may be an empty string.
+    """
+    pairs = []
+    buf = []                         # consecutive tab-less lines (language path)
+
+    def flush():
+        if buf:
+            pairs.extend(_pair_by_language(buf))
+            del buf[:]
+
+    for raw in lines:
+        cols = split_columns(raw)
+        if cols is None:
+            buf.append(raw)
+            continue
+        src, tgt = cols
+        if is_header_line(src) and is_header_line(tgt):
+            continue                 # the 'JP | EN' column-header row
+        src = strip_type_prefix(src).strip()
+        tgt = strip_type_prefix(tgt).strip()
+        if not src and not tgt:
+            continue
+        flush()
+        pairs.append((src, tgt))
+    flush()
+    return pairs
+
+
+def _pair_by_language(lines):
+    """Original language-based pairing for tab-less lines.
 
     Detects automatically whether the script lists Japanese first or English
     first by looking at neighbouring lines. Each unit consists of a 'head' line
     in the dominant source language plus every following line of the other
-    language as its translation.
-
-    Column headers (bare 'JP'/'EN') and bubble-type prefixes ('{}: ', 'SFX: ',
-    …) are removed first via :func:`clean_lines`, so they neither show up as
-    stray units nor end up inside a bubble.
-
-    Returns a list of (ja, en); either part may be an empty string.
-    For monolingual scripts every line becomes its own unit.
+    language as its translation. Column headers and bubble-type prefixes are
+    removed first via :func:`clean_lines`. For monolingual scripts every line
+    becomes its own unit.
     """
     toks = [(detect_lang(t), t) for t in clean_lines(lines)]
     n = len(toks)
@@ -527,6 +585,33 @@ def unique_untitled(existing, base="Untitled"):
     while ("%s %d" % (base, n)) in taken:
         n += 1
     return "%s %d" % (base, n)
+
+
+def flatten_presets(chars):
+    """Flatten a manga's ``{character: {preset_name: cfg}}`` dict into one
+    sorted list of ``(label, character, name)`` for the 'simple' preset mode
+    (no character level in the UI).
+
+    The label is the preset name; when the same name exists under several
+    characters each occurrence is disambiguated as ``'Name (Character)'``.
+    Sorted case-insensitively by label (then character)."""
+    if not isinstance(chars, dict):
+        return []
+    entries = []
+    counts = {}
+    for ch, presets in chars.items():
+        if not isinstance(presets, dict):
+            continue
+        for name in presets:
+            key = str(name).lower()
+            counts[key] = counts.get(key, 0) + 1
+            entries.append((str(ch), str(name)))
+    out = []
+    for ch, name in entries:
+        label = name if counts[name.lower()] == 1 else "%s (%s)" % (name, ch)
+        out.append((label, ch, name))
+    out.sort(key=lambda e: (e[0].lower(), e[1].lower()))
+    return out
 
 
 def default_preset_for(preset_names, usage=None):

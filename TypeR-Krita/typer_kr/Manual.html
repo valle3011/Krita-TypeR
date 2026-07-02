@@ -7,6 +7,55 @@ Oberfläche umschalten (English / Deutsch). Die Auswahl wird gespeichert.</p>
 <p>Dieses Plugin liest Übersetzungs-Skripte ein und platziert sie zeilenweise
 als Textebene in Krita. Es ist an das Photoshop-Plugin <em>TypeR</em> angelehnt.</p>
 
+<h2>Aufbau: vier Reiter</h2>
+<p>Der Docker ist in vier Reiter gegliedert, damit der Alltag übersichtlich
+bleibt:</p>
+<ul>
+  <li><b>Setzen</b> – der tägliche Ablauf: Skript laden, Zeile wählen, Schrift
+      und Farbe wählen, <b>Einfügen</b> (und <b>TextShapR</b>, s.&nbsp;u.).</li>
+  <li><b>Stil</b> – Fett/Kursiv/Unterstrichen, Ausrichtung, Schreibung,
+      Größe/Innenabstand/Zeilenabstand, Kontur und Schatten (Details je in
+      einem kleinen Einstellungs-Fenster), Auto-Anpassung, runde Blase,
+      Silbentrennung.</li>
+  <li><b>Presets</b> – Manga → Charakter → Stil-Preset; Speichern/Löschen/
+      Import/Export stecken im <b>⋯</b>-Menü neben der Preset-Liste.</li>
+  <li><b>Einstellungen</b> – Sprache der Oberfläche, „Layout &amp; Größen" und
+      Verhaltens-Schalter wie <b>„Bereits eingefügte Zeile ersetzen"</b>
+      (erneutes Einfügen ersetzt die frühere Ebene statt eine Kopie zu
+      stapeln; Standard: an).</li>
+</ul>
+<p>Der zuletzt benutzte Reiter wird gemerkt. Es ist keine Funktion entfallen –
+alles ist nur ein Klick entfernt.</p>
+
+<h2>TextShapR – Textform wählen</h2>
+<p>Der Knopf <b>„TextShapR …"</b> (neben <b>Einfügen</b>) öffnet einen Dialog,
+der die aktive Zeile in <b>mehreren Formen</b> zeigt: derselbe Text in
+verschiedenen Zeilenzahlen und Proportionen, jeweils automatisch auf die
+größte Größe skaliert, die in die aktuelle Auswahl passt.</p>
+<ul>
+  <li><b>Modusleiste:</b> <b>Ausgewogen</b> (gleichmäßig verteilte Zeilen),
+      <b>Rund</b> (Ellipse/runde Blase), <b>Hoch</b> (mehr Zeilen, schmaler
+      Block zuerst), <b>Breit</b> (weniger Zeilen zuerst) – dazu
+      <b>Silbentrennung</b> als Zuschalter, der lange Wörter an korrekten
+      Silbengrenzen trennt.</li>
+  <li><b>Nummerierte Kärtchen</b> (2 Spalten): Klick wählt eine Form aus (blauer
+      Rahmen). Auch per <b>Zifferntaste 1–9/0</b> wählbar.</li>
+  <li><b>Einfügen</b> fügt die gewählte Form als Textebene ein (identisch zur
+      Vorschau, gleiche Ebenen-Namen und grüne Markierung wie beim normalen
+      Einfügen); <b>Einfügen&nbsp;+&nbsp;weiter</b> springt danach zur nächsten
+      Zeile; <b>Umschalt+Ziffer</b> macht beides in einem Schritt.</li>
+</ul>
+<p>Die gewählten Umbrüche (samt Trennstrichen) werden fest übernommen, die
+Größe wird auf die Vorschaugröße begrenzt – was das Kärtchen zeigt, landet
+also exakt so im Bild.</p>
+<p><b>Mehrere Formen nacheinander ausprobieren stapelt nicht:</b> Wird eine
+Zeile erneut eingefügt, löscht TypeR zuerst die Ebene(n), die es früher für
+genau diese Zeile erstellt hat (erkannt am Ebenennamen
+<code>TypeR&nbsp;NN&nbsp;—&nbsp;…</code> – eigene Ebenen werden nie
+angefasst). Das gilt auch für den normalen <b>Einfügen</b>-Knopf und lässt
+sich im Reiter <b>Einstellungen</b> mit <b>„Bereits eingefügte Zeile
+ersetzen"</b> abschalten (Standard: an).</p>
+
 <h2>Ablauf (Auto-Modus – empfohlen)</h2>
 <ol>
   <li><b>Skript laden</b> – Word <code>.docx</code>, Excel <code>.xlsx</code>,
@@ -222,6 +271,17 @@ jederzeit umschalten:</p>
 </ul>
 <p>Presets werden dauerhaft gespeichert und stehen beim nächsten Start wieder
 zur Verfügung.</p>
+<p><b>Ohne Charakter-Ebene arbeiten:</b> Nicht jedes Manga braucht eigene
+Schriften pro Figur. Im Reiter <b>Einstellungen</b> lässt sich <b>„Presets
+nach Charakteren gliedern"</b> abschalten – dann verschwindet die
+Charakter-Zeile und das Preset-Klappmenü zeigt direkt <b>alle Text-Presets des
+Mangas</b> (gleichnamige Presets verschiedener Figuren erscheinen als
+<code>Name&nbsp;(Charakter)</code>). Das ist nur eine Ansicht: gespeichert
+wird weiterhin in der Manga-/Charakter-Struktur, Import/Export bleibt
+unverändert, und das Umschalten verliert nie Presets. Neue Presets landen in
+diesem Modus beim Standard-Charakter des Mangas; „Charakter aus
+‚Name:‘ automatisch wählen" ist dann ausgeblendet. Standard: an
+(= bisheriges Verhalten).</p>
 
 <h2>Schneller Arbeitsablauf (Blase für Blase)</h2>
 <p>Nach dem Analysieren arbeitest du die Seite Zeile für Zeile ab:</p>

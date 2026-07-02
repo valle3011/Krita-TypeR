@@ -633,6 +633,204 @@ def hyphenate_word_breaks(word, lang="en"):
     return hyphenate(getattr(word, "text", str(word)), lang)
 
 
+# ---------------------------------------------------------------------------
+# Layer naming
+#
+# Every inserted layer is named "TypeR NN — <snippet>" (NN = 1-based unit
+# number). Building and matching that prefix lives here so the "replace
+# previously inserted line" feature and the insert path share one definition
+# (and it stays unit-testable without Krita).
+# ---------------------------------------------------------------------------
+
+def typer_layer_prefix(index):
+    """Name prefix of the layer(s) TypeR inserted for the 1-based unit
+    `index`, e.g. 3 -> 'TypeR 03 — '."""
+    return "TypeR {:02d} — ".format(int(index))
+
+
+def is_typer_layer_name(name, index):
+    """True if `name` is a layer that TypeR created for unit `index`. The
+    full prefix (including the em dash) must match, so hand-made layers or
+    other units' layers are never mistaken."""
+    return str(name or "").startswith(typer_layer_prefix(index))
+
+
+# ---------------------------------------------------------------------------
+# TextShapR: candidate text-shape arrangements
+#
+# The picker shows the SAME text wrapped into different line counts / aspect
+# ratios (all auto-fit to the box) so the user can click the shape that looks
+# best. Everything here is Qt-free and reuses the wrapping math above.
+# ---------------------------------------------------------------------------
+
+def runs_markup(runs):
+    """Run list -> plain text with ``**`` around the bold sections (the inverse
+    of parse_bold for one line)."""
+    return "".join(("**" + t + "**") if b else t for (t, b) in runs)
+
+
+def _search_px(check, max_px, min_px):
+    """Binary-search the largest integer px in [min_px, max_px] for which
+    `check(px)` returns a (non-None) result. Returns (px, result) or None."""
+    lo, hi = int(min_px), int(max_px)
+    best = None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        res = check(mid)
+        if res is not None:
+            best = (mid, res)
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def fit_lines_k(words, measurer, usable_w, usable_h, max_px, min_px, k):
+    """Largest font size at which `words` balance into EXACTLY k lines that all
+    fit (each line <= usable_w, k lines <= usable_h). Returns (px, lines) or
+    None when no size yields exactly k fitting lines."""
+    if not words or k < 1 or k > len(words):
+        return None
+
+    def check(px):
+        width_of, space_w, line_h, _a, _d = measurer(px)
+        if k * line_h > usable_h:
+            return None
+        lines = balance_even(words, width_of, space_w, usable_w, k)
+        if len(lines) != k:
+            return None
+        for ln in lines:
+            if _line_width(ln, width_of, space_w) > usable_w + 0.5:
+                return None
+        return lines
+
+    return _search_px(check, max_px, min_px)
+
+
+def fit_lines_width(words, measurer, usable_w, usable_h, max_px, min_px,
+                    frac, hyph=None):
+    """Greedy-wrap to a narrower target width (frac * usable_w) and find the
+    largest font size that fits the box. With `hyph`, over-wide words split at
+    syllable breaks. Returns (px, lines) or None."""
+    if not words:
+        return None
+    target_w = usable_w * frac
+
+    def check(px):
+        width_of, space_w, line_h, _a, _d = measurer(px)
+        lines = wrap_greedy(words, width_of, space_w, target_w, hyph)
+        if len(lines) * line_h > usable_h:
+            return None
+        for ln in lines:
+            if _line_width(ln, width_of, space_w) > usable_w + 0.5:
+                return None
+        return lines
+
+    return _search_px(check, max_px, min_px)
+
+
+def fit_lines_ellipse(words, measurer, a, b, max_px, min_px, hyph=None):
+    """Largest font size at which the words fit an ellipse with semi-axes a, b.
+    Returns (px, lines) or None."""
+    if not words or a <= 0 or b <= 0:
+        return None
+
+    def check(px):
+        width_of, space_w, line_h, _asc, _desc = measurer(px)
+        lines = wrap_ellipse(words, width_of, space_w, a, b, line_h, hyph)
+        if lines is None or len(lines) * line_h > 2.0 * b:
+            return None
+        return lines
+
+    return _search_px(check, max_px, min_px)
+
+
+# sub-box scale factors that produce differently proportioned round bubbles
+_ROUND_BOXES = ((1.0, 1.0), (0.9, 1.0), (0.8, 1.0), (0.7, 1.0), (0.6, 1.0),
+                (0.5, 1.0), (1.0, 0.85), (1.0, 0.7), (1.0, 0.55),
+                (0.85, 0.85), (0.7, 0.85))
+# target-width fractions for the hyphenating width sweep
+_WIDTH_FRACS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.42, 0.35, 0.28, 0.22)
+
+
+def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
+                     mode="balanced", hyphenate=False, lang="en", mask=None,
+                     limit=10):
+    """Generate candidate arrangements of `text` for the TextShapR picker.
+
+    mode: 'balanced' (evenly balanced lines, biggest size first),
+          'tall' (more lines / narrow block first),
+          'wide' (fewer lines / wide block first),
+          'round' (fit differently proportioned ellipses).
+    hyphenate: allow syllable breaks (uses `lang`'s patterns).
+
+    Embedded line breaks become spaces (the candidates create their own
+    breaks). Returns a list of dicts {'px': int, 'k': int, 'lines': [run list
+    per line]}, deduplicated, at most `limit` entries. The chosen candidate can
+    be applied by joining runs_markup() of its lines with '\\n' and inserting
+    that as hard-broken text capped at 'px'.
+    """
+    if mask is None:
+        mask = [False] * len(text)
+    flat = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
+    words = make_words(flat, list(mask))
+    if not words:
+        return []
+    usable_w = box_w * (1.0 - pad_frac)
+    usable_h = box_h * (1.0 - pad_frac)
+    if usable_w <= 0 or usable_h <= 0:
+        return []
+
+    hyph_fn = None
+    if hyphenate:
+        def hyph_fn(wd):
+            return hyphenate_word_breaks(wd, lang)
+
+    cands = []
+    seen = set()
+
+    def add(res):
+        if res is None:
+            return
+        px, word_lines = res
+        runs = [line_runs(ws) for ws in word_lines]
+        key = tuple(runs_text(r) for r in runs)
+        if key in seen:
+            return
+        seen.add(key)
+        cands.append({"px": px, "k": len(runs), "lines": runs})
+
+    if mode == "round":
+        a, b = usable_w / 2.0, usable_h / 2.0
+        for fw, fh in _ROUND_BOXES:
+            add(fit_lines_ellipse(words, measurer, a * fw, b * fh,
+                                  max_px, min_px, hyph_fn))
+        cands.sort(key=lambda c: (-c["px"], c["k"]))
+    elif hyphenate:
+        # exact-k balancing cannot split words, so hyphenated candidates come
+        # from greedily wrapping to a sweep of narrower target widths
+        for f in _WIDTH_FRACS:
+            add(fit_lines_width(words, measurer, usable_w, usable_h,
+                                max_px, min_px, f, hyph_fn))
+        if mode == "tall":
+            cands.sort(key=lambda c: (-c["k"], -c["px"]))
+        elif mode == "wide":
+            cands.sort(key=lambda c: (c["k"], -c["px"]))
+        else:
+            cands.sort(key=lambda c: (-c["px"], c["k"]))
+    else:
+        for k in range(1, min(len(words), 12) + 1):
+            add(fit_lines_k(words, measurer, usable_w, usable_h,
+                            max_px, min_px, k))
+        if mode == "tall":
+            cands.sort(key=lambda c: -c["k"])
+        elif mode == "wide":
+            cands.sort(key=lambda c: c["k"])
+        else:
+            cands.sort(key=lambda c: (-c["px"], c["k"]))
+    return cands[:limit]
+
+
 def vertical_start(valign, box_y, box_h, pad_frac, k, line_h, ascent, descent):
     """Baseline of the FIRST line depending on vertical alignment.
 
@@ -647,3 +845,23 @@ def vertical_start(valign, box_y, box_h, pad_frac, k, line_h, ascent, descent):
         return box_y + box_h - pad - descent - (k - 1) * line_h
     cy = box_y + box_h / 2.0
     return cy - ((k - 1) * line_h + descent - ascent) / 2.0
+
+
+def line_x_positions(line_widths, align, left, center, right):
+    """Absolute LEFT x for each line so it renders correctly with the default
+    SVG 'start' anchor (the lines are pre-centered/-aligned here instead of
+    relying on text-anchor='middle').
+
+    Krita's text tool keeps an absolute-x / 'start'-anchor position when you
+    edit the shape, but it drops a 'middle'/'end' anchor and snaps the text to
+    the corner – so we encode the alignment as explicit per-line x instead.
+
+    align: 'left' -> all lines start at `left`;
+           'right' -> each line ends at `right` (x = right - width);
+           anything else (center) -> each line centered on `center`.
+    """
+    if align == "left":
+        return [float(left) for _ in line_widths]
+    if align == "right":
+        return [float(right) - w for w in line_widths]
+    return [float(center) - w / 2.0 for w in line_widths]

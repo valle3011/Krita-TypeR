@@ -29,7 +29,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import (QColor, QFont, QFontMetricsF, QPainter, QPainterPath,
                          QBrush, QPen, QTextCursor)
 from PyQt5.QtWidgets import (
@@ -37,7 +37,8 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit, QSpinBox, QCheckBox, QFileDialog, QColorDialog,
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
-    QInputDialog, QScrollArea, QTabBar,
+    QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
+    QDialog, QButtonGroup,
 )
 from PyQt5.QtGui import QFontDatabase
 
@@ -267,6 +268,48 @@ LANG = {
         "st_nothing": "Nothing loaded. Paste a script and click ‘Analyze’.",
         "st_no_font": "No font selected.",
         "preview_empty": "(empty)",
+        # main tabs
+        "tab_type": "Type",
+        "tab_style": "Style",
+        "tab_presets": "Presets",
+        "tab_setup": "Setup",
+        "close": "Close",
+        "preset_actions": "Preset actions (save, delete, import, export)",
+        "outline_more": "Outline settings …",
+        "shadow_more": "Shadow settings …",
+        # TextShapR
+        "shaper_btn": "TextShapR …",
+        "shaper_btn_tip": ("Pick from several shapes for the current line: the "
+                           "same text arranged into different line counts and "
+                           "proportions, each auto-fitted to the selection."),
+        "shaper_title": "TextShapR",
+        "shaper_balanced": "Balanced",
+        "shaper_round": "Round",
+        "shaper_tall": "Tall",
+        "shaper_wide": "Wide",
+        "shaper_hyph": "Hyphenation",
+        "shaper_hint": "Click a shape to test it. Shift+number applies and advances.",
+        "shaper_apply": "Apply",
+        "shaper_apply_next": "Apply + next",
+        "shaper_empty": ("No arrangements to show. Pick a font and make sure "
+                         "the active line has text."),
+        "shaper_no_doc": "No document open – previews use a default box.",
+        # replace previously inserted layers on re-insert
+        "replace_existing": "Replace previously inserted line",
+        "replace_existing_tip": ("Inserting a line again first deletes the "
+                                 "layer(s) TypeR created for it earlier – so "
+                                 "trying several TextShapR shapes for the same "
+                                 "bubble replaces the text instead of stacking "
+                                 "copies. Off: every insert adds a new layer."),
+        "st_replaced": "Replaced previous layer.",
+        # optional character level for presets
+        "presets_by_char": "Organize presets by character",
+        "presets_by_char_tip": ("On: pick Manga → Character → preset – each "
+                                "character can have its own font and style. "
+                                "Off: pick Manga → preset – one flat list of "
+                                "the manga's text presets (the character level "
+                                "is hidden; new presets are stored under the "
+                                "manga's default character)."),
     },
     "de": {
         "title": "TypeR für Krita",
@@ -429,6 +472,51 @@ LANG = {
         "st_nothing": "Nichts geladen. Erst Skript einfügen und ‚Analysieren‘ klicken.",
         "st_no_font": "Keine Schrift gewählt.",
         "preview_empty": "(leer)",
+        # main tabs
+        "tab_type": "Setzen",
+        "tab_style": "Stil",
+        "tab_presets": "Presets",
+        "tab_setup": "Einstellungen",
+        "close": "Schließen",
+        "preset_actions": "Preset-Aktionen (speichern, löschen, importieren, exportieren)",
+        "outline_more": "Kontur-Einstellungen …",
+        "shadow_more": "Schatten-Einstellungen …",
+        # TextShapR
+        "shaper_btn": "TextShapR …",
+        "shaper_btn_tip": ("Für die aktive Zeile aus mehreren Formen wählen: "
+                           "derselbe Text in verschiedenen Zeilenzahlen und "
+                           "Proportionen, jeweils automatisch in die Auswahl "
+                           "eingepasst."),
+        "shaper_title": "TextShapR",
+        "shaper_balanced": "Ausgewogen",
+        "shaper_round": "Rund",
+        "shaper_tall": "Hoch",
+        "shaper_wide": "Breit",
+        "shaper_hyph": "Silbentrennung",
+        "shaper_hint": "Klick testet eine Form. Umschalt+Zahl fügt ein und geht weiter.",
+        "shaper_apply": "Einfügen",
+        "shaper_apply_next": "Einfügen + weiter",
+        "shaper_empty": ("Keine Formen anzeigbar. Erst eine Schrift wählen und "
+                         "sicherstellen, dass die aktive Zeile Text hat."),
+        "shaper_no_doc": "Kein Dokument offen – Vorschau nutzt eine Standard-Box.",
+        # replace previously inserted layers on re-insert
+        "replace_existing": "Bereits eingefügte Zeile ersetzen",
+        "replace_existing_tip": ("Beim erneuten Einfügen einer Zeile werden die "
+                                 "zuvor von TypeR dafür erstellten Ebene(n) "
+                                 "gelöscht – das Ausprobieren mehrerer "
+                                 "TextShapR-Formen für dieselbe Blase ersetzt "
+                                 "den Text also, statt Kopien zu stapeln. Aus: "
+                                 "jedes Einfügen erzeugt eine neue Ebene."),
+        "st_replaced": "Vorherige Ebene ersetzt.",
+        # optional character level for presets
+        "presets_by_char": "Presets nach Charakteren gliedern",
+        "presets_by_char_tip": ("An: Manga → Charakter → Preset wählen – jeder "
+                                "Charakter kann eigene Schrift und eigenen Stil "
+                                "haben. Aus: Manga → Preset wählen – eine "
+                                "flache Liste aller Text-Presets des Mangas "
+                                "(die Charakter-Ebene ist ausgeblendet; neue "
+                                "Presets landen beim Standard-Charakter des "
+                                "Mangas)."),
     },
     # Core localization for additional UI languages; any key not listed here
     # falls back to English via _tr().
@@ -650,28 +738,58 @@ def _read_plain(path):
 def _read_docx(path):
     """Extract text from a .docx file.
 
-    A .docx is a ZIP; the body text lives in word/document.xml. Every paragraph
-    <w:p> becomes one line; <w:tab> -> tab, <w:br>/<w:cr> -> line break.
+    A .docx is a ZIP; the body text lives in word/document.xml. Standalone
+    paragraphs <w:p> become one line each (<w:tab> -> tab, <w:br>/<w:cr> -> line
+    break, as before).
+
+    A TABLE is read COLUMN-AWARE: every row becomes one line whose cells are
+    separated by a TAB. That lets a two-column "source | translation" script be
+    paired by column (see langpair.split_columns), which works for ANY source
+    language – not only Japanese. Inside a cell, tabs/breaks become spaces so a
+    real TAB only ever marks a column boundary.
     """
     with zipfile.ZipFile(path) as zf:
         raw = zf.read("word/document.xml")
     root = ET.fromstring(raw)
 
-    lines = []
-    for para in root.iter():
-        if _local(para.tag) != "p":
-            continue
+    def para_text(p, cell):
         buf = []
-        for node in para.iter():
+        for node in p.iter():
             name = _local(node.tag)
             if name == "t":
                 if node.text:
                     buf.append(node.text)
             elif name == "tab":
-                buf.append("\t")
+                buf.append(" " if cell else "\t")
             elif name in ("br", "cr"):
-                buf.append("\n")
-        lines.append("".join(buf))
+                buf.append(" " if cell else "\n")
+        return "".join(buf)
+
+    def cell_text(tc):
+        # a cell may hold several paragraphs; join them with a space and keep it
+        # free of tabs/newlines so the row stays a clean TAB-separated record
+        ps = [n for n in tc.iter() if _local(n.tag) == "p"]
+        return " ".join(para_text(p, True).strip() for p in ps).strip()
+
+    lines = []
+
+    def walk(parent):
+        for child in parent:
+            name = _local(child.tag)
+            if name == "tbl":
+                for tr in child:
+                    if _local(tr.tag) != "tr":
+                        continue
+                    cells = [cell_text(tc) for tc in tr
+                             if _local(tc.tag) == "tc"]
+                    if cells:
+                        lines.append("\t".join(cells))
+            elif name == "p":
+                lines.append(para_text(child, False))
+            else:
+                walk(child)            # descend into <w:body>, content controls …
+
+    walk(root)
     return "\n".join(lines)
 
 
@@ -787,9 +905,15 @@ def _read_xlsx(path):
                             break
                 cells.append((col, val))
             cells.sort(key=lambda cv: cv[0])
-            for _col, val in cells:
-                if val is not None and str(val).strip() != "":
-                    lines.append(str(val))
+            # one line per ROW, columns separated by a TAB, so a 2-column
+            # source/translation sheet is paired by column (works for any source
+            # language). Single-cell rows stay a plain line.
+            vals = [("" if val is None else str(val)) for _col, val in cells]
+            while vals and vals[-1].strip() == "":
+                vals.pop()
+            if not vals:
+                continue
+            lines.append("\t".join(vals) if len(vals) >= 2 else vals[0])
         return "\n".join(lines)
 
 
@@ -866,7 +990,10 @@ def _make_measurer(family, line_spacing, bold=False, italic=False):
         def width_of(x):
             runs = getattr(x, "runs", None)
             if runs is None:
-                return _advance(fm, x)
+                if isinstance(x, (list, tuple)):
+                    runs = x          # a plain run list [(text, bold), ...]
+                else:
+                    return _advance(fm, x)   # a plain string
             tot = 0.0
             for (t, b) in runs:
                 tot += _advance(fmb if (bold or b) else fm, t)
@@ -880,17 +1007,21 @@ def _hex(color):
     return "#{:02x}{:02x}{:02x}".format(color.red(), color.green(), color.blue())
 
 
-def _text_element(text_lines, tx, y0, font_px, family, line_h,
+def _text_element(text_lines, line_xs, y0, line_h, font_px, family,
                   fill_hex, stroke_hex=None, stroke_w=0.0,
-                  bold=False, italic=False, underline=False, anchor="middle"):
+                  bold=False, italic=False, underline=False, dx=0.0, dy=0.0):
     """text_lines: list of run lists ([(subtext, bold), ...] per line).
-    Each line is its own text 'chunk' (the first tspan carries x/y, the anchor
-    centers the whole line); bold runs get font-weight='bold'."""
+    line_xs: absolute LEFT x for each line. Lines are pre-centered/-aligned, so
+    the element uses the default 'start' anchor – Krita's text tool keeps that
+    absolute position when the shape is edited (a 'middle'/'end' anchor would be
+    dropped and the text would snap to the corner). dx/dy shift the whole block
+    (used for the offset shadow copy). Bold runs get font-weight='bold'."""
     tspans = []
     for i, runs in enumerate(text_lines):
         if not runs:
             continue
-        y = y0 + i * line_h
+        x = line_xs[i] + dx
+        y = y0 + dy + i * line_h
         first = True
         for (txt, rb) in runs:
             weight = "bold" if (bold or rb) else "normal"
@@ -898,17 +1029,16 @@ def _text_element(text_lines, tx, y0, font_px, family, line_h,
                 tspans.append(
                     '<tspan x="{x:.2f}" y="{y:.2f}" font-weight="{w}">'
                     "{txt}</tspan>".format(
-                        x=tx, y=y, w=weight, txt=xml_escape(txt)))
+                        x=x, y=y, w=weight, txt=xml_escape(txt)))
                 first = False
             else:
                 tspans.append(
                     '<tspan font-weight="{w}">{txt}</tspan>'.format(
                         w=weight, txt=xml_escape(txt)))
     attrs = (
-        'text-anchor="{anchor}" fill="{fill}" '
+        'text-anchor="start" fill="{fill}" '
         'font-family="{fam}" font-size="{size}"'
-    ).format(anchor=anchor, fill=fill_hex, fam=xml_escape(family),
-             size=int(round(font_px)))
+    ).format(fill=fill_hex, fam=xml_escape(family), size=int(round(font_px)))
     if italic:
         attrs += ' font-style="italic"'
     if underline:
@@ -921,12 +1051,14 @@ def _text_element(text_lines, tx, y0, font_px, family, line_h,
     return "<text {attrs}>{spans}</text>".format(attrs=attrs, spans="".join(tspans))
 
 
-def _build_svg(text_lines, tx, y0, font_px, family, color, line_h, img_w, img_h,
+def _build_svg(text_lines, line_xs, y0, font_px, family, color, line_h, img_w, img_h,
                outline=False, outline_color=None, outline_px=0.0,
-               bold=False, italic=False, underline=False, anchor="middle",
+               bold=False, italic=False, underline=False,
                shadow=False, shadow_color=None, shadow_dx=0.0, shadow_dy=0.0):
-    """SVG with optional shadow, optional outline, style (bold/italic/
-    underline) and alignment (anchor: 'start'/'middle'/'end').
+    """SVG with optional shadow, optional outline and style (bold/italic/
+    underline). Alignment is baked into `line_xs` (per-line absolute x) and the
+    text uses the default 'start' anchor, so the inserted shape keeps its
+    position when edited with Krita's text tool.
 
     Bottom-to-top order: shadow (offset copy), outline (thick line), fill.
     Everything is drawn as extra text copies so it works independently of the
@@ -938,22 +1070,19 @@ def _build_svg(text_lines, tx, y0, font_px, family, color, line_h, img_w, img_h,
         sh = _hex(shadow_color)
         # the shadow takes the outline width so it keeps the full silhouette
         sw = 2.0 * outline_px if (outline and outline_px > 0) else 0.0
-        body += _text_element(text_lines, tx + shadow_dx, y0 + shadow_dy,
-                              font_px, family, line_h,
+        body += _text_element(text_lines, line_xs, y0, line_h, font_px, family,
                               fill_hex=sh,
                               stroke_hex=(sh if sw > 0 else None), stroke_w=sw,
                               bold=bold, italic=italic, underline=underline,
-                              anchor=anchor)
+                              dx=shadow_dx, dy=shadow_dy)
     if outline and outline_color is not None and outline_px > 0:
         ol = _hex(outline_color)
-        body += _text_element(text_lines, tx, y0, font_px, family, line_h,
+        body += _text_element(text_lines, line_xs, y0, line_h, font_px, family,
                               fill_hex=ol, stroke_hex=ol, stroke_w=2.0 * outline_px,
-                              bold=bold, italic=italic, underline=underline,
-                              anchor=anchor)
-    body += _text_element(text_lines, tx, y0, font_px, family, line_h,
+                              bold=bold, italic=italic, underline=underline)
+    body += _text_element(text_lines, line_xs, y0, line_h, font_px, family,
                           fill_hex=fill_hex,
-                          bold=bold, italic=italic, underline=underline,
-                          anchor=anchor)
+                          bold=bold, italic=italic, underline=underline)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" '
         'xmlns:xlink="http://www.w3.org/1999/xlink" '
@@ -1038,6 +1167,26 @@ def prepare_text(line, case, tidy):
 ALIGN_ANCHOR = {"left": "start", "center": "middle", "right": "end"}
 
 
+def _remove_existing_layers(doc, layer_index):
+    """Remove the top-level layers that TypeR inserted earlier for the 1-based
+    unit `layer_index` (matched by the exact 'TypeR NN — ' name prefix, so
+    hand-made layers are never touched). Returns the number removed; never
+    raises – a failed removal must not block the insert."""
+    removed = 0
+    try:
+        root = doc.rootNode()
+        for node in list(root.childNodes()):
+            try:
+                if L.is_typer_layer_name(node.name(), layer_index):
+                    node.remove()
+                    removed += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return removed
+
+
 def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       max_px, padding_frac, line_spacing,
                       outline=False, outline_color=None, outline_px=0.0,
@@ -1045,7 +1194,7 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       align="center", case="none", tidy=False, shape="rect",
                       shadow=False, shadow_color=None, shadow_dx=0.0,
                       shadow_dy=0.0, valign="middle", layer_index=None,
-                      hyphenate=False, hyph_lang="en"):
+                      hyphenate=False, hyph_lang="en", replace_existing=False):
     """Insert a single line of text as a text layer.
 
     auto_fit=True: the line is wrapped automatically, balanced and scaled to the
@@ -1058,7 +1207,12 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     bold/italic/underline: font style (variant of the chosen font).
     Individual words can be marked bold in the text with ``**...**``.
 
-    Returns (ok, key, fmt); the caller translates key via LANG.
+    replace_existing: with a layer_index, delete the layer(s) TypeR inserted
+    earlier for the same unit before creating the new one, so re-inserting a
+    line (e.g. trying several TextShapR shapes) replaces instead of stacking.
+
+    Returns (ok, key, fmt); the caller translates key via LANG. fmt contains
+    'replaced': the number of old layers that were removed.
     """
     app = Krita.instance()
     doc = app.activeDocument()
@@ -1106,30 +1260,35 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
         _wo, _sw, line_h, ascent, descent = measurer(font_px)
         fitted = True
 
-    # alignment: x position + anchor
-    anchor = ALIGN_ANCHOR.get(align, "middle")
+    # alignment: each line gets its own absolute left x (pre-centered/-aligned)
+    # so the SVG can use the default 'start' anchor – this keeps the text in
+    # place when it's later edited with Krita's text tool (text-anchor='middle'
+    # was getting dropped, snapping the shape into the corner).
+    width_of = measurer(font_px)[0]
+    line_widths = [width_of(runs) for runs in text_lines]
     pad_x = box_w * padding_frac / 2.0
-    if align == "left":
-        tx = box_x + pad_x
-    elif align == "right":
-        tx = box_x + box_w - pad_x
-    else:
-        tx = cx
+    line_xs = L.line_x_positions(
+        line_widths, align, box_x + pad_x, cx, box_x + box_w - pad_x)
 
     y0 = L.vertical_start(valign, box_y, box_h, padding_frac,
                           len(text_lines), line_h, ascent, descent)
-    svg = _build_svg(text_lines, tx, y0, font_px, font_family, color, line_h,
+    svg = _build_svg(text_lines, line_xs, y0, font_px, font_family, color, line_h,
                      img_w, img_h, outline=outline, outline_color=outline_color,
                      outline_px=outline_px,
-                     bold=bold, italic=italic, underline=underline, anchor=anchor,
+                     bold=bold, italic=italic, underline=underline,
                      shadow=shadow, shadow_color=shadow_color,
                      shadow_dx=shadow_dx, shadow_dy=shadow_dy)
+
+    # replace mode: drop the layer(s) of an earlier insert of this unit first
+    replaced = 0
+    if replace_existing and layer_index is not None:
+        replaced = _remove_existing_layers(doc, int(layer_index))
 
     try:
         root = doc.rootNode()
         snippet = (L.runs_text(text_lines[0])[:24] if text_lines else "").strip()
         if layer_index is not None:
-            label = "TypeR {:02d} — {}".format(int(layer_index), snippet)
+            label = L.typer_layer_prefix(int(layer_index)) + snippet
         else:
             label = "TypeR — " + snippet
         vlayer = doc.createVectorLayer(label)
@@ -1141,10 +1300,11 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
 
     px = int(round(font_px))
     if auto_fit and not fitted:
-        return True, "st_inserted_min", {"px": px}
+        return True, "st_inserted_min", {"px": px, "replaced": replaced}
     if auto_fit:
-        return True, "st_inserted_fit", {"px": px, "n": len(text_lines)}
-    return True, "st_inserted", {}
+        return True, "st_inserted_fit", {"px": px, "n": len(text_lines),
+                                         "replaced": replaced}
+    return True, "st_inserted", {"replaced": replaced}
 
 
 # ---------------------------------------------------------------------------
@@ -1547,20 +1707,340 @@ class TextPreview(QWidget):
         p.end()
 
     def _paint_background(self, p, w, h):
-        """Light-gray checkerboard (shows light and dark text colors well)."""
-        p.fillRect(0, 0, w, h, QColor(0xEE, 0xEE, 0xEE))
-        tile = 9
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(0xDB, 0xDB, 0xDB))
-        y = 0
-        row = 0
-        while y < h:
-            x = (row % 2) * tile
-            while x < w:
-                p.fillRect(x, y, tile, tile, QColor(0xDB, 0xDB, 0xDB))
-                x += 2 * tile
-            y += tile
-            row += 1
+        _paint_checker(p, w, h)
+
+
+def _paint_checker(p, w, h):
+    """Light-gray checkerboard (shows light and dark text colors well)."""
+    p.fillRect(0, 0, w, h, QColor(0xEE, 0xEE, 0xEE))
+    tile = 9
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(0xDB, 0xDB, 0xDB))
+    y = 0
+    row = 0
+    while y < h:
+        x = (row % 2) * tile
+        while x < w:
+            p.fillRect(x, y, tile, tile, QColor(0xDB, 0xDB, 0xDB))
+            x += 2 * tile
+        y += tile
+        row += 1
+
+
+# ---------------------------------------------------------------------------
+# TextShapR: visual picker for text-shape arrangements
+# ---------------------------------------------------------------------------
+
+class ShapeCard(QFrame):
+    """One numbered thumbnail in the TextShapR grid: a fixed arrangement of the
+    text (run lists per line) painted with the docker's current font/color/
+    effects, scaled by the shared factor `scale` so all cards are comparable."""
+
+    clicked = pyqtSignal(int)
+    W, H = 200, 120
+
+    def __init__(self, index, cand, opts, scale):
+        super().__init__()
+        self._index = index
+        self._cand = cand
+        self._o = opts
+        self._scale = scale
+        self._selected = False
+        self.setFixedSize(self.W, self.H)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def set_selected(self, on):
+        if self._selected != bool(on):
+            self._selected = bool(on)
+            self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self._index)
+        super().mousePressEvent(event)
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        w, h = self.width(), self.height()
+        _paint_checker(p, w, h)
+
+        o = self._o
+        s = self._scale
+        lines = self._cand["lines"]
+        fpx = max(1, int(round(self._cand["px"] * s)))
+        fn = QFont(o["family"]) if o["family"] else QFont()
+        fn.setBold(o["bold"])
+        fn.setItalic(o["italic"])
+        fn.setPixelSize(fpx)
+        fb = QFont(fn)
+        fb.setBold(True)
+        fmn, fmb = QFontMetricsF(fn), QFontMetricsF(fb)
+        line_h = fmn.height() * o["spacing"]
+
+        def run_w(runs):
+            return sum((fmb if (o["bold"] or b) else fmn).horizontalAdvance(t)
+                       for (t, b) in runs)
+
+        block_h = line_h * len(lines)
+        y0 = (h - block_h) / 2.0 + fmn.ascent()
+        path = QPainterPath()
+        underline_th = max(1.0, fpx * 0.06)
+        for i, runs in enumerate(lines):
+            lw = run_w(runs)
+            if o["align"] == "left":
+                x = 6.0
+            elif o["align"] == "right":
+                x = w - 6.0 - lw
+            else:
+                x = (w - lw) / 2.0
+            baseline = y0 + i * line_h
+            x_start = x
+            for (txt, b) in runs:
+                rf = fb if (o["bold"] or b) else fn
+                if txt:
+                    path.addText(x, baseline, rf, txt)
+                    x += (fmb if (o["bold"] or b) else fmn).horizontalAdvance(txt)
+            if o["underline"] and runs:
+                path.addRect(x_start, baseline + max(1.0, fpx * 0.12),
+                             x - x_start, underline_th)
+
+        # same bottom-to-top order as the inserted layer: shadow, outline, fill
+        if o["shadow"]:
+            sp = QPainterPath(path)
+            sp.translate(o["shadow_dx"] * s, o["shadow_dy"] * s)
+            p.fillPath(sp, QBrush(o["shadow_color"]))
+        if o["outline"] and o["outline_px"] > 0:
+            pen = QPen(o["outline_color"])
+            pen.setWidthF(max(0.5, 2.0 * o["outline_px"] * s))
+            pen.setJoinStyle(Qt.RoundJoin)
+            pen.setCapStyle(Qt.RoundCap)
+            p.strokePath(path, pen)
+        p.fillPath(path, QBrush(o["color"]))
+
+        # number badge (top-right) + selection frame
+        p.setPen(QColor(0, 0, 0, 130))
+        bf = QFont()
+        bf.setPixelSize(11)
+        p.setFont(bf)
+        p.drawText(self.rect().adjusted(0, 3, -6, 0),
+                   Qt.AlignRight | Qt.AlignTop, str(self._index + 1))
+        frame = QPen(QColor(0x2D, 0x8C, 0xEB), 2) if self._selected \
+            else QPen(QColor(0, 0, 0, 70), 1)
+        p.setPen(frame)
+        p.setBrush(Qt.NoBrush)
+        p.drawRect(1, 1, w - 2, h - 2)
+        p.end()
+
+
+class TextShapRDialog(QDialog):
+    """Modal picker: shows the current line wrapped into several candidate
+    shapes (mode bar: Balanced / Round / Tall / Wide, plus a Hyphenation
+    toggle) as numbered thumbnails. Click selects; Apply inserts the chosen
+    arrangement through the normal insert path; Apply + next also advances.
+    Number keys select a card, Shift+number applies and advances."""
+
+    _MODES = ("balanced", "round", "tall", "wide")
+
+    def __init__(self, docker):
+        super().__init__(docker.widget())
+        self._docker = docker
+        t = docker._tr
+        self.setWindowTitle(t("shaper_title"))
+        self.resize(470, 620)
+
+        lay = QVBoxLayout()
+        self.setLayout(lay)
+
+        bar = QHBoxLayout()
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
+        for i, mode in enumerate(self._MODES):
+            b = QPushButton(t("shaper_" + mode))
+            b.setCheckable(True)
+            if i == 0:
+                b.setChecked(True)
+            self._mode_group.addButton(b, i)
+            bar.addWidget(b)
+        self._mode_group.buttonClicked.connect(lambda *_a: self._refresh())
+        # hyphenation is a toggle on top of the mode, not exclusive with it
+        self.hyph_btn = QPushButton(t("shaper_hyph"))
+        self.hyph_btn.setCheckable(True)
+        self.hyph_btn.setChecked(docker.hyph_chk.isChecked())
+        self.hyph_btn.toggled.connect(lambda *_a: self._refresh())
+        bar.addWidget(self.hyph_btn)
+        lay.addLayout(bar)
+
+        self._grid_host = QWidget()
+        self._grid = QGridLayout()
+        self._grid.setSpacing(8)
+        self._grid_host.setLayout(self._grid)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.StyledPanel)
+        scroll.setWidget(self._grid_host)
+        lay.addWidget(scroll, 1)
+
+        self._empty = QLabel(t("shaper_empty"))
+        self._empty.setWordWrap(True)
+        self._empty.setAlignment(Qt.AlignCenter)
+        self._grid.addWidget(self._empty, 0, 0, 1, 2)
+
+        self._hint = QLabel(t("shaper_hint"))
+        self._hint.setStyleSheet("color: gray;")
+        self._hint.setWordWrap(True)
+        lay.addWidget(self._hint)
+
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        self.apply_btn = QPushButton(t("shaper_apply"))
+        self.apply_btn.clicked.connect(lambda: self._apply(False))
+        foot.addWidget(self.apply_btn)
+        self.apply_next_btn = QPushButton(t("shaper_apply_next"))
+        self.apply_next_btn.setDefault(True)
+        self.apply_next_btn.clicked.connect(lambda: self._apply(True))
+        foot.addWidget(self.apply_next_btn)
+        self.close_btn = QPushButton(t("close"))
+        self.close_btn.clicked.connect(self.reject)
+        foot.addWidget(self.close_btn)
+        lay.addLayout(foot)
+
+        self._cards = []
+        self._cands = []
+        self._sel = -1
+        self._refresh()
+
+    # -- data --
+
+    def _box(self):
+        """Box to fit into: the selection, else the whole image, else a
+        default box (no document open). Returns (w, h, has_doc)."""
+        try:
+            doc = Krita.instance().activeDocument()
+        except Exception:
+            doc = None
+        if doc is None:
+            return 400.0, 300.0, False
+        sel = doc.selection()
+        if sel is not None:
+            try:
+                w, h = float(sel.width()), float(sel.height())
+                if w > 0 and h > 0:
+                    return w, h, True
+            except Exception:
+                pass
+        return float(doc.width()), float(doc.height()), True
+
+    def _opts(self):
+        d = self._docker
+        return {
+            "family": d.font_picker.currentFamily() or "",
+            "bold": d.bold_chk.isChecked(),
+            "italic": d.italic_chk.isChecked(),
+            "underline": d.underline_chk.isChecked(),
+            "color": QColor(d._color),
+            "align": d.align_combo.currentData() or "center",
+            "spacing": d.spacing_spin.value() / 100.0,
+            "outline": d.outline_chk.isChecked(),
+            "outline_color": QColor(d._outline_color),
+            "outline_px": float(d.outline_spin.value()),
+            "shadow": d.shadow_chk.isChecked(),
+            "shadow_color": QColor(d._shadow_color),
+            "shadow_dx": float(d.shadow_x_spin.value()),
+            "shadow_dy": float(d.shadow_y_spin.value()),
+        }
+
+    def _refresh(self):
+        """Regenerate the candidates for the current line and rebuild the
+        cards. Never raises; with no font/text it shows a hint instead."""
+        d = self._docker
+        for card in self._cards:
+            self._grid.removeWidget(card)
+            card.deleteLater()
+        self._cards = []
+        self._cands = []
+        self._sel = -1
+
+        family = d.font_picker.currentFamily()
+        prepared = prepare_text(d._current_text(),
+                                d.case_combo.currentData() or "none",
+                                d.tidy_chk.isChecked())
+        prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
+        clean, mask = parse_bold(prepared)
+        box_w, box_h, has_doc = self._box()
+
+        if family and clean.strip():
+            measurer = _make_measurer(family,
+                                      d.spacing_spin.value() / 100.0,
+                                      d.bold_chk.isChecked(),
+                                      d.italic_chk.isChecked())
+            mode = self._MODES[max(0, self._mode_group.checkedId())]
+            try:
+                self._cands = L.shape_candidates(
+                    clean, measurer, box_w, box_h,
+                    d.size_spin.value(), 6, d.pad_spin.value() / 100.0,
+                    mode=mode, hyphenate=self.hyph_btn.isChecked(),
+                    lang=d._hyph_lang_for(clean), mask=mask, limit=10)
+            except Exception:
+                self._cands = []
+
+        have = bool(self._cands)
+        self._empty.setVisible(not have)
+        self.apply_btn.setEnabled(have)
+        self.apply_next_btn.setEnabled(have)
+        self._hint.setText(self._docker._tr(
+            "shaper_hint" if has_doc else "shaper_no_doc"))
+        if not have:
+            return
+        o = self._opts()
+        # one shared scale so the size differences between shapes stay visible
+        scale = min((ShapeCard.W - 12) / box_w, (ShapeCard.H - 12) / box_h)
+        for i, cand in enumerate(self._cands):
+            card = ShapeCard(i, cand, o, scale)
+            card.clicked.connect(self._select)
+            self._grid.addWidget(card, i // 2, i % 2)
+            self._cards.append(card)
+        self._select(0)
+
+    # -- interaction --
+
+    def _select(self, index):
+        if not (0 <= index < len(self._cards)):
+            return
+        self._sel = index
+        for i, card in enumerate(self._cards):
+            card.set_selected(i == index)
+
+    def _apply(self, advance):
+        if not (0 <= self._sel < len(self._cands)):
+            return
+        ok = self._docker.insert_arrangement(self._cands[self._sel], advance)
+        if ok and advance:
+            self._refresh()        # show the shapes for the next line
+
+    @staticmethod
+    def _digit(event):
+        """Digit 0-9 of a key event, robust against Shift (which turns the key
+        into a symbol on most layouts). None if not a digit key."""
+        vk = event.nativeVirtualKey()      # Windows/X11: VK stays '0'..'9'
+        if 0x30 <= vk <= 0x39:
+            return vk - 0x30
+        k = event.key()
+        if Qt.Key_0 <= k <= Qt.Key_9:
+            return k - Qt.Key_0
+        return None
+
+    def keyPressEvent(self, event):
+        digit = self._digit(event)
+        if digit is not None:
+            index = 9 if digit == 0 else digit - 1       # key 0 = card 10
+            if 0 <= index < len(self._cards):
+                self._select(index)
+                if event.modifiers() & Qt.ShiftModifier:
+                    self._apply(True)
+            return
+        super().keyPressEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -1595,13 +2075,38 @@ class TyperDocker(DockWidget):
         self._active_sid = None
         self._next_sid = 1
 
+        # The docker is organized into four top-level tabs so the everyday
+        # workflow (Type: script -> line -> bubble -> font -> insert) stays
+        # uncluttered; styling, presets and setup are one click away. Each
+        # page scrolls on its own so nothing ever squishes or clips.
         main = QWidget()
-        layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-        main.setLayout(layout)
+        outer = QVBoxLayout()
+        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setSpacing(4)
+        main.setLayout(outer)
 
-        # --- language selector ---
+        self.main_tabs = QTabWidget()
+        outer.addWidget(self.main_tabs, 1)
+
+        def _page():
+            page = QWidget()
+            lay = QVBoxLayout()
+            lay.setContentsMargins(8, 8, 8, 8)
+            lay.setSpacing(6)
+            page.setLayout(lay)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setWidget(page)
+            self.main_tabs.addTab(scroll, "")
+            return lay
+
+        lay_type = _page()       # everyday insert loop
+        lay_style = _page()      # font variants, alignment, effects, fitting
+        lay_presets = _page()    # manga -> character -> style presets
+        lay_setup = _page()      # language + panel layout
+
+        # --- language selector (Setup tab) ---
         lang_row = QHBoxLayout()
         self.lang_label = QLabel()
         self.lang_combo = NoScrollComboBox()
@@ -1615,7 +2120,7 @@ class TyperDocker(DockWidget):
         self.lang_combo.currentIndexChanged.connect(self._on_lang_change)
         lang_row.addWidget(self.lang_label)
         lang_row.addWidget(self.lang_combo, 1)
-        layout.addLayout(lang_row)
+        lay_setup.addLayout(lang_row)
 
         # --- collapsible "Layout & sizes" panel ---
         # Lets the user resize or hide the big parts of the docker (preview,
@@ -1628,7 +2133,7 @@ class TyperDocker(DockWidget):
         self.view_toggle = QPushButton()
         self.view_toggle.setCheckable(True)
         self.view_toggle.setChecked(bool(v["open"]))
-        layout.addWidget(self.view_toggle)
+        lay_setup.addWidget(self.view_toggle)
 
         self.view_box = QWidget()
         view_lay = QVBoxLayout()
@@ -1668,7 +2173,18 @@ class TyperDocker(DockWidget):
         self.view_reset_btn = QPushButton()
         self.view_reset_btn.clicked.connect(self._on_view_reset)
         view_lay.addWidget(self.view_reset_btn)
-        layout.addWidget(self.view_box)
+        lay_setup.addWidget(self.view_box)
+        # replace the layer(s) of an earlier insert when a line is re-inserted
+        self.replace_chk = QCheckBox()
+        self.replace_chk.setChecked(self._load_replace_existing())
+        self.replace_chk.toggled.connect(self._on_replace_toggle)
+        lay_setup.addWidget(self.replace_chk)
+        # presets: with a character level (default) or one flat list per manga
+        self.by_char_chk = QCheckBox()
+        self.by_char_chk.setChecked(self._load_by_char())
+        self.by_char_chk.toggled.connect(self._on_by_char_toggle)
+        lay_setup.addWidget(self.by_char_chk)
+        lay_setup.addStretch(1)
         self.view_box.setVisible(self.view_toggle.isChecked())
 
         # wire up after the initial values are set, so nothing fires early
@@ -1680,9 +2196,9 @@ class TyperDocker(DockWidget):
                    self.v_fonts_h):
             _w.valueChanged.connect(self._on_view_changed)
 
-        # --- presets (grouped) ---
+        # --- presets (Presets tab) ---
         self.lbl_preset = QLabel()
-        layout.addWidget(self.lbl_preset)
+        lay_presets.addWidget(self.lbl_preset)
         group_row = QHBoxLayout()
         self.lbl_group = QLabel()
         group_row.addWidget(self.lbl_group)
@@ -1695,7 +2211,7 @@ class TyperDocker(DockWidget):
         self.group_del_btn.clicked.connect(self.on_group_delete)
         group_row.addWidget(self.group_new_btn)
         group_row.addWidget(self.group_del_btn)
-        layout.addLayout(group_row)
+        lay_presets.addLayout(group_row)
         char_row = QHBoxLayout()
         self.lbl_char = QLabel()
         char_row.addWidget(self.lbl_char)
@@ -1708,46 +2224,50 @@ class TyperDocker(DockWidget):
         self.char_del_btn.clicked.connect(self.on_char_delete)
         char_row.addWidget(self.char_new_btn)
         char_row.addWidget(self.char_del_btn)
-        layout.addLayout(char_row)
+        lay_presets.addLayout(char_row)
         # Auto-pick character from a "Name:" speaker prefix (optional)
         self.auto_char_chk = QCheckBox()
         self.auto_char_chk.setChecked(self._load_auto_char())
         self.auto_char_chk.toggled.connect(self._on_auto_char_toggle)
-        layout.addWidget(self.auto_char_chk)
+        lay_presets.addWidget(self.auto_char_chk)
         # Auto-pick manga from the script's file name / header / first lines
         self.auto_manga_chk = QCheckBox()
         self.auto_manga_chk.setChecked(self._load_auto_manga())
         self.auto_manga_chk.toggled.connect(self._on_auto_manga_toggle)
-        layout.addWidget(self.auto_manga_chk)
+        lay_presets.addWidget(self.auto_manga_chk)
         preset_row = QHBoxLayout()
         self.preset_combo = NoScrollComboBox()
         self.preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         preset_row.addWidget(self.preset_combo, 1)
-        self.preset_save_btn = QPushButton()
-        self.preset_save_btn.clicked.connect(self.on_preset_save)
-        self.preset_del_btn = QPushButton()
-        self.preset_del_btn.clicked.connect(self.on_preset_delete)
-        preset_row.addWidget(self.preset_save_btn)
-        preset_row.addWidget(self.preset_del_btn)
-        layout.addLayout(preset_row)
-        preset_row2 = QHBoxLayout()
-        self.preset_import_btn = QPushButton()
-        self.preset_import_btn.clicked.connect(self.on_preset_import)
-        self.preset_export_btn = QPushButton()
-        self.preset_export_btn.clicked.connect(self.on_preset_export)
-        preset_row2.addWidget(self.preset_import_btn)
-        preset_row2.addWidget(self.preset_export_btn)
-        layout.addLayout(preset_row2)
+        # the rarely-used preset actions live in one compact "⋯" menu instead
+        # of two full button rows
+        self.preset_menu_btn = QToolButton()
+        self.preset_menu_btn.setText("⋯")
+        self.preset_menu_btn.setPopupMode(QToolButton.InstantPopup)
+        preset_menu = QMenu(self.preset_menu_btn)
+        self.preset_save_act = preset_menu.addAction("")
+        self.preset_save_act.triggered.connect(self.on_preset_save)
+        self.preset_del_act = preset_menu.addAction("")
+        self.preset_del_act.triggered.connect(self.on_preset_delete)
+        preset_menu.addSeparator()
+        self.preset_import_act = preset_menu.addAction("")
+        self.preset_import_act.triggered.connect(self.on_preset_import)
+        self.preset_export_act = preset_menu.addAction("")
+        self.preset_export_act.triggered.connect(self.on_preset_export)
+        self.preset_menu_btn.setMenu(preset_menu)
+        preset_row.addWidget(self.preset_menu_btn)
+        lay_presets.addLayout(preset_row)
+        lay_presets.addStretch(1)
 
-        # --- load a file ---
+        # --- load a file (Type tab) ---
         self.load_btn = QPushButton()
         self.load_btn.clicked.connect(self.on_load)
-        layout.addWidget(self.load_btn)
+        lay_type.addWidget(self.load_btn)
 
         # --- script input ---
         # Generously sized so the parsed/pasted script is easy to read and edit.
         self.lbl_script = QLabel()
-        layout.addWidget(self.lbl_script)
+        lay_type.addWidget(self.lbl_script)
         # Tabs for several loaded scripts (browser-style: closable + middle-click,
         # reorderable, eliding long names, with scroll buttons in a narrow dock).
         self.script_tabs = ScriptTabBar()
@@ -1760,11 +2280,11 @@ class TyperDocker(DockWidget):
         self.script_tabs.currentChanged.connect(self._on_tab_changed)
         self.script_tabs.tabCloseRequested.connect(self._close_tab)
         self.script_tabs.tabBarDoubleClicked.connect(self._rename_tab)
-        layout.addWidget(self.script_tabs)
+        lay_type.addWidget(self.script_tabs)
         self.editor = QPlainTextEdit()
         self.editor.setMinimumHeight(170)
         self.editor.setMaximumHeight(320)
-        layout.addWidget(self.editor)
+        lay_type.addWidget(self.editor)
 
         opt_row = QHBoxLayout()
         self.skip_empty = QCheckBox()
@@ -1774,13 +2294,13 @@ class TyperDocker(DockWidget):
         self.analyze_btn = QPushButton()
         self.analyze_btn.clicked.connect(self.analyze)
         opt_row.addWidget(self.analyze_btn)
-        layout.addLayout(opt_row)
+        lay_type.addLayout(opt_row)
 
-        layout.addWidget(self._hline())
+        lay_type.addWidget(self._hline())
 
         # --- two-column JP/EN view ---
         self.lbl_align = QLabel()
-        layout.addWidget(self.lbl_align)
+        lay_type.addWidget(self.lbl_align)
         self.table = QTableWidget(0, 2)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1793,7 +2313,7 @@ class TyperDocker(DockWidget):
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.itemSelectionChanged.connect(self._on_table_select)
         self.table.cellDoubleClicked.connect(self._on_table_double)
-        layout.addWidget(self.table, 1)
+        lay_type.addWidget(self.table, 1)
 
         # --- navigation + preview ---
         nav_row = QHBoxLayout()
@@ -1809,7 +2329,7 @@ class TyperDocker(DockWidget):
         nav_row.addWidget(self.counter, 1)
         nav_row.addWidget(self.next_btn)
         nav_row.addWidget(self.reset_btn)
-        layout.addLayout(nav_row)
+        lay_type.addLayout(nav_row)
 
         # --- page indicator + jump (only shown when the script has "Page" markers) ---
         page_row = QHBoxLayout()
@@ -1823,39 +2343,55 @@ class TyperDocker(DockWidget):
         page_row.addWidget(self.lbl_page)
         page_row.addWidget(self.page_combo, 1)
         page_row.addWidget(self.page_status)
-        layout.addLayout(page_row)
+        lay_type.addLayout(page_row)
 
         self.active_edit = QPlainTextEdit()
         self.active_edit.setMinimumHeight(42)
         self.active_edit.setMaximumHeight(70)
         self.active_edit.textChanged.connect(self._update_text_preview)
-        layout.addWidget(self.active_edit)
+        lay_type.addWidget(self.active_edit)
         bold_row = QHBoxLayout()
         self.bold_sel_btn = QPushButton()
         self.bold_sel_btn.clicked.connect(self.on_bold_selection)
         bold_row.addWidget(self.bold_sel_btn)
         bold_row.addStretch(1)
-        layout.addLayout(bold_row)
+        lay_type.addLayout(bold_row)
         self.lbl_preview = QLabel("")
         self.lbl_preview.setStyleSheet("color: gray; margin-top: 2px;")
-        layout.addWidget(self.lbl_preview)
+        lay_type.addWidget(self.lbl_preview)
         self.preview = TextPreview(self)
-        layout.addWidget(self.preview)
+        lay_type.addWidget(self.preview)
         self.jp_ref = QLabel("")
         self.jp_ref.setWordWrap(True)
         self.jp_ref.setStyleSheet("color: gray;")
-        layout.addWidget(self.jp_ref)
+        lay_type.addWidget(self.jp_ref)
 
-        layout.addWidget(self._hline())
+        lay_type.addWidget(self._hline())
 
-        # --- font picker ---
+        # --- font picker + text color (the everyday choices stay on Type) ---
         self.lbl_font = QLabel()
-        layout.addWidget(self.lbl_font)
+        lay_type.addWidget(self.lbl_font)
         self.font_picker = FontPicker(self._load_recents(),
                                       self._tr("font_search_ph"))
-        layout.addWidget(self.font_picker)
+        lay_type.addWidget(self.font_picker)
+        color_row = QHBoxLayout()
+        self.color_btn = QPushButton()
+        self.color_btn.clicked.connect(self.on_pick_color)
+        color_row.addWidget(self.color_btn, 1)
+        lay_type.addLayout(color_row)
+        self._update_color_btn()
 
-        # --- font style (variant: bold/italic/underline) ---
+        # --- insert + TextShapR ---
+        insert_row = QHBoxLayout()
+        self.insert_btn = QPushButton()
+        self.insert_btn.clicked.connect(self.on_insert)
+        insert_row.addWidget(self.insert_btn, 1)
+        self.shaper_btn = QPushButton()
+        self.shaper_btn.clicked.connect(self.on_open_shaper)
+        insert_row.addWidget(self.shaper_btn)
+        lay_type.addLayout(insert_row)
+
+        # --- font style (variant: bold/italic/underline)  (Style tab) ---
         style_row = QHBoxLayout()
         self.lbl_style = QLabel()
         style_row.addWidget(self.lbl_style)
@@ -1866,7 +2402,7 @@ class TyperDocker(DockWidget):
         style_row.addWidget(self.italic_chk)
         style_row.addWidget(self.underline_chk)
         style_row.addStretch(1)
-        layout.addLayout(style_row)
+        lay_style.addLayout(style_row)
 
         # --- alignment + text processing ---
         align_row = QHBoxLayout()
@@ -1877,7 +2413,7 @@ class TyperDocker(DockWidget):
             self.align_combo.addItem("", code)
         self.align_combo.setCurrentIndex(1)  # center
         align_row.addWidget(self.align_combo, 1)
-        layout.addLayout(align_row)
+        lay_style.addLayout(align_row)
 
         valign_row = QHBoxLayout()
         self.lbl_valign = QLabel()
@@ -1887,7 +2423,7 @@ class TyperDocker(DockWidget):
             self.valign_combo.addItem("", code)
         self.valign_combo.setCurrentIndex(1)  # middle
         valign_row.addWidget(self.valign_combo, 1)
-        layout.addLayout(valign_row)
+        lay_style.addLayout(valign_row)
 
         text_row = QHBoxLayout()
         self.case_label = QLabel()
@@ -1900,7 +2436,7 @@ class TyperDocker(DockWidget):
         self.tidy_chk = QCheckBox()
         text_row.addWidget(self.tidy_chk)
         text_row.addStretch(1)
-        layout.addLayout(text_row)
+        lay_style.addLayout(text_row)
 
         # --- remaining style options ---
         grid = QGridLayout()
@@ -1910,11 +2446,6 @@ class TyperDocker(DockWidget):
         self.size_spin.setRange(4, 2000)
         self.size_spin.setValue(72)
         grid.addWidget(self.size_spin, 0, 1)
-
-        self.color_btn = QPushButton()
-        self.color_btn.clicked.connect(self.on_pick_color)
-        self._update_color_btn()
-        grid.addWidget(self.color_btn, 0, 2)
 
         self.lbl_pad = QLabel()
         grid.addWidget(self.lbl_pad, 1, 0)
@@ -1929,60 +2460,86 @@ class TyperDocker(DockWidget):
         self.spacing_spin.setRange(80, 250)
         self.spacing_spin.setValue(105)
         grid.addWidget(self.spacing_spin, 2, 1)
-        layout.addLayout(grid)
+        lay_style.addLayout(grid)
 
-        # --- outline ---
+        # --- outline: checkbox on the tab, color + width in a small popup ---
+        self.outline_dlg = QDialog(main)
+        out_dlg_lay = QVBoxLayout()
+        self.outline_dlg.setLayout(out_dlg_lay)
+        out_opts = QHBoxLayout()
+        self.outline_color_btn = QPushButton()
+        self.outline_color_btn.clicked.connect(self.on_pick_outline_color)
+        out_opts.addWidget(self.outline_color_btn)
+        self.lbl_outline_width = QLabel()
+        out_opts.addWidget(self.lbl_outline_width)
+        self.outline_spin = NoScrollSpinBox()
+        self.outline_spin.setRange(1, 200)
+        self.outline_spin.setValue(4)
+        out_opts.addWidget(self.outline_spin)
+        out_dlg_lay.addLayout(out_opts)
+        self.outline_close_btn = QPushButton()
+        self.outline_close_btn.clicked.connect(self.outline_dlg.accept)
+        out_dlg_lay.addWidget(self.outline_close_btn)
+
         out_row = QHBoxLayout()
         self.outline_chk = QCheckBox()
         self.outline_chk.stateChanged.connect(self._on_outline_toggle)
         out_row.addWidget(self.outline_chk)
-        self.outline_color_btn = QPushButton()
-        self.outline_color_btn.clicked.connect(self.on_pick_outline_color)
-        out_row.addWidget(self.outline_color_btn)
-        self.lbl_outline_width = QLabel()
-        out_row.addWidget(self.lbl_outline_width)
-        self.outline_spin = NoScrollSpinBox()
-        self.outline_spin.setRange(1, 200)
-        self.outline_spin.setValue(4)
-        out_row.addWidget(self.outline_spin)
-        layout.addLayout(out_row)
+        self.outline_more_btn = QPushButton()
+        self.outline_more_btn.clicked.connect(self.outline_dlg.show)
+        out_row.addWidget(self.outline_more_btn)
+        out_row.addStretch(1)
+        lay_style.addLayout(out_row)
         self._update_outline_btn()
 
-        # --- shadow ---
-        sh_row = QHBoxLayout()
-        self.shadow_chk = QCheckBox()
-        self.shadow_chk.stateChanged.connect(self._on_shadow_toggle)
-        sh_row.addWidget(self.shadow_chk)
+        # --- shadow: checkbox on the tab, color + offset in a small popup ---
+        self.shadow_dlg = QDialog(main)
+        sh_dlg_lay = QVBoxLayout()
+        self.shadow_dlg.setLayout(sh_dlg_lay)
+        sh_opts = QHBoxLayout()
         self.shadow_color_btn = QPushButton()
         self.shadow_color_btn.clicked.connect(self.on_pick_shadow_color)
-        sh_row.addWidget(self.shadow_color_btn)
+        sh_opts.addWidget(self.shadow_color_btn)
         self.lbl_shadow_off = QLabel()
-        sh_row.addWidget(self.lbl_shadow_off)
+        sh_opts.addWidget(self.lbl_shadow_off)
         self.shadow_x_spin = NoScrollSpinBox()
         self.shadow_x_spin.setRange(-100, 100)
         self.shadow_x_spin.setValue(3)
         self.shadow_y_spin = NoScrollSpinBox()
         self.shadow_y_spin.setRange(-100, 100)
         self.shadow_y_spin.setValue(3)
-        sh_row.addWidget(self.shadow_x_spin)
-        sh_row.addWidget(self.shadow_y_spin)
-        layout.addLayout(sh_row)
+        sh_opts.addWidget(self.shadow_x_spin)
+        sh_opts.addWidget(self.shadow_y_spin)
+        sh_dlg_lay.addLayout(sh_opts)
+        self.shadow_close_btn = QPushButton()
+        self.shadow_close_btn.clicked.connect(self.shadow_dlg.accept)
+        sh_dlg_lay.addWidget(self.shadow_close_btn)
+
+        sh_row = QHBoxLayout()
+        self.shadow_chk = QCheckBox()
+        self.shadow_chk.stateChanged.connect(self._on_shadow_toggle)
+        sh_row.addWidget(self.shadow_chk)
+        self.shadow_more_btn = QPushButton()
+        self.shadow_more_btn.clicked.connect(self.shadow_dlg.show)
+        sh_row.addWidget(self.shadow_more_btn)
+        sh_row.addStretch(1)
+        lay_style.addLayout(sh_row)
         self._update_shadow_btn()
 
         # --- auto-fit ---
         self.auto_chk = QCheckBox()
         self.auto_chk.setChecked(True)
         self.auto_chk.stateChanged.connect(self._on_auto_toggle)
-        layout.addWidget(self.auto_chk)
+        lay_style.addWidget(self.auto_chk)
 
         self.round_chk = QCheckBox()
         self.round_chk.stateChanged.connect(self._on_auto_toggle)
-        layout.addWidget(self.round_chk)
+        lay_style.addWidget(self.round_chk)
 
         # --- hyphenation (split long words at syllable points) ---
         self.hyph_chk = QCheckBox()
         self.hyph_chk.stateChanged.connect(self._on_hyph_toggle)
-        layout.addWidget(self.hyph_chk)
+        lay_style.addWidget(self.hyph_chk)
         hyph_row = QHBoxLayout()
         self.lbl_hyph_lang = QLabel()
         hyph_row.addWidget(self.lbl_hyph_lang)
@@ -1993,23 +2550,19 @@ class TyperDocker(DockWidget):
         self.hyph_lang_combo.currentIndexChanged.connect(
             lambda *_a: self._update_text_preview())
         hyph_row.addWidget(self.hyph_lang_combo, 1)
-        layout.addLayout(hyph_row)
+        lay_style.addLayout(hyph_row)
+        lay_style.addStretch(1)
 
-        self.insert_btn = QPushButton()
-        self.insert_btn.clicked.connect(self.on_insert)
-        layout.addWidget(self.insert_btn)
-
+        # status line below the tabs, always visible
         self.status = QLabel("")
         self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+        outer.addWidget(self.status)
 
-        # Wrap everything in a scroll area so resizing/hiding parts never
-        # squishes or clips the rest – the docker just scrolls if needed.
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setWidget(main)
-        self.setWidget(scroll)
+        self.setWidget(main)
+
+        # remember the last-used main tab across restarts
+        self.main_tabs.setCurrentIndex(self._load_ui_tab())
+        self.main_tabs.currentChanged.connect(self._save_ui_tab)
 
         self._apply_settings(self._load_settings())
         self._on_outline_toggle()
@@ -2023,6 +2576,7 @@ class TyperDocker(DockWidget):
         self._retranslate()
         self._refresh_view()
         self._apply_view()
+        self._apply_preset_mode()          # show/hide the character level
         self._update_text_preview()
         self._init_first_session()         # start with one empty "Untitled" tab
 
@@ -2068,6 +2622,75 @@ class TyperDocker(DockWidget):
         except Exception:
             return True
 
+    def _load_replace_existing(self):
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "replaceExisting", "true") != "false"
+        except Exception:
+            return True
+
+    def _on_replace_toggle(self, checked):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "replaceExisting", "true" if checked else "false")
+        except Exception:
+            pass
+
+    # ---- preset mode: with a character level, or one flat list per manga ----
+
+    def _load_by_char(self):
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "presetsByCharacter", "true") != "false"
+        except Exception:
+            return True
+
+    def _by_char(self):
+        """True = Manga -> Character -> preset (default); False = simple mode
+        (Manga -> preset, character level hidden)."""
+        chk = getattr(self, "by_char_chk", None)
+        return True if chk is None else chk.isChecked()
+
+    def _on_by_char_toggle(self, checked):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "presetsByCharacter", "true" if checked else "false")
+        except Exception:
+            pass
+        self._apply_preset_mode()
+
+    def _apply_preset_mode(self):
+        """Show/hide the character level and rebuild the preset dropdown for
+        the active mode. Simple mode is only a view – the stored 3-level
+        preset data is never migrated or renamed."""
+        by_char = self._by_char()
+        for w in (self.lbl_char, self.char_combo, self.char_new_btn,
+                  self.char_del_btn):
+            w.setVisible(by_char)
+        self.auto_char_chk.setVisible(by_char)
+        self._refresh_presets_combo()
+
+    def _preset_ref(self, data):
+        """(owning character, preset name) for a preset-combo item's data.
+        Character mode stores just the name (owner = current character);
+        simple mode stores the (character, name) tuple. ('', '') for none."""
+        if isinstance(data, (tuple, list)) and len(data) == 2:
+            return str(data[0]), str(data[1])
+        if data:
+            return self._char, str(data)
+        return "", ""
+
+    def _bucket_char(self):
+        """Character that receives newly saved presets in simple mode: the
+        localized default character if the manga has one, else its first
+        character (created on demand by _ensure_levels)."""
+        self._ensure_levels()
+        chars = self._groups[self._group]
+        cd = self._tr("char_default")
+        if cd in chars:
+            return cd
+        return sorted(chars.keys(), key=lambda s: s.lower())[0]
+
     def _on_auto_manga_toggle(self, checked):
         try:
             Krita.instance().writeSetting(
@@ -2099,6 +2722,8 @@ class TyperDocker(DockWidget):
         that character (and apply its default style preset). Returns the text
         without the speaker prefix so the bubble stays clean; otherwise the
         text unchanged."""
+        if not self._by_char():
+            return text        # simple mode: characters are not in the workflow
         chk = getattr(self, "auto_char_chk", None)
         if chk is None or not chk.isChecked():
             return text
@@ -2148,7 +2773,24 @@ class TyperDocker(DockWidget):
     def _apply_default_preset(self):
         """Auto-select the current character's default preset (normal/talking,
         else most-used, else first non-none). Does nothing if the character has
-        no real preset."""
+        no real preset. In simple mode the default is picked from ALL presets
+        of the manga (usage counts merged across characters)."""
+        if not self._by_char():
+            entries = LP.flatten_presets(self._cur_chars())
+            usage_by_char = self._preset_usage.get(self._group, {})
+            usage = {}
+            for _label, ch, name in entries:
+                n = int(usage_by_char.get(ch, {}).get(name, 0))
+                if n:
+                    usage[name] = usage.get(name, 0) + n
+            name = LP.default_preset_for([e[2] for e in entries], usage)
+            for _label, ch, nm in entries:
+                if name and nm == name:
+                    self._apply_preset(self._cur_chars()[ch][nm])
+                    self._refresh_presets_combo(select=(ch, nm))
+                    return
+            self._refresh_presets_combo()
+            return
         presets = self._cur_presets()
         usage = self._preset_usage.get(self._group, {}).get(self._char, {})
         name = LP.default_preset_for(list(presets.keys()), usage)
@@ -2167,6 +2809,10 @@ class TyperDocker(DockWidget):
     def _retranslate(self):
         t = self._tr
         self.setWindowTitle(t("title"))
+        self.main_tabs.setTabText(0, t("tab_type"))
+        self.main_tabs.setTabText(1, t("tab_style"))
+        self.main_tabs.setTabText(2, t("tab_presets"))
+        self.main_tabs.setTabText(3, t("tab_setup"))
         self.lang_label.setText(t("language"))
         self.view_toggle.setText(t("view_toggle"))
         self.view_hint.setText(t("view_hint"))
@@ -2228,10 +2874,11 @@ class TyperDocker(DockWidget):
         self.auto_char_chk.setToolTip(t("auto_char_tip"))
         self.auto_manga_chk.setText(t("auto_manga"))
         self.auto_manga_chk.setToolTip(t("auto_manga_tip"))
-        self.preset_save_btn.setText(t("preset_save"))
-        self.preset_del_btn.setText(t("preset_del"))
-        self.preset_import_btn.setText(t("preset_import"))
-        self.preset_export_btn.setText(t("preset_export"))
+        self.preset_menu_btn.setToolTip(t("preset_actions"))
+        self.preset_save_act.setText(t("preset_save"))
+        self.preset_del_act.setText(t("preset_del"))
+        self.preset_import_act.setText(t("preset_import"))
+        self.preset_export_act.setText(t("preset_export"))
         # relabel the first combo entry (no preset)
         if self.preset_combo.count() > 0:
             self.preset_combo.blockSignals(True)
@@ -2248,6 +2895,12 @@ class TyperDocker(DockWidget):
         self.outline_chk.setToolTip(t("outline_tip"))
         self.outline_color_btn.setText(t("outline_color_btn"))
         self.lbl_outline_width.setText(t("outline_width"))
+        self.outline_more_btn.setText(t("outline_more"))
+        self.outline_dlg.setWindowTitle(t("outline"))
+        self.outline_close_btn.setText(t("close"))
+        self.shadow_more_btn.setText(t("shadow_more"))
+        self.shadow_dlg.setWindowTitle(t("shadow"))
+        self.shadow_close_btn.setText(t("close"))
         self.auto_chk.setText(t("auto"))
         self.auto_chk.setToolTip(t("auto_tip"))
         self.hyph_chk.setText(t("hyphenate"))
@@ -2258,6 +2911,12 @@ class TyperDocker(DockWidget):
             self.hyph_lang_combo.setItemText(
                 i, t("hyph_auto" if code == "auto" else "hyph_" + str(code)))
         self.insert_btn.setText(t("insert_btn"))
+        self.shaper_btn.setText(t("shaper_btn"))
+        self.shaper_btn.setToolTip(t("shaper_btn_tip"))
+        self.replace_chk.setText(t("replace_existing"))
+        self.replace_chk.setToolTip(t("replace_existing_tip"))
+        self.by_char_chk.setText(t("presets_by_char"))
+        self.by_char_chk.setToolTip(t("presets_by_char_tip"))
         # re-label the page combo / status in the new language
         self._refresh_pages_combo()
 
@@ -2286,6 +2945,8 @@ class TyperDocker(DockWidget):
         on = self.outline_chk.isChecked()
         self.outline_color_btn.setEnabled(on)
         self.outline_spin.setEnabled(on)
+        if hasattr(self, "outline_more_btn"):
+            self.outline_more_btn.setEnabled(on)
 
     def _update_shadow_btn(self):
         self.shadow_color_btn.setStyleSheet(
@@ -2299,6 +2960,8 @@ class TyperDocker(DockWidget):
         self.shadow_color_btn.setEnabled(on)
         self.shadow_x_spin.setEnabled(on)
         self.shadow_y_spin.setEnabled(on)
+        if hasattr(self, "shadow_more_btn"):
+            self.shadow_more_btn.setEnabled(on)
 
     def on_pick_shadow_color(self):
         col = QColorDialog.getColor(self._shadow_color, self.widget(),
@@ -2310,6 +2973,21 @@ class TyperDocker(DockWidget):
     def _set_status(self, msg, error=False):
         self.status.setStyleSheet("color: #c0392b;" if error else "color: gray;")
         self.status.setText(msg)
+
+    # -- main tabs (remember the last-used one) --
+
+    def _load_ui_tab(self):
+        try:
+            return max(0, min(3, int(
+                Krita.instance().readSetting("typer_kr", "uiTab", "0"))))
+        except Exception:
+            return 0
+
+    def _save_ui_tab(self, index):
+        try:
+            Krita.instance().writeSetting("typer_kr", "uiTab", str(int(index)))
+        except Exception:
+            pass
 
     # -- layout / view (sizes + show/hide of docker parts) --
 
@@ -2736,26 +3414,39 @@ class TyperDocker(DockWidget):
 
     # ---- style preset level ----
     def _refresh_presets_combo(self, select=None):
+        """Rebuild the preset dropdown. Character mode lists the current
+        character's presets (item data = name); simple mode lists every preset
+        of the manga (item data = (character, name), duplicate names get a
+        '(Character)' suffix)."""
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
         self.preset_combo.addItem(self._tr("preset_none"), None)
-        for name in sorted(self._cur_presets().keys(), key=lambda s: s.lower()):
-            self.preset_combo.addItem(name, name)
-        if select:
-            idx = self.preset_combo.findData(select)
-            if idx >= 0:
-                self.preset_combo.setCurrentIndex(idx)
+        if self._by_char():
+            for name in sorted(self._cur_presets().keys(),
+                               key=lambda s: s.lower()):
+                self.preset_combo.addItem(name, name)
+        else:
+            for label, ch, name in LP.flatten_presets(self._cur_chars()):
+                self.preset_combo.addItem(label, (ch, name))
+        if select is not None:
+            # manual match: findData compares QVariants, which is unreliable
+            # for python tuples
+            for i in range(self.preset_combo.count()):
+                if self.preset_combo.itemData(i) == select:
+                    self.preset_combo.setCurrentIndex(i)
+                    break
         self.preset_combo.blockSignals(False)
 
     def _on_preset_selected(self):
-        name = self.preset_combo.currentData()
-        if name and name in self._cur_presets():
-            self._apply_preset(self._cur_presets()[name])
-            self._record_preset_usage(self._group, self._char, name)
+        ch, name = self._preset_ref(self.preset_combo.currentData())
+        presets = self._cur_chars().get(ch, {})
+        if name and name in presets:
+            self._apply_preset(presets[name])
+            self._record_preset_usage(self._group, ch, name)
             self._set_status(self._tr("st_preset_applied").format(name=name))
 
     def on_preset_save(self):
-        current = self.preset_combo.currentData() or ""
+        _ch, current = self._preset_ref(self.preset_combo.currentData())
         name, ok = QInputDialog.getText(
             self.widget(), self._tr("preset_name_dlg"),
             self._tr("preset_name_prompt"), text=current)
@@ -2766,18 +3457,23 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_preset_name_empty"), error=True)
             return
         self._ensure_levels()
-        self._groups[self._group][self._char][name] = self._collect_preset()
+        # simple mode saves into the manga's default bucket character
+        target = self._char if self._by_char() else self._bucket_char()
+        self._groups[self._group].setdefault(target, {})[name] = \
+            self._collect_preset()
         self._save_groups()
-        self._refresh_presets_combo(select=name)
+        self._refresh_presets_combo(
+            select=name if self._by_char() else (target, name))
         self._set_status(self._tr("st_preset_saved_in").format(
-            name=name, char=self._char))
+            name=name, char=target))
 
     def on_preset_delete(self):
-        name = self.preset_combo.currentData()
-        if not name or name not in self._cur_presets():
+        ch, name = self._preset_ref(self.preset_combo.currentData())
+        presets = self._cur_chars().get(ch, {})
+        if not name or name not in presets:
             self._set_status(self._tr("st_preset_none"), error=True)
             return
-        del self._groups[self._group][self._char][name]
+        del self._groups[self._group][ch][name]
         self._save_groups()
         self._refresh_presets_combo()
         self._set_status(self._tr("st_preset_deleted").format(name=name))
@@ -3285,8 +3981,9 @@ class TyperDocker(DockWidget):
             self._index + 1,
             hyphenate=self.hyph_chk.isChecked(),
             hyph_lang=self._hyph_lang_for(text),
+            replace_existing=self.replace_chk.isChecked(),
         )
-        self._set_status(self._tr(key).format(**fmt), error=not ok)
+        self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
             self.font_picker.noteUsed(family)
             self._save_recents()
@@ -3296,6 +3993,70 @@ class TyperDocker(DockWidget):
             if self._index < len(self._pairs) - 1:
                 self._index += 1
             self._refresh_view()
+
+    def _insert_msg(self, key, fmt):
+        """Status message for an insert result; notes when old layer(s) of the
+        same line were replaced."""
+        msg = self._tr(key).format(**fmt)
+        if fmt.get("replaced"):
+            msg += "  " + self._tr("st_replaced")
+        return msg
+
+    def on_open_shaper(self):
+        """Open the TextShapR picker for the current line."""
+        dlg = TextShapRDialog(self)
+        dlg.exec_()
+
+    def insert_arrangement(self, cand, advance):
+        """Insert a TextShapR candidate through the normal insert path. The
+        chosen line breaks (and any hyphens) are baked into the text as hard
+        breaks, and the size is capped at the candidate's px, so the layer
+        matches the thumbnail exactly. Returns True on success."""
+        family = self.font_picker.currentFamily()
+        if not family:
+            self._set_status(self._tr("st_no_font"), error=True)
+            return False
+        baked = "\n".join(L.runs_markup(runs) for runs in cand["lines"])
+        ok, key, fmt = insert_text_layer(
+            baked,
+            family,
+            cand["px"],
+            self._color,
+            True,                  # auto-fit (respects the baked hard breaks)
+            cand["px"],            # cap at the candidate's size = WYSIWYG
+            self.pad_spin.value() / 100.0,
+            self.spacing_spin.value() / 100.0,
+            self.outline_chk.isChecked(),
+            self._outline_color,
+            self.outline_spin.value(),
+            self.bold_chk.isChecked(),
+            self.italic_chk.isChecked(),
+            self.underline_chk.isChecked(),
+            self.align_combo.currentData() or "center",
+            "none",                # case/tidy were applied at candidate time
+            False,
+            "rect",                # breaks are baked in -> rect reproduces them
+            self.shadow_chk.isChecked(),
+            self._shadow_color,
+            self.shadow_x_spin.value(),
+            self.shadow_y_spin.value(),
+            self.valign_combo.currentData() or "middle",
+            self._index + 1,
+            hyphenate=False,       # hyphens are already in the baked text
+            replace_existing=self.replace_chk.isChecked(),
+        )
+        self._set_status(self._insert_msg(key, fmt), error=not ok)
+        if ok:
+            self.font_picker.noteUsed(family)
+            self._save_recents()
+            self._save_settings()
+            if self._pairs:
+                self._done.add(self._index)
+                self._mark_done_row(self._index)
+                if advance and self._index < len(self._pairs) - 1:
+                    self._index += 1
+                self._refresh_view()
+        return ok
 
     def _show_current(self):
         total = len(self._pairs)
