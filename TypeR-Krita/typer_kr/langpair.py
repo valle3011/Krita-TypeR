@@ -635,3 +635,60 @@ def default_preset_for(preset_names, usage=None):
             return used[0]
     # 3) first alphabetical
     return sorted(names, key=lambda s: s.lower())[0]
+
+
+# ---------------------------------------------------------------------------
+# BubblR tab helpers (pure, Qt-free)
+# ---------------------------------------------------------------------------
+
+def rows_for_page(pair_pages, label):
+    """Absolute script-table row indices of the units on page `label`.
+
+    `pair_pages` is the per-unit page-label list from pair_lines_paged().
+    label=None means "no page filter" (scripts without Page markers) and
+    returns every row. Used by the BubblR tab to translate its per-page
+    unit indices into script-table rows (done-marking, layer numbering).
+    """
+    if label is None:
+        return list(range(len(pair_pages)))
+    return [i for i, p in enumerate(pair_pages) if p == label]
+
+
+def style_insert_kwargs(style):
+    """Map a style snapshot (the ``_collect_preset()`` dict: settings keys +
+    ``font``, colors as hex strings) to ``insert_text_layer`` keyword
+    values. Colors stay hex strings here so the function is Qt-free and
+    testable; the docker converts them to QColor at insert time.
+
+    Missing keys fall back to the same defaults the UI starts with, so old
+    presets (which only store a subset) work unchanged.
+    """
+    style = style if isinstance(style, dict) else {}
+    auto = bool(style.get("auto", True))
+    size = int(style.get("size", 60))
+    return {
+        "font_family": style.get("font", "") or "",
+        "font_px": size,
+        "color": style.get("color", "#000000"),
+        "auto_fit": auto,
+        "max_px": size,
+        "padding_frac": int(style.get("pad", 10)) / 100.0,
+        "line_spacing": int(style.get("spacing", 100)) / 100.0,
+        "outline": bool(style.get("outline", False)),
+        "outline_color": style.get("outline_color", "#ffffff"),
+        "outline_px": float(style.get("outline_w", 0)),
+        "bold": bool(style.get("bold", False)),
+        "italic": bool(style.get("italic", False)),
+        "underline": bool(style.get("underline", False)),
+        "align": style.get("align") or "center",
+        "case": style.get("case") or "none",
+        "tidy": bool(style.get("tidy", False)),
+        "shape": "ellipse" if (auto and style.get("round")) else "rect",
+        "shadow": bool(style.get("shadow", False)),
+        "shadow_color": style.get("shadow_color", "#000000"),
+        "shadow_dx": float(style.get("shadow_x", 0)),
+        "shadow_dy": float(style.get("shadow_y", 0)),
+        "valign": style.get("valign") or "middle",
+        "hyphenate": bool(style.get("hyphenate", False)),
+        "hyph_lang": style.get("hyph_lang", "auto"),
+    }

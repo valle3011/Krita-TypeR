@@ -25,27 +25,66 @@ nothing extra needs to be installed.
 import os
 import re
 import json
+import tempfile
+import time
 import zipfile
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import (QColor, QFont, QFontMetricsF, QPainter, QPainterPath,
-                         QBrush, QPen, QTextCursor)
+from PyQt5.QtCore import (Qt, pyqtSignal, QRectF, QEvent, QPoint, QPointF,
+                          QMimeData, QTimer, QRect, QSize)
+from PyQt5.QtGui import (QColor, QFont, QFontMetricsF, QImage, QPainter,
+                         QPainterPath, QBrush, QPen, QTextCursor, QDrag,
+                         QCursor, QKeySequence, QPolygonF)
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QPlainTextEdit, QSpinBox, QCheckBox, QFileDialog, QColorDialog,
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
     QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
-    QDialog, QButtonGroup,
+    QDialog, QButtonGroup, QSplitter, QDialogButtonBox, QApplication,
+    QShortcut, QLayout,
 )
+
+# Drag & drop mime type carrying a panel id while a PanelBox is dragged by
+# its header (customize mode only).
+PANEL_MIME = "application/x-typer-panel"
+
+# How many generic host dockers are pre-registered so a panel can be detached
+# into its own Krita-dockable window (kept in sync with layoutmodel).
+MAX_DETACH_SLOTS = 3
+
+# slot index -> live TyperExtraHost instance. Filled as Krita constructs the
+# pre-registered host dockers; read by the main docker when detaching a panel.
+_EXTRA_HOSTS = {}
 from PyQt5.QtGui import QFontDatabase
 
-from krita import DockWidget, DockWidgetFactory, DockWidgetFactoryBase, Krita
+from krita import (DockWidget, DockWidgetFactory, DockWidgetFactoryBase,
+                   Krita, Selection)
 
 from . import layout as L
 from . import langpair as LP
+from . import bubbles as BB
+from . import ai_backend as AB
+
+
+# Human-facing version number for this build (bump on releases).
+VERSION = "1.7"
+
+# BubblR (the AI bubble-detection tab) is still experimental and depends on the
+# external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
+# hidden and its enable toggle is not shown. Set this to False to bring it back
+# once the AI is ready (all the BubblR code stays in place, just dormant).
+BUBBLR_LOCKED = True
+
+# Build stamp = last-modified time of THIS installed file. copy/xcopy keep the
+# source's timestamp, so this shows which code version Krita actually loaded -
+# handy to confirm an update really took (compare it after running UPDATE.bat).
+try:
+    BUILD = time.strftime("%Y-%m-%d %H:%M",
+                          time.localtime(os.path.getmtime(__file__)))
+except Exception:
+    BUILD = "?"
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +312,8 @@ LANG = {
         "tab_style": "Style",
         "tab_presets": "Presets",
         "tab_setup": "Setup",
+        "tab_shapr": "TextShapR",
+        "tab_sfx": "SFX",
         "close": "Close",
         "preset_actions": "Preset actions (save, delete, import, export)",
         "outline_more": "Outline settings …",
@@ -289,6 +330,16 @@ LANG = {
         "shaper_wide": "Wide",
         "shaper_hyph": "Hyphenation",
         "shaper_hint": "Click a shape to test it. Shift+number applies and advances.",
+        "shaper_break_label": "Edit line breaks:",
+        "shaper_break_tip": "One line per line. Edit the breaks (or a word); the preview follows.",
+        "shaper_auto": "Auto shape",
+        "shaper_auto_tip": "Fit an ellipse when the selection is a round bubble",
+        "shaper_live": "Live on canvas",
+        "shaper_live_tip": "Insert the picked shape onto the page as you select (replacing)",
+        "shaper_best": "\u2605 Best",
+        "shaper_best_tip": "Jump to the recommended arrangement (biggest that fits)",
+        "shaper_match": "Match size",
+        "shaper_match_tip": "Cap the size at the last inserted bubble, for a uniform page",
         "shaper_apply": "Apply",
         "shaper_apply_next": "Apply + next",
         "shaper_empty": ("No arrangements to show. Pick a font and make sure "
@@ -310,6 +361,203 @@ LANG = {
                                 "the manga's text presets (the character level "
                                 "is hidden; new presets are stored under the "
                                 "manga's default character)."),
+        # BubblR tab (automatic bubble detection + per-bubble styles)
+        "tab_bubblr": "BubblR",
+        "bp_backend_heur": "Heuristic (built-in)",
+        "bp_backend_ai": "AI (BubblR-AI)",
+        "bp_backend_tip": ("How bubbles/free text are found: the built-in "
+                           "heuristic or the learned model in the BubblR "
+                           "'ai' folder (run ai\\setup.ps1 once)."),
+        "bp_detect": "Detect bubbles",
+        "bp_add_sel": "Add bubble from selection",
+        "bp_reset": "Reset order",
+        "bp_order": "Set order",
+        "bp_order_tip": ("Click the bubbles in the order you want them "
+                         "numbered (finish by clicking them all; click the "
+                         "button again to cancel)."),
+        "bp_sfxmark": "Mark SFX",
+        "bp_sfxmark_tip": ("While active, click a box to switch it between "
+                           "speech bubble and SFX / free text (blue). Click "
+                           "the button again to leave the mode."),
+        "bp_shapemark": "Toggle shape",
+        "bp_shapemark_tip": ("While active, click a box to force its shape "
+                             "round <-> rectangular (overrides the automatic "
+                             "shape). Click the button again to leave."),
+        "bp_edit": "Edit boxes",
+        "bp_edit_tip": ("While active: drag on empty page to draw a new box, "
+                        "drag a box to move it, drag a corner to resize. "
+                        "Right-click removes. Shortcuts (click the image "
+                        "first): E/Q next/prev, S = SFX, R = shape, Del = "
+                        "remove."),
+        "bp_panelorder": "Panel order",
+        "bp_panelorder_tip": ("Detect comic panels (Magi AI) and renumber the "
+                              "bubbles panel by panel — fixes wrong order "
+                              "across side-by-side panels. First run downloads "
+                              "the Magi model."),
+        "bp_save_boxes": "Save boxes",
+        "bp_save_boxes_tip": ("Save the current boxes to a .json file so you "
+                              "can resume labelling this page later."),
+        "bp_load_boxes": "Load boxes",
+        "bp_load_boxes_tip": "Load boxes from a saved .json file.",
+        "bp_model": "Model:",
+        "bp_model_tip": ("Which detector weights to use. Auto uses your "
+                         "fine-tuned model only if it beat the baseline in "
+                         "eval; otherwise the baseline. Kitsumed = stronger "
+                         "bubble model with real shape from a mask (bubbles "
+                         "only); Hybrid = kitsumed bubbles + your model's SFX. "
+                         "Both need the training setup and download on first "
+                         "use."),
+        "bp_model_auto": "Auto (best)",
+        "bp_model_baseline": "Baseline",
+        "bp_model_finetuned": "Fine-tuned",
+        "bp_model_kitsumed": "kitsumed (bubbles + shape)",
+        "bp_model_hybrid": "Hybrid (kitsumed + SFX)",
+        "bp_conf": "Bubbles",
+        "bp_conf_tip": ("Detection sensitivity: lower = more boxes (more "
+                        "recall, more false ones), higher = fewer, surer "
+                        "boxes."),
+        "bp_sfxconf": "SFX",
+        "bp_reset_tip": "Back to the automatic reading order.",
+        "bp_chk_text": "Bubbles must contain text",
+        "bp_chk_text_tip": ("Heuristic only: accept only white regions with "
+                            "text inside (raw pages). Turn off for cleaned "
+                            "pages."),
+        "bp_chk_sfx": "Also detect free text (SFX)",
+        "bp_chk_sfx_tip": ("Find handwritten SFX/mutterings without a bubble "
+                           "and add them as blue boxes."),
+        "bp_rtl": "Manga (right-to-left)",
+        "bp_rtl_tip": ("Reading order: right-to-left for manga, unchecked = "
+                       "left-to-right for western comics."),
+        "bp_tile": "More accurate (slower)",
+        "bp_tile_tip": ("Scan big pages in overlapping tiles so small SFX / "
+                        "text are found at full resolution. Turn OFF on a "
+                        "weak PC or laptop for a much faster (but coarser) "
+                        "detection."),
+        "bp_overlay_tip": ("Click a box to make it the current bubble; "
+                           "Ctrl+click boxes in the desired order to "
+                           "renumber; right-click removes a box."),
+        "bubble_of": "Bubble {cur} / {n}",
+        "bubble_prev_tip": "Previous bubble (redo it — Insert replaces).",
+        "bubble_next_tip": "Next bubble.",
+        "panel_move_to": "Move to → {tab}",
+        "panel_up": "Move up",
+        "panel_down": "Move down",
+        "panel_detach": "Detach into window",
+        "panel_reattach": "Reattach into tab",
+        "detach_host_hint": ("Detached TypeR panels appear here. "
+                             "Use a panel's ⋮ menu → Reattach to send it back."),
+        "panel_presets": "Presets",
+        "panel_table": "Japanese / Translation",
+        "panel_preview": "Preview",
+        "panel_script": "Script",
+        "panel_nav": "Navigation",
+        "panel_active": "Text field",
+        "panel_font": "Font & color",
+        "panel_insert": "Insert",
+        "panel_style_basic": "Style & alignment",
+        "panel_style_size": "Size & fit",
+        "panel_style_outline": "Outline",
+        "panel_style_shadow": "Shadow",
+        "panel_hyphenation": "Hyphenation",
+        "panel_bubblr_detect": "Detection",
+        "panel_bubblr_overlay": "Bubble preview",
+        "panel_setup_general": "General",
+        "panel_shapr": "TextShapR",
+        "panel_sfx": "SFX Helper",
+        "panel_layout_sizes": "Layout & sizes",
+        "exp_section": "Experimental",
+        "enable_bubblr": "Enable BubblR (automatic bubble detection)",
+        "enable_shapr": "Enable TextShapR",
+        "enable_sfx": "Enable SFX tab",
+        "bp_hint": ("BubblR only marks the bubbles. Type the text on the "
+                    "Type tab — Insert fills the current bubble and steps "
+                    "to the next; ◀/▶ there redo a bubble."),
+        "customize_layout": "Customize layout (rename && reorder tabs)",
+        "customize_hint": ("Drag the tabs to reorder them; double-click a tab "
+                           "to rename it. Panels can be moved between tabs in "
+                           "a later update."),
+        "layout_reset": "Reset layout",
+        "layout_reset_done": "Layout reset to defaults.",
+        "tab_rename_title": "Rename tab",
+        "tab_rename_prompt": "Tab name (empty = default):",
+        "bp_place_next": "Place && next",
+        "bp_place_next_tip": ("Insert the current bubble's line and jump to "
+                              "the next un-placed bubble — the Insert "
+                              "rhythm of the Type tab."),
+        "bp_selfollow": "Selection follows current bubble",
+        "bp_selfollow_tip": ("The current bubble's rect becomes the Krita "
+                             "selection, so Insert/TextShapR on the Type "
+                             "tab work on it too. Off: your selection is "
+                             "never touched."),
+        "bp_sfx_db": "SFX words…",
+        "bp_sfx_db_tip": ("Vocabulary used to recognize SFX lines in the "
+                          "script (so they don't eat bubble slots while SFX "
+                          "boxes are ignored). One word per line; "
+                          "elongations like GOGOGOGO are matched "
+                          "automatically."),
+        "bp_sfx_dlg_hint": ("Your own SFX words, one per line (added to the "
+                            "built-in list):"),
+        "bp_src_sfx_suffix": ", {n} SFX skipped",
+        "st_bp_all_done": "All mapped lines are placed.",
+        "bp_src_page": "Lines: page {page} ({n} units)",
+        "bp_src_all": "Lines: whole script ({n} units)",
+        "bp_col_num": "#",
+        "bp_col_text": "Text",
+        "bp_col_style": "Style",
+        "bp_up_tip": "Move the selected line up (previous box).",
+        "bp_down_tip": "Move the selected line down (next box).",
+        "bp_gap_add_tip": ("Insert a gap: this box gets no line; the lines "
+                           "below shift down."),
+        "bp_gap_rm_tip": ("Remove a gap: this box takes the next line; the "
+                          "lines below shift up."),
+        "bp_assign": "Assign current style",
+        "bp_assign_tip": ("Store the current style (font, Style tab, preset) "
+                          "on the selected row(s) – those bubbles keep it "
+                          "when placing, others use the style active at "
+                          "placement time."),
+        "bp_unassign": "Use current style",
+        "bp_unassign_tip": ("Remove the stored style from the selected "
+                            "row(s); they follow the active style again "
+                            "(auto-character styles are not re-applied)."),
+        "bp_place": "Place all",
+        "bp_place_sel": "Place selected",
+        "bp_export": "Export training example",
+        "bp_export_tip": ("Save this page + the corrected boxes as an AI "
+                          "training sample into the ai folder's dataset."),
+        "bp_pick_ai": "Select the BubblR 'ai' folder",
+        "st_bp_no_script": "Load a script on the Type tab first.",
+        "st_bp_unsupported": ("Unsupported image: {model}/{depth} – only "
+                              "8-bit RGBA or grayscale documents work."),
+        "st_bp_detected": "{n} box(es) detected.",
+        "st_bp_none": "No bubbles detected.",
+        "st_bp_mismatch": ("Warning: {b} boxes but {u} script lines – only "
+                           "matching pairs will be placed."),
+        "st_bp_no_sel": "No selection – select a bubble first.",
+        "st_bp_added": "Box {n} added from the selection.",
+        "st_bp_renumbered": "New order applied.",
+        "st_bp_order_mode": ("Set order: click the bubbles in reading "
+                             "order."),
+        "st_bp_sfx_mode": ("Mark SFX: click a box to switch it between "
+                           "bubble and SFX."),
+        "st_bp_shape_mode": ("Toggle shape: click a box to flip it round / "
+                             "rectangular."),
+        "st_bp_edit_mode": ("Edit boxes: drag empty = new, drag box = move, "
+                            "drag corner = resize, right-click = remove."),
+        "st_bp_panels_wait": "Detecting panels (Magi)…",
+        "st_bp_panels": "Reordered by {n} panel(s).",
+        "st_bp_saved": "Boxes saved to {name}.",
+        "st_bp_loaded": "Loaded {n} box(es).",
+        "st_bp_style_set": "Style stored on {n} row(s).",
+        "st_bp_style_cleared": "Stored style removed from {n} row(s).",
+        "st_bp_no_rows": "Select row(s) in the table first.",
+        "st_bp_placed": "{n} line(s) placed.",
+        "st_bp_ai_missing": ("AI backend not found – run ai\\setup.ps1 once, "
+                             "then select the 'ai' folder."),
+        "st_bp_ai_error": "AI detection failed: {msg}",
+        "st_bp_exported": "Training example saved: {name}",
+        "st_bp_export_none": "Nothing to export – detect boxes first.",
+        "view_bubblr": "BubblR preview",
+        "view_bmap": "BubblR table",
     },
     "de": {
         "title": "TypeR für Krita",
@@ -477,6 +725,8 @@ LANG = {
         "tab_style": "Stil",
         "tab_presets": "Presets",
         "tab_setup": "Einstellungen",
+        "tab_shapr": "TextShapR",
+        "tab_sfx": "SFX",
         "close": "Schließen",
         "preset_actions": "Preset-Aktionen (speichern, löschen, importieren, exportieren)",
         "outline_more": "Kontur-Einstellungen …",
@@ -494,6 +744,16 @@ LANG = {
         "shaper_wide": "Breit",
         "shaper_hyph": "Silbentrennung",
         "shaper_hint": "Klick testet eine Form. Umschalt+Zahl fügt ein und geht weiter.",
+        "shaper_break_label": "Umbrüche bearbeiten:",
+        "shaper_break_tip": "Eine Zeile pro Zeile. Umbrüche (oder ein Wort) ändern; Vorschau folgt.",
+        "shaper_auto": "Form auto",
+        "shaper_auto_tip": "Ellipse fitten, wenn die Auswahl eine runde Blase ist",
+        "shaper_live": "Live auf Leinwand",
+        "shaper_live_tip": "Gewählte Form beim Auswählen direkt auf die Seite einfügen (ersetzend)",
+        "shaper_best": "\u2605 Bester",
+        "shaper_best_tip": "Zur empfohlenen Anordnung springen (größte, die passt)",
+        "shaper_match": "Größe angleichen",
+        "shaper_match_tip": "Größe auf die zuletzt eingefügte Blase deckeln (einheitliche Seite)",
         "shaper_apply": "Einfügen",
         "shaper_apply_next": "Einfügen + weiter",
         "shaper_empty": ("Keine Formen anzeigbar. Erst eine Schrift wählen und "
@@ -517,6 +777,211 @@ LANG = {
                                 "(die Charakter-Ebene ist ausgeblendet; neue "
                                 "Presets landen beim Standard-Charakter des "
                                 "Mangas)."),
+        # BubblR tab (automatic bubble detection + per-bubble styles)
+        "tab_bubblr": "BubblR",
+        "bp_backend_heur": "Heuristik (eingebaut)",
+        "bp_backend_ai": "KI (BubblR-AI)",
+        "bp_backend_tip": ("Wie Bubbles/freier Text gefunden werden: "
+                           "eingebaute Heuristik oder das gelernte Modell im "
+                           "BubblR-'ai'-Ordner (einmalig ai\\setup.ps1 "
+                           "ausführen)."),
+        "bp_detect": "Bubbles erkennen",
+        "bp_add_sel": "Bubble aus Auswahl hinzufügen",
+        "bp_reset": "Reihenfolge zurücksetzen",
+        "bp_order": "Reihenfolge festlegen",
+        "bp_order_tip": ("Die Bubbles in der gewünschten Reihenfolge "
+                         "anklicken (fertig, wenn alle geklickt sind; nochmal "
+                         "auf den Knopf = abbrechen)."),
+        "bp_sfxmark": "SFX markieren",
+        "bp_sfxmark_tip": ("Wenn aktiv, eine Box anklicken, um zwischen "
+                           "Sprechblase und SFX / freier Text (blau) zu "
+                           "wechseln. Nochmal auf den Knopf = beenden."),
+        "bp_shapemark": "Form wechseln",
+        "bp_shapemark_tip": ("Wenn aktiv, eine Box anklicken, um ihre Form "
+                             "rund <-> eckig zu erzwingen (überschreibt die "
+                             "automatische Form). Nochmal auf den Knopf = "
+                             "beenden."),
+        "bp_edit": "Boxen bearbeiten",
+        "bp_edit_tip": ("Wenn aktiv: auf leerer Seite ziehen = neue Box, "
+                        "Box ziehen = verschieben, Ecke ziehen = Größe. "
+                        "Rechtsklick entfernt. Tasten (vorher aufs Bild "
+                        "klicken): E/Q vor/zurück, S = SFX, R = Form, "
+                        "Entf = löschen."),
+        "bp_panelorder": "Panel-Reihenfolge",
+        "bp_panelorder_tip": ("Comic-Panels erkennen (Magi-KI) und die Bubbles "
+                              "panelweise neu nummerieren — behebt falsche "
+                              "Reihenfolge bei nebeneinanderliegenden Panels. "
+                              "Erster Aufruf lädt das Magi-Modell herunter."),
+        "bp_save_boxes": "Boxen speichern",
+        "bp_save_boxes_tip": ("Aktuelle Boxen als .json speichern, um das "
+                              "Labeln dieser Seite später fortzusetzen."),
+        "bp_load_boxes": "Boxen laden",
+        "bp_load_boxes_tip": "Boxen aus einer gespeicherten .json-Datei laden.",
+        "bp_model": "Modell:",
+        "bp_model_tip": ("Welche Detektor-Gewichte. Auto nutzt dein "
+                         "trainiertes Modell nur, wenn es im Test besser "
+                         "war als das Basis-Modell; sonst das Basis-Modell. "
+                         "Kitsumed = stärkeres Blasen-Modell mit echter Form "
+                         "aus einer Maske (nur Blasen); Hybrid = kitsumed-"
+                         "Blasen + SFX deines Modells. Beide brauchen das "
+                         "Training-Setup und laden beim ersten Mal herunter."),
+        "bp_model_auto": "Auto (bestes)",
+        "bp_model_baseline": "Basis",
+        "bp_model_finetuned": "Trainiert",
+        "bp_model_kitsumed": "kitsumed (Blasen + Form)",
+        "bp_model_hybrid": "Hybrid (kitsumed + SFX)",
+        "bp_conf": "Bubbles",
+        "bp_conf_tip": ("Empfindlichkeit: niedriger = mehr Boxen (mehr "
+                        "Treffer, aber auch mehr falsche), höher = weniger, "
+                        "sicherere Boxen."),
+        "bp_sfxconf": "SFX",
+        "bp_reset_tip": "Zurück zur automatischen Lesereihenfolge.",
+        "bp_chk_text": "Bubbles müssen Text enthalten",
+        "bp_chk_text_tip": ("Nur Heuristik: nur weiße Flächen mit Text darin "
+                            "akzeptieren (Raw-Seiten). Für gecleante Seiten "
+                            "ausschalten."),
+        "bp_chk_sfx": "Auch freien Text finden (SFX)",
+        "bp_chk_sfx_tip": ("Handgeschriebene SFX/Murmeln ohne Bubble finden "
+                           "und als blaue Boxen hinzufügen."),
+        "bp_rtl": "Manga (rechts-nach-links)",
+        "bp_rtl_tip": ("Leserichtung: rechts-nach-links für Manga, ohne "
+                       "Haken = links-nach-rechts für westliche Comics."),
+        "bp_tile": "Genauer (langsamer)",
+        "bp_tile_tip": ("Große Seiten in überlappenden Kacheln absuchen, "
+                        "damit kleine SFX / Texte in voller Auflösung "
+                        "gefunden werden. Auf schwachem PC oder Laptop "
+                        "ausschalten für eine viel schnellere (aber gröbere) "
+                        "Erkennung."),
+        "bp_overlay_tip": ("Klick macht eine Box zur aktuellen Bubble; "
+                           "Strg+Klick in gewünschter Reihenfolge "
+                           "nummeriert neu; Rechtsklick entfernt eine "
+                           "Box."),
+        "bubble_of": "Bubble {cur} / {n}",
+        "bubble_prev_tip": ("Vorherige Bubble (neu machen — Insert "
+                            "ersetzt)."),
+        "bubble_next_tip": "Nächste Bubble.",
+        "panel_move_to": "Verschieben nach → {tab}",
+        "panel_up": "Nach oben",
+        "panel_down": "Nach unten",
+        "panel_detach": "In Fenster lösen",
+        "panel_reattach": "Zurück in Tab",
+        "detach_host_hint": ("Abgelöste TypeR-Panels erscheinen hier. "
+                             "Über ⋮ → Zurück in Tab zurückholen."),
+        "panel_presets": "Presets",
+        "panel_table": "Japanisch / Übersetzung",
+        "panel_preview": "Vorschau",
+        "panel_script": "Skript",
+        "panel_nav": "Navigation",
+        "panel_active": "Textfeld",
+        "panel_font": "Schrift & Farbe",
+        "panel_insert": "Einfügen",
+        "panel_style_basic": "Stil & Ausrichtung",
+        "panel_style_size": "Größe & Anpassung",
+        "panel_style_outline": "Kontur",
+        "panel_style_shadow": "Schatten",
+        "panel_hyphenation": "Silbentrennung",
+        "panel_bubblr_detect": "Erkennung",
+        "panel_bubblr_overlay": "Bubble-Vorschau",
+        "panel_setup_general": "Allgemein",
+        "panel_shapr": "TextShapR",
+        "panel_sfx": "SFX Helper",
+        "panel_layout_sizes": "Layout & Größen",
+        "exp_section": "Experimentell",
+        "enable_bubblr": "BubblR aktivieren (automatische Bubble-Erkennung)",
+        "enable_shapr": "TextShapR aktivieren",
+        "enable_sfx": "SFX-Tab aktivieren",
+        "bp_hint": ("BubblR markiert nur die Bubbles. Den Text schreibst du "
+                    "im Type-Tab — Insert füllt die aktuelle Bubble und geht "
+                    "weiter; ◀/▶ dort machen eine Bubble neu."),
+        "customize_layout": "Layout anpassen (Tabs umbenennen && umordnen)",
+        "customize_hint": ("Tabs ziehen zum Umordnen; Doppelklick auf einen "
+                           "Tab zum Umbenennen. Panels lassen sich in einem "
+                           "späteren Update zwischen Tabs verschieben."),
+        "layout_reset": "Layout zurücksetzen",
+        "layout_reset_done": "Layout auf Standard zurückgesetzt.",
+        "tab_rename_title": "Tab umbenennen",
+        "tab_rename_prompt": "Tab-Name (leer = Standard):",
+        "bp_place_next": "Platzieren && weiter",
+        "bp_place_next_tip": ("Zeile der aktuellen Bubble einfügen und zur "
+                              "nächsten offenen Bubble springen — der "
+                              "Insert-Rhythmus des Type-Tabs."),
+        "bp_selfollow": "Auswahl folgt aktueller Bubble",
+        "bp_selfollow_tip": ("Das Rechteck der aktuellen Bubble wird zur "
+                             "Krita-Auswahl, damit auch Insert/TextShapR "
+                             "vom Type-Tab darauf arbeiten. Aus: deine "
+                             "Auswahl wird nie angefasst."),
+        "bp_sfx_db": "SFX-Wörter…",
+        "bp_sfx_db_tip": ("Wortschatz, mit dem SFX-Zeilen im Skript erkannt "
+                          "werden (damit sie keine Bubbles verbrauchen, "
+                          "solange SFX-Boxen ignoriert werden). Ein Wort "
+                          "pro Zeile; Dehnungen wie GOGOGOGO werden "
+                          "automatisch erkannt."),
+        "bp_sfx_dlg_hint": ("Eigene SFX-Wörter, eins pro Zeile (ergänzt die "
+                            "eingebaute Liste):"),
+        "bp_src_sfx_suffix": ", {n} SFX übersprungen",
+        "st_bp_all_done": "Alle zugeordneten Zeilen sind platziert.",
+        "bp_src_page": "Zeilen: Seite {page} ({n} Einheiten)",
+        "bp_src_all": "Zeilen: ganzes Skript ({n} Einheiten)",
+        "bp_col_num": "#",
+        "bp_col_text": "Text",
+        "bp_col_style": "Stil",
+        "bp_up_tip": "Markierte Zeile nach oben schieben (vorherige Box).",
+        "bp_down_tip": "Markierte Zeile nach unten schieben (nächste Box).",
+        "bp_gap_add_tip": ("Lücke einfügen: diese Box bekommt keine Zeile; "
+                           "die folgenden Zeilen rutschen nach unten."),
+        "bp_gap_rm_tip": ("Lücke entfernen: diese Box bekommt die nächste "
+                          "Zeile; die folgenden rutschen nach oben."),
+        "bp_assign": "Aktuellen Stil zuweisen",
+        "bp_assign_tip": ("Speichert den aktuellen Stil (Schrift, Stil-Tab, "
+                          "Preset) auf den markierten Zeilen – diese Bubbles "
+                          "behalten ihn beim Platzieren, alle anderen nutzen "
+                          "den dann aktiven Stil."),
+        "bp_unassign": "Aktuellen Stil verwenden",
+        "bp_unassign_tip": ("Entfernt den gespeicherten Stil von den "
+                            "markierten Zeilen; sie folgen wieder dem "
+                            "aktiven Stil (Auto-Charakter-Stile werden nicht "
+                            "erneut gesetzt)."),
+        "bp_place": "Alle platzieren",
+        "bp_place_sel": "Markierte platzieren",
+        "bp_export": "Trainingsbeispiel exportieren",
+        "bp_export_tip": ("Diese Seite + die korrigierten Boxen als "
+                          "KI-Trainingsbeispiel im dataset des ai-Ordners "
+                          "speichern."),
+        "bp_pick_ai": "BubblR-'ai'-Ordner auswählen",
+        "st_bp_no_script": "Bitte zuerst ein Skript im Type-Tab laden.",
+        "st_bp_unsupported": ("Nicht unterstütztes Bild: {model}/{depth} – "
+                              "nur 8-Bit-RGBA- oder Graustufen-Dokumente "
+                              "funktionieren."),
+        "st_bp_detected": "{n} Box(en) erkannt.",
+        "st_bp_none": "Keine Bubbles erkannt.",
+        "st_bp_mismatch": ("Achtung: {b} Boxen, aber {u} Skriptzeilen – nur "
+                           "passende Paare werden platziert."),
+        "st_bp_no_sel": "Keine Auswahl – bitte zuerst eine Bubble auswählen.",
+        "st_bp_added": "Box {n} aus der Auswahl hinzugefügt.",
+        "st_bp_renumbered": "Neue Reihenfolge übernommen.",
+        "st_bp_order_mode": ("Reihenfolge festlegen: Bubbles in Lesereihen"
+                             "folge anklicken."),
+        "st_bp_sfx_mode": ("SFX markieren: Box anklicken, um zwischen "
+                           "Bubble und SFX zu wechseln."),
+        "st_bp_shape_mode": ("Form wechseln: Box anklicken, um sie rund / "
+                             "eckig zu schalten."),
+        "st_bp_edit_mode": ("Boxen bearbeiten: leer ziehen = neu, Box "
+                            "ziehen = verschieben, Ecke = Größe, Rechtsklick "
+                            "= löschen."),
+        "st_bp_panels_wait": "Panels werden erkannt (Magi)…",
+        "st_bp_panels": "Nach {n} Panel(s) neu geordnet.",
+        "st_bp_style_set": "Stil auf {n} Zeile(n) gespeichert.",
+        "st_bp_style_cleared": "Gespeicherter Stil von {n} Zeile(n) entfernt.",
+        "st_bp_no_rows": "Bitte zuerst Zeile(n) in der Tabelle markieren.",
+        "st_bp_placed": "{n} Zeile(n) platziert.",
+        "st_bp_ai_missing": ("KI-Backend nicht gefunden – einmalig "
+                             "ai\\setup.ps1 ausführen und den 'ai'-Ordner "
+                             "auswählen."),
+        "st_bp_ai_error": "KI-Erkennung fehlgeschlagen: {msg}",
+        "st_bp_exported": "Trainingsbeispiel gespeichert: {name}",
+        "st_bp_export_none": "Nichts zu exportieren – erst Boxen erkennen.",
+        "view_bubblr": "BubblR-Vorschau",
+        "view_bmap": "BubblR-Tabelle",
     },
     # Core localization for additional UI languages; any key not listed here
     # falls back to English via _tr().
@@ -1194,12 +1659,17 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       align="center", case="none", tidy=False, shape="rect",
                       shadow=False, shadow_color=None, shadow_dx=0.0,
                       shadow_dy=0.0, valign="middle", layer_index=None,
-                      hyphenate=False, hyph_lang="en", replace_existing=False):
+                      hyphenate=False, hyph_lang="en", replace_existing=False,
+                      box=None):
     """Insert a single line of text as a text layer.
 
     auto_fit=True: the line is wrapped automatically, balanced and scaled to the
     largest size that fits the current selection (= "where to"). Without a
     selection the whole image is used as the box.
+
+    box: optional (x, y, w, h) tuple that overrides the selection as the
+    target box — used by the BubblR tab, which places into detected bubbles
+    without touching the user's selection.
 
     auto_fit=False: fixed size font_px, only split at embedded line breaks.
 
@@ -1230,17 +1700,20 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     img_w = doc.width()
     img_h = doc.height()
 
-    # determine the box + its center
-    sel = doc.selection()
-    has_sel = sel is not None
-    if has_sel:
-        try:
-            box_x, box_y = sel.x(), sel.y()
-            box_w, box_h = sel.width(), sel.height()
-        except Exception:
-            has_sel = False
-    if not has_sel:
-        box_x, box_y, box_w, box_h = 0, 0, img_w, img_h
+    # determine the box + its center (explicit box > selection > image)
+    if box is not None:
+        box_x, box_y, box_w, box_h = box
+    else:
+        sel = doc.selection()
+        has_sel = sel is not None
+        if has_sel:
+            try:
+                box_x, box_y = sel.x(), sel.y()
+                box_w, box_h = sel.width(), sel.height()
+            except Exception:
+                has_sel = False
+        if not has_sel:
+            box_x, box_y, box_w, box_h = 0, 0, img_w, img_h
     cx = box_x + box_w / 2.0
     cy = box_y + box_h / 2.0
 
@@ -1305,6 +1778,277 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
         return True, "st_inserted_fit", {"px": px, "n": len(text_lines),
                                          "replaced": replaced}
     return True, "st_inserted", {"replaced": replaced}
+
+
+# ---------------------------------------------------------------------------
+# BubblR: pixel grab + overlay preview (detection logic lives in bubbles.py,
+# the external AI detector is reached through ai_backend.py)
+# ---------------------------------------------------------------------------
+
+def grab_gray(doc):
+    """Return (gray_bytes, w, h) of the flattened document, or
+    (None, colorModel, colorDepth) when unsupported. 8-bit RGBA (BGRA byte
+    order -> the green channel is a good luminance stand-in for B/W manga)
+    and 8-bit grayscale are supported."""
+    model = doc.colorModel()
+    depth = doc.colorDepth()
+    if depth != "U8" or model not in ("RGBA", "GRAYA"):
+        return None, model, depth
+    w, h = doc.width(), doc.height()
+    data = bytes(doc.pixelData(0, 0, w, h))
+    if model == "RGBA":
+        gray = data[1::4]
+    else:
+        gray = data[0::2]
+    return gray, w, h
+
+
+class BubbleOverlay(QWidget):
+    """Paints the page thumbnail with numbered bubble boxes on top.
+
+    Plain left-click emits boxClicked(index, False) (select as current),
+    Ctrl+left-click boxClicked(index, True) (renumber sequence), right-click
+    boxRemoved(index); the docker owns the box list and the state. The
+    current box is drawn with a thick border."""
+
+    boxClicked = pyqtSignal(int, bool)
+    boxRemoved = pyqtSignal(int)
+    boxAdded = pyqtSignal(float, float, float, float)        # x, y, w, h (doc)
+    boxChanged = pyqtSignal(int, float, float, float, float)  # idx + xywh
+
+    _HANDLE = 9        # px radius around a corner that grabs it for resizing
+
+    def __init__(self):
+        super(BubbleOverlay, self).__init__()
+        self._img = None
+        self._doc_w = 1
+        self._doc_h = 1
+        self._boxes = []
+        self._pending = {}
+        self._current = -1
+        self._edit = False        # draw/resize mode
+        self._drag = None         # active draw/move/resize gesture
+        self.setMinimumHeight(120)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def set_edit_mode(self, on):
+        self._edit = bool(on)
+        self._drag = None
+        self.setCursor(Qt.CrossCursor if on else Qt.ArrowCursor)
+        self.update()
+
+    def set_page(self, img, doc_w, doc_h):
+        self._img = img
+        self._doc_w = max(1, doc_w)
+        self._doc_h = max(1, doc_h)
+        self.update()
+
+    def set_boxes(self, boxes, pending=None, current=-1):
+        self._boxes = boxes
+        self._pending = pending or {}
+        self._current = current
+        self.update()
+
+    def _target(self):
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return QRectF(0, 0, 1, 1)
+        scale = min(w / float(self._doc_w), h / float(self._doc_h))
+        tw = self._doc_w * scale
+        th = self._doc_h * scale
+        return QRectF((w - tw) / 2.0, (h - th) / 2.0, tw, th)
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(60, 60, 60))
+        t = self._target()
+        if self._img is not None and not self._img.isNull():
+            p.drawImage(t, self._img,
+                        QRectF(0, 0, self._img.width(), self._img.height()))
+        scale = t.width() / float(self._doc_w)
+        fnt = QFont()
+        fnt.setBold(True)
+        fnt.setPixelSize(14)
+        p.setFont(fnt)
+        for k, b in enumerate(self._boxes):
+            r = QRectF(t.x() + b["x"] * scale, t.y() + b["y"] * scale,
+                       b["w"] * scale, b["h"] * scale)
+            pending = self._pending.get(k)
+            if pending is not None:
+                color = QColor(60, 200, 90)         # renumber in progress
+            elif b.get("kind") == "sfx":
+                color = QColor(70, 130, 230)        # free text / SFX
+            else:
+                color = QColor(230, 60, 60)         # bubble
+            p.setPen(QPen(color, 4 if k == self._current else 2))
+            p.setBrush(Qt.NoBrush)      # outlines only — never fill the box
+            # Draw each box in the shape that fits it: the real traced outline
+            # if we have it, else an ellipse for round balloons, else a
+            # rectangle for caption boxes / SFX / free text.
+            poly = b.get("poly")
+            if poly and b.get("kind") != "sfx" and len(poly) >= 3:
+                p.drawPolygon(QPolygonF(
+                    [QPointF(t.x() + px * scale, t.y() + py * scale)
+                     for px, py in poly]))
+            elif b.get("shape") == "round" and b.get("kind") != "sfx":
+                p.drawEllipse(r)
+            else:
+                p.drawRect(r)
+            label = str(pending if pending is not None else k + 1)
+            badge = QRectF(r.x(), r.y(), 22, 18)
+            p.fillRect(badge, color)
+            p.setPen(QPen(QColor(255, 255, 255)))
+            p.drawText(badge, Qt.AlignCenter, label)
+            # small corner handles while in draw/edit mode
+            if self._edit:
+                p.setBrush(QBrush(QColor(255, 255, 255)))
+                p.setPen(QPen(QColor(30, 30, 30), 1))
+                for hx, hy in ((r.left(), r.top()), (r.right(), r.top()),
+                               (r.left(), r.bottom()), (r.right(), r.bottom())):
+                    p.drawRect(QRectF(hx - 3, hy - 3, 6, 6))
+        # the box currently being drawn / resized (dashed preview)
+        rect = self._rect_of(self._drag) if self._drag else None
+        if rect is not None:
+            x, y, w, h = rect
+            pr = QRectF(t.x() + x * scale, t.y() + y * scale,
+                        w * scale, h * scale)
+            pen = QPen(QColor(60, 200, 90), 2, Qt.DashLine)
+            p.setPen(pen)
+            p.setBrush(QBrush(Qt.NoBrush))
+            p.drawRect(pr)
+        p.end()
+
+    def _hit(self, pos):
+        t = self._target()
+        if t.width() <= 0:
+            return -1
+        scale = t.width() / float(self._doc_w)
+        x = (pos.x() - t.x()) / scale
+        y = (pos.y() - t.y()) / scale
+        best = -1
+        best_area = None
+        for k, b in enumerate(self._boxes):
+            if b["x"] <= x <= b["x"] + b["w"] and \
+               b["y"] <= y <= b["y"] + b["h"]:
+                area = b["w"] * b["h"]
+                if best_area is None or area < best_area:
+                    best, best_area = k, area
+        return best
+
+    def _to_doc(self, pos):
+        """Widget point -> document pixel coordinates."""
+        t = self._target()
+        if t.width() <= 0:
+            return 0.0, 0.0
+        scale = t.width() / float(self._doc_w)
+        return (pos.x() - t.x()) / scale, (pos.y() - t.y()) / scale
+
+    def _handle_at(self, pos):
+        """What the press grabs in edit mode: (idx, 'nw'|'ne'|'sw'|'se') for a
+        corner resize, (idx, 'move') inside a box, or None for empty canvas."""
+        t = self._target()
+        if t.width() <= 0:
+            return None
+        scale = t.width() / float(self._doc_w)
+        best, best_area = None, None
+        for k, b in enumerate(self._boxes):
+            x0 = t.x() + b["x"] * scale
+            y0 = t.y() + b["y"] * scale
+            x1 = x0 + b["w"] * scale
+            y1 = y0 + b["h"] * scale
+            corners = {"nw": (x0, y0), "ne": (x1, y0),
+                       "sw": (x0, y1), "se": (x1, y1)}
+            for name, (cx, cy) in corners.items():
+                if abs(pos.x() - cx) <= self._HANDLE \
+                        and abs(pos.y() - cy) <= self._HANDLE:
+                    return (k, name)
+            if x0 <= pos.x() <= x1 and y0 <= pos.y() <= y1:
+                area = b["w"] * b["h"]
+                if best_area is None or area < best_area:
+                    best, best_area = (k, "move"), area
+        return best
+
+    @staticmethod
+    def _norm(ax, ay, bx, by):
+        return (min(ax, bx), min(ay, by), abs(bx - ax), abs(by - ay))
+
+    def _rect_of(self, d):
+        """Current doc-space rect (x,y,w,h) of an in-progress gesture."""
+        if not d:
+            return None
+        if d["mode"] == "new":
+            return self._norm(d["x0"], d["y0"], d["cx"], d["cy"])
+        if d["mode"] == "move":
+            return (d["bx"] + (d["cx"] - d["px"]),
+                    d["by"] + (d["cy"] - d["py"]), d["bw"], d["bh"])
+        return self._norm(d["fx"], d["fy"], d["cx"], d["cy"])   # resize
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            idx = self._hit(event.pos())
+            if idx >= 0:
+                self.boxRemoved.emit(idx)
+            return
+        if event.button() != Qt.LeftButton:
+            return
+        if self._edit:
+            self.setFocus(Qt.MouseFocusReason)
+            self._begin_edit(event.pos())
+            return
+        idx = self._hit(event.pos())
+        if idx < 0:
+            return
+        ctrl = bool(event.modifiers() & Qt.ControlModifier)
+        self.boxClicked.emit(idx, ctrl)
+
+    def _begin_edit(self, pos):
+        dx, dy = self._to_doc(pos)
+        hit = self._handle_at(pos)
+        if hit is None:
+            self._drag = {"mode": "new", "x0": dx, "y0": dy,
+                          "cx": dx, "cy": dy}
+        elif hit[1] == "move":
+            b = self._boxes[hit[0]]
+            self._drag = {"mode": "move", "idx": hit[0],
+                          "bx": b["x"], "by": b["y"],
+                          "bw": b["w"], "bh": b["h"],
+                          "px": dx, "py": dy, "cx": dx, "cy": dy}
+        else:
+            idx, corner = hit
+            b = self._boxes[idx]
+            # fixed = the opposite corner
+            fx = b["x"] + b["w"] if corner in ("nw", "sw") else b["x"]
+            fy = b["y"] + b["h"] if corner in ("nw", "ne") else b["y"]
+            self._drag = {"mode": "resize", "idx": idx,
+                          "fx": fx, "fy": fy, "cx": dx, "cy": dy}
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if not self._edit or self._drag is None:
+            return
+        self._drag["cx"], self._drag["cy"] = self._to_doc(event.pos())
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if not self._edit or self._drag is None:
+            return
+        d, self._drag = self._drag, None
+        rect = self._rect_of(d)
+        self.update()
+        if rect is None:
+            return
+        x, y, w, h = rect
+        if w < 8 or h < 8:          # ignore stray clicks / tiny boxes
+            return
+        # clamp into the page
+        x = max(0.0, min(x, self._doc_w - 1))
+        y = max(0.0, min(y, self._doc_h - 1))
+        w = min(w, self._doc_w - x)
+        h = min(h, self._doc_h - y)
+        if d["mode"] == "new":
+            self.boxAdded.emit(x, y, w, h)
+        else:
+            self.boxChanged.emit(d["idx"], x, y, w, h)
 
 
 # ---------------------------------------------------------------------------
@@ -1739,15 +2483,21 @@ class ShapeCard(QFrame):
     clicked = pyqtSignal(int)
     W, H = 200, 120
 
-    def __init__(self, index, cand, opts, scale):
+    def __init__(self, index, cand, opts, scale, best=False, w=None, h=None):
         super().__init__()
         self._index = index
         self._cand = cand
         self._o = opts
         self._scale = scale
         self._selected = False
-        self.setFixedSize(self.W, self.H)
+        self._best = best
+        self.setFixedSize(int(w or self.W), int(h or self.H))
         self.setCursor(Qt.PointingHandCursor)
+
+    def set_size(self, w, h, scale):
+        self._scale = scale
+        self.setFixedSize(int(w), int(h))
+        self.update()
 
     def set_selected(self, on):
         if self._selected != bool(on):
@@ -1826,6 +2576,10 @@ class ShapeCard(QFrame):
         p.setFont(bf)
         p.drawText(self.rect().adjusted(0, 3, -6, 0),
                    Qt.AlignRight | Qt.AlignTop, str(self._index + 1))
+        if self._best:
+            p.setPen(QColor(0x2E, 0x8B, 0x57))
+            p.drawText(self.rect().adjusted(6, 3, 0, 0),
+                       Qt.AlignLeft | Qt.AlignTop, "\u2605")
         frame = QPen(QColor(0x2D, 0x8C, 0xEB), 2) if self._selected \
             else QPen(QColor(0, 0, 0, 70), 1)
         p.setPen(frame)
@@ -1834,26 +2588,26 @@ class ShapeCard(QFrame):
         p.end()
 
 
-class TextShapRDialog(QDialog):
-    """Modal picker: shows the current line wrapped into several candidate
-    shapes (mode bar: Balanced / Round / Tall / Wide, plus a Hyphenation
-    toggle) as numbered thumbnails. Click selects; Apply inserts the chosen
-    arrangement through the normal insert path; Apply + next also advances.
-    Number keys select a card, Shift+number applies and advances."""
+class TextShapRWidget(QWidget):
+    """TextShapR picker as its own docker tab: shows the current line wrapped
+    into several candidate shapes (mode bar: Balanced / Round / Tall / Wide,
+    plus a Hyphenation toggle) as numbered thumbnails that reflow to the docker
+    width. Click selects; Apply inserts the chosen arrangement through the
+    normal insert path; Apply + next also advances. Number keys select a card,
+    Shift+number applies and advances."""
 
     _MODES = ("balanced", "round", "tall", "wide")
 
     def __init__(self, docker):
-        super().__init__(docker.widget())
+        super().__init__()
         self._docker = docker
         t = docker._tr
-        self.setWindowTitle(t("shaper_title"))
-        self.resize(470, 620)
 
         lay = QVBoxLayout()
+        lay.setContentsMargins(0, 0, 0, 0)
         self.setLayout(lay)
 
-        bar = QHBoxLayout()
+        bar = FlowLayout(margin=0, spacing=4)
         self._mode_group = QButtonGroup(self)
         self._mode_group.setExclusive(True)
         for i, mode in enumerate(self._MODES):
@@ -1863,36 +2617,84 @@ class TextShapRDialog(QDialog):
                 b.setChecked(True)
             self._mode_group.addButton(b, i)
             bar.addWidget(b)
-        self._mode_group.buttonClicked.connect(lambda *_a: self._refresh())
+        self._mode_group.buttonClicked.connect(lambda *_a: self.refresh())
+        # auto-pick the round shape when the selection is an ellipse
+        self.auto_shape_btn = QPushButton(t("shaper_auto"))
+        self.auto_shape_btn.setCheckable(True)
+        self.auto_shape_btn.setChecked(True)
+        self.auto_shape_btn.setToolTip(t("shaper_auto_tip"))
+        self.auto_shape_btn.toggled.connect(lambda *_a: self.refresh())
+        bar.addWidget(self.auto_shape_btn)
+        # live: insert the selected candidate onto the canvas (replacing)
+        # so you see it at the real page position; off by default.
+        self.live_btn = QPushButton(t("shaper_live"))
+        self.live_btn.setCheckable(True)
+        self.live_btn.setToolTip(t("shaper_live_tip"))
+        self.live_btn.toggled.connect(self._on_live_toggle)
+        bar.addWidget(self.live_btn)
+        # match: cap the size at the last inserted bubble for a uniform page
+        self.match_btn = QPushButton(t("shaper_match"))
+        self.match_btn.setCheckable(True)
+        self.match_btn.setToolTip(t("shaper_match_tip"))
+        self.match_btn.toggled.connect(lambda *_a: self.refresh())
+        bar.addWidget(self.match_btn)
         # hyphenation is a toggle on top of the mode, not exclusive with it
         self.hyph_btn = QPushButton(t("shaper_hyph"))
         self.hyph_btn.setCheckable(True)
         self.hyph_btn.setChecked(docker.hyph_chk.isChecked())
-        self.hyph_btn.toggled.connect(lambda *_a: self._refresh())
+        self.hyph_btn.toggled.connect(lambda *_a: self.refresh())
         bar.addWidget(self.hyph_btn)
         lay.addLayout(bar)
 
+        self._empty = QLabel(t("shaper_empty"))
+        self._empty.setWordWrap(True)
+        self._empty.setAlignment(Qt.AlignCenter)
+        lay.addWidget(self._empty)
+
+        # The thumbnails reflow to the available width, so their rows follow the
+        # docker size (a wider docker fits more cards per row).
         self._grid_host = QWidget()
-        self._grid = QGridLayout()
-        self._grid.setSpacing(8)
-        self._grid_host.setLayout(self._grid)
+        self._flow = FlowLayout(margin=0, spacing=8)
+        self._grid_host.setLayout(self._flow)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.StyledPanel)
         scroll.setWidget(self._grid_host)
         lay.addWidget(scroll, 1)
 
-        self._empty = QLabel(t("shaper_empty"))
-        self._empty.setWordWrap(True)
-        self._empty.setAlignment(Qt.AlignCenter)
-        self._grid.addWidget(self._empty, 0, 0, 1, 2)
-
         self._hint = QLabel(t("shaper_hint"))
         self._hint.setStyleSheet("color: gray;")
         self._hint.setWordWrap(True)
         lay.addWidget(self._hint)
 
+        # Manual break editor: a plain text field showing the arrangement,
+        # one line per line. Edit the breaks (or a word) directly; the
+        # thumbnail follows and the canvas preview follows shortly after.
+        self._brk_box = QWidget()
+        _brk_lay = QVBoxLayout()
+        _brk_lay.setContentsMargins(0, 0, 0, 0)
+        _brk_lay.setSpacing(2)
+        self._brk_box.setLayout(_brk_lay)
+        self.lbl_break = QLabel(t("shaper_break_label"))
+        self.lbl_break.setStyleSheet("color: gray;")
+        _brk_lay.addWidget(self.lbl_break)
+        self.break_edit = QPlainTextEdit()
+        self.break_edit.setToolTip(t("shaper_break_tip"))
+        self.break_edit.setMaximumHeight(90)
+        self.break_edit.textChanged.connect(self._on_break_text_changed)
+        _brk_lay.addWidget(self.break_edit)
+        self._brk_box.setVisible(False)
+        self._break_timer = QTimer(self)
+        self._break_timer.setSingleShot(True)
+        self._break_timer.setInterval(350)
+        self._break_timer.timeout.connect(self._live_preview)
+        lay.addWidget(self._brk_box)
+
         foot = QHBoxLayout()
+        self.best_btn = QPushButton(t("shaper_best"))
+        self.best_btn.setToolTip(t("shaper_best_tip"))
+        self.best_btn.clicked.connect(self._select_best)
+        foot.addWidget(self.best_btn)
         foot.addStretch(1)
         self.apply_btn = QPushButton(t("shaper_apply"))
         self.apply_btn.clicked.connect(lambda: self._apply(False))
@@ -1901,36 +2703,69 @@ class TextShapRDialog(QDialog):
         self.apply_next_btn.setDefault(True)
         self.apply_next_btn.clicked.connect(lambda: self._apply(True))
         foot.addWidget(self.apply_next_btn)
-        self.close_btn = QPushButton(t("close"))
-        self.close_btn.clicked.connect(self.reject)
-        foot.addWidget(self.close_btn)
         lay.addLayout(foot)
 
         self._cards = []
         self._cands = []
         self._sel = -1
-        self._refresh()
+        self._last_box = (1.0, 1.0)
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(120)
+        self._resize_timer.timeout.connect(self._relayout_cards)
+        self.refresh()
+
+    def showEvent(self, ev):
+        # Refresh when the tab becomes visible: the current line, selection or
+        # style may have changed while another tab was in front.
+        super().showEvent(ev)
+        self.refresh()
 
     # -- data --
 
     def _box(self):
         """Box to fit into: the selection, else the whole image, else a
-        default box (no document open). Returns (w, h, has_doc)."""
+        default box (no document open). Returns (w, h, has_doc, shape)
+        where shape is 'round' for a roughly elliptical selection, else
+        'rect'/None."""
         try:
             doc = Krita.instance().activeDocument()
         except Exception:
             doc = None
         if doc is None:
-            return 400.0, 300.0, False
+            return 400.0, 300.0, False, None
         sel = doc.selection()
         if sel is not None:
             try:
                 w, h = float(sel.width()), float(sel.height())
                 if w > 0 and h > 0:
-                    return w, h, True
+                    return w, h, True, self._sel_shape(sel)
             except Exception:
                 pass
-        return float(doc.width()), float(doc.height()), True
+        return float(doc.width()), float(doc.height()), True, None
+
+    @staticmethod
+    def _sel_shape(sel):
+        """'round' if the selection fills clearly less than its bounding
+        box (an elliptical marquee is ~pi/4), else 'rect'. Subsampled."""
+        try:
+            w, h = int(sel.width()), int(sel.height())
+            if w <= 0 or h <= 0:
+                return "rect"
+            data = sel.pixelData(sel.x(), sel.y(), w, h)
+            if not data:
+                return "rect"
+            n = len(data)
+            step = max(1, n // 20000)
+            marked = total = 0
+            for i in range(0, n, step):
+                total += 1
+                if data[i]:
+                    marked += 1
+            frac = marked / float(total) if total else 1.0
+            return "round" if frac < 0.9 else "rect"
+        except Exception:
+            return "rect"
 
     def _opts(self):
         d = self._docker
@@ -1951,12 +2786,41 @@ class TextShapRDialog(QDialog):
             "shadow_dy": float(d.shadow_y_spin.value()),
         }
 
-    def _refresh(self):
+    def _card_dims(self, box_w, box_h):
+        """Card size from the current width: wider docker = bigger cards,
+        and the height follows the bubble proportion so text is not cut."""
+        avail = max(140, self.width() - 12)
+        cols = max(1, int(avail // 210))
+        cw = max(160, min(440, int(avail / cols) - 8))
+        ratio = (box_h / float(box_w)) if box_w > 0 else 0.62
+        ch = int(max(90, min(cw * 1.7, cw * ratio)))
+        return cw, ch
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        if hasattr(self, "_resize_timer"):
+            self._resize_timer.start()
+
+    def _relayout_cards(self):
+        """Resize existing cards to the new docker width (no regeneration,
+        so the selection is kept)."""
+        if not self._cards:
+            return
+        box_w, box_h = self._last_box
+        cw, ch = self._card_dims(box_w, box_h)
+        scale = min((cw - 12) / box_w, (ch - 12) / box_h)
+        for card in self._cards:
+            card.set_size(cw, ch, scale)
+
+    def refresh(self):
         """Regenerate the candidates for the current line and rebuild the
         cards. Never raises; with no font/text it shows a hint instead."""
+        if not hasattr(self._docker, "font_picker"):
+            return
         d = self._docker
         for card in self._cards:
-            self._grid.removeWidget(card)
+            self._flow.removeWidget(card)
+            card.setParent(None)
             card.deleteLater()
         self._cards = []
         self._cands = []
@@ -1968,7 +2832,7 @@ class TextShapRDialog(QDialog):
                                 d.tidy_chk.isChecked())
         prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
         clean, mask = parse_bold(prepared)
-        box_w, box_h, has_doc = self._box()
+        box_w, box_h, has_doc, sel_shape = self._box()
 
         if family and clean.strip():
             measurer = _make_measurer(family,
@@ -1976,10 +2840,16 @@ class TextShapRDialog(QDialog):
                                       d.bold_chk.isChecked(),
                                       d.italic_chk.isChecked())
             mode = self._MODES[max(0, self._mode_group.checkedId())]
+            if self.auto_shape_btn.isChecked() and sel_shape == "round":
+                mode = "round"      # elliptical selection -> fit an ellipse
+            max_px = d.size_spin.value()
+            last = getattr(d, "_last_insert_px", None)
+            if self.match_btn.isChecked() and last:
+                max_px = min(max_px, int(last))   # match neighbouring bubbles
             try:
                 self._cands = L.shape_candidates(
                     clean, measurer, box_w, box_h,
-                    d.size_spin.value(), 6, d.pad_spin.value() / 100.0,
+                    max_px, 6, d.pad_spin.value() / 100.0,
                     mode=mode, hyphenate=self.hyph_btn.isChecked(),
                     lang=d._hyph_lang_for(clean), mask=mask, limit=10)
             except Exception:
@@ -1989,35 +2859,99 @@ class TextShapRDialog(QDialog):
         self._empty.setVisible(not have)
         self.apply_btn.setEnabled(have)
         self.apply_next_btn.setEnabled(have)
+        self.best_btn.setEnabled(have)
         self._hint.setText(self._docker._tr(
             "shaper_hint" if has_doc else "shaper_no_doc"))
         if not have:
+            self._brk_box.setVisible(False)
             return
         o = self._opts()
+        self._last_box = (box_w, box_h)
+        cw, ch = self._card_dims(box_w, box_h)
         # one shared scale so the size differences between shapes stay visible
-        scale = min((ShapeCard.W - 12) / box_w, (ShapeCard.H - 12) / box_h)
+        scale = min((cw - 12) / box_w, (ch - 12) / box_h)
         for i, cand in enumerate(self._cands):
-            card = ShapeCard(i, cand, o, scale)
-            card.clicked.connect(self._select)
-            self._grid.addWidget(card, i // 2, i % 2)
+            card = ShapeCard(i, cand, o, scale, best=(i == 0), w=cw, h=ch)
+            card.clicked.connect(lambda i: self._select(i, user=True))
+            self._flow.addWidget(card)
             self._cards.append(card)
         self._select(0)
 
     # -- interaction --
 
-    def _select(self, index):
+    def _select(self, index, user=False):
         if not (0 <= index < len(self._cards)):
             return
         self._sel = index
         for i, card in enumerate(self._cards):
             card.set_selected(i == index)
+        self._load_break_editor(index)
+        if user:
+            self._live_preview()
+
+    def _live_preview(self):
+        """When 'live' is on, insert the selected candidate onto the
+        canvas (replacing the line's previous layer) so it shows at the
+        real page position."""
+        if not (hasattr(self, "live_btn") and self.live_btn.isChecked()):
+            return
+        if 0 <= self._sel < len(self._cands):
+            try:
+                self._docker.insert_arrangement(
+                    self._cands[self._sel], False, replace=True)
+            except Exception:
+                pass
+
+    def _on_live_toggle(self, on):
+        if on:
+            self._live_preview()
+
+    def _load_break_editor(self, index):
+        """Show the selected candidate's arrangement in the editable text
+        field (one line per line, bold as **...**)."""
+        cand = self._cands[index] if 0 <= index < len(self._cands) else None
+        lines = cand.get("lines") if cand else None
+        if not lines:
+            self._brk_box.setVisible(False)
+            return
+        text = "\n".join(L.runs_markup(runs) for runs in lines)
+        self.break_edit.blockSignals(True)
+        self.break_edit.setPlainText(text)
+        self.break_edit.blockSignals(False)
+        self._brk_box.setVisible(True)
+
+    def _on_break_text_changed(self):
+        """Rebuild the selected candidate from the edited text (one line
+        per line); update the thumbnail now, the canvas preview shortly."""
+        if not (0 <= self._sel < len(self._cands)):
+            return
+        lines = [ln for ln in self.break_edit.toPlainText().split("\n")
+                 if ln.strip()]
+        if not lines:
+            return
+        runs = []
+        for ln in lines:
+            clean, mask = parse_bold(ln)
+            runs.append(L.make_runs(clean, mask))
+        cand = self._cands[self._sel]
+        cand["lines"] = runs
+        cand["k"] = len(runs)
+        cand.pop("words", None)
+        self._cards[self._sel].update()
+        self._break_timer.start()
+
+    def _select_best(self):
+        """Pick the recommended candidate (the first, biggest-fitting)."""
+        if self._cards:
+            self._select(0, user=True)
+            self._cards[0].setFocus()
 
     def _apply(self, advance):
         if not (0 <= self._sel < len(self._cands)):
             return
         ok = self._docker.insert_arrangement(self._cands[self._sel], advance)
         if ok and advance:
-            self._refresh()        # show the shapes for the next line
+            self.refresh()        # show the shapes for the next line
 
     @staticmethod
     def _digit(event):
@@ -2032,15 +2966,342 @@ class TextShapRDialog(QDialog):
         return None
 
     def keyPressEvent(self, event):
+        key = event.key()
+        if key in (Qt.Key_Left, Qt.Key_Up, Qt.Key_Right, Qt.Key_Down) \
+                and self._cards:
+            step = -1 if key in (Qt.Key_Left, Qt.Key_Up) else 1
+            cur = self._sel if self._sel >= 0 else 0
+            self._select(max(0, min(cur + step, len(self._cards) - 1)),
+                         user=True)
+            return
         digit = self._digit(event)
         if digit is not None:
             index = 9 if digit == 0 else digit - 1       # key 0 = card 10
             if 0 <= index < len(self._cards):
-                self._select(index)
+                self._select(index, user=True)
                 if event.modifiers() & Qt.ShiftModifier:
                     self._apply(True)
             return
         super().keyPressEvent(event)
+
+
+# ---------------------------------------------------------------------------
+# Movable panel wrapper (customizable layout, step 2a)
+# ---------------------------------------------------------------------------
+
+class FlowLayout(QLayout):
+    """A layout that lays widgets out left-to-right and wraps to the next line
+    when they don't fit the available width (Qt's classic flow-layout example).
+
+    Used for the BubblR control rows so the buttons/fields reflow to the
+    docker width instead of overflowing off the right edge."""
+
+    def __init__(self, margin=0, spacing=4):
+        super(FlowLayout, self).__init__()
+        self._items = []
+        self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientations(Qt.Orientation(0))
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._do_layout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        super(FlowLayout, self).setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        size += QSize(m.left() + m.right(), m.top() + m.bottom())
+        return size
+
+    def _do_layout(self, rect, test_only):
+        m = self.contentsMargins()
+        x = rect.x() + m.left()
+        y = rect.y() + m.top()
+        right = rect.right() - m.right()
+        line_h = 0
+        space = self.spacing()
+        for item in self._items:
+            hint = item.sizeHint()
+            w, h = hint.width(), hint.height()
+            if x + w > right and line_h > 0:      # wrap to next line
+                x = rect.x() + m.left()
+                y = y + line_h + space
+                line_h = 0
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x += w + space
+            line_h = max(line_h, h)
+        return y + line_h - rect.y() + m.bottom()
+
+
+class PanelBox(QFrame):
+    """A relocatable panel: a small header bar (title + a ⋮ menu that moves
+    the panel to another tab) above its content. The header only shows in
+    "Customize layout" mode, so in normal use the panel looks like plain
+    content. The docker owns the actual move logic (`_move_panel_to_tab`)."""
+
+    def __init__(self, pid, docker):
+        super(PanelBox, self).__init__()
+        self._pid = pid
+        self._docker = docker
+        self._edit = False
+        self._locked = False           # pinned: excluded from dragging
+        self._drag_pos = None          # press point on the header (drag start)
+        self._drop_zone = None         # "top"/"bottom" while a panel hovers
+        # declared early: event filters below can fire during construction
+        self._resize_grip = None
+        self._resize_ref = None
+        self._user_height = 0
+        self.setFrameShape(QFrame.NoFrame)
+        self.setAcceptDrops(True)      # a panel can be dropped onto this one
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(1)
+        self._header = QWidget()
+        h = QHBoxLayout(self._header)
+        h.setContentsMargins(4, 0, 2, 0)
+        h.setSpacing(2)
+        # A grip glyph hints the header is a drag handle in customize mode.
+        self._grip = QLabel("⠿")
+        self._grip.setStyleSheet("color: palette(mid);")
+        h.addWidget(self._grip)
+        self._title = QLabel()
+        self._title.setStyleSheet("color: palette(mid); font-weight: bold;")
+        h.addWidget(self._title, 1)
+        # padlock: pin a panel so it can't be dragged even in customize mode
+        self._lock_btn = QToolButton()
+        self._lock_btn.setAutoRaise(True)
+        self._lock_btn.setCheckable(True)
+        self._lock_btn.setText("🔓")
+        self._lock_btn.toggled.connect(
+            lambda on: self._docker._set_panel_locked(self._pid, on))
+        h.addWidget(self._lock_btn)
+        self._menu_btn = QToolButton()
+        self._menu_btn.setText("⋮")
+        self._menu_btn.setAutoRaise(True)
+        self._menu_btn.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(self._menu_btn)
+        menu.aboutToShow.connect(self._build_menu)
+        self._menu = menu
+        self._menu_btn.setMenu(menu)
+        h.addWidget(self._menu_btn)
+        v.addWidget(self._header)
+        # The header (title + grip) is the drag handle. Watch its mouse events.
+        self._header.installEventFilter(self)
+        self._title.installEventFilter(self)
+        self._grip.installEventFilter(self)
+        self._header.setCursor(Qt.OpenHandCursor)
+        self.body = QWidget()
+        self._body_lay = QVBoxLayout(self.body)
+        self._body_lay.setContentsMargins(0, 0, 0, 0)
+        self._body_lay.setSpacing(6)
+        v.addWidget(self.body, 1)
+        # resize handle along the bottom edge, shown only in Customize mode;
+        # drag it to set the panel's height (persisted by the docker).
+        self._resize_grip = QWidget()
+        self._resize_grip.setFixedHeight(7)
+        self._resize_grip.setCursor(Qt.SizeVerCursor)
+        self._resize_grip.setStyleSheet(
+            "background: palette(mid); border-radius: 2px;")
+        self._resize_grip.setVisible(False)
+        self._resize_grip.installEventFilter(self)
+        v.addWidget(self._resize_grip)
+        self._user_height = 0          # 0 = natural size, >0 = fixed height
+        self._resize_ref = None
+        self._header.setVisible(False)
+
+    def body_layout(self):
+        return self._body_lay
+
+    def set_title(self, text):
+        self._title.setText(text)
+
+    def set_edit(self, on):
+        self._edit = bool(on)
+        self._header.setVisible(self._edit)
+        self._resize_grip.setVisible(self._edit)
+        self._apply_frame()
+
+    def set_user_height(self, h):
+        """Fix the panel height to `h` px (0 = back to natural sizing)."""
+        self._user_height = int(h) if h and h > 0 else 0
+        if self._user_height > 0:
+            self.setMinimumHeight(self._user_height)
+            self.setMaximumHeight(self._user_height)
+        else:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+
+    def set_locked(self, on):
+        """Pin/unpin the panel (reflects docker state; does not re-save)."""
+        self._locked = bool(on)
+        self._lock_btn.blockSignals(True)
+        self._lock_btn.setChecked(self._locked)
+        self._lock_btn.setText("🔒" if self._locked else "🔓")
+        self._lock_btn.blockSignals(False)
+        self._header.setCursor(
+            Qt.ForbiddenCursor if self._locked else Qt.OpenHandCursor)
+
+    def _apply_frame(self):
+        self.setFrameShape(QFrame.StyledPanel if self._edit else QFrame.NoFrame)
+        if self._edit and self._drop_zone == "top":
+            self.setStyleSheet("PanelBox { border-top: 2px solid palette(highlight); }")
+        elif self._edit and self._drop_zone == "bottom":
+            self.setStyleSheet("PanelBox { border-bottom: 2px solid palette(highlight); }")
+        else:
+            self.setStyleSheet("")
+
+    def _build_menu(self):
+        self._menu.clear()
+        self._docker._fill_panel_menu(self._menu, self._pid)
+
+    # -- drag source (drag the header to relocate the panel) ----------------
+
+    def eventFilter(self, obj, ev):
+        if obj is self._resize_grip and self._edit:
+            et = ev.type()
+            if et == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+                self._resize_ref = (ev.globalPos().y(), self.height())
+                return True
+            if et == QEvent.MouseMove and self._resize_ref is not None:
+                dy = ev.globalPos().y() - self._resize_ref[0]
+                self.set_user_height(max(80, self._resize_ref[1] + dy))
+                return True
+            if et == QEvent.MouseButtonRelease and self._resize_ref is not None:
+                self._resize_ref = None
+                self._docker._save_panel_heights()
+                return True
+        if (obj in (self._header, self._title, self._grip)
+                and self._edit and not self._locked):
+            et = ev.type()
+            if et == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+                self._drag_pos = ev.pos()
+            elif et == QEvent.MouseMove and self._drag_pos is not None:
+                if ((ev.pos() - self._drag_pos).manhattanLength()
+                        >= QApplication.startDragDistance()):
+                    self._drag_pos = None
+                    self._start_drag()
+                    return True
+            elif et == QEvent.MouseButtonRelease:
+                self._drag_pos = None
+        return super(PanelBox, self).eventFilter(obj, ev)
+
+    def _start_drag(self):
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData(PANEL_MIME, self._pid.encode("utf-8"))
+        drag.setMimeData(mime)
+        pm = self.grab()
+        if pm.width() > 320:
+            pm = pm.scaledToWidth(320, Qt.SmoothTransformation)
+        drag.setPixmap(pm)
+        drag.setHotSpot(QPoint(20, 10))
+        self._docker._panel_drag_started()
+        drag.exec_(Qt.MoveAction)
+        self._docker._panel_drag_finished()
+
+    # -- drop target (another panel dropped onto this one) ------------------
+
+    def dragEnterEvent(self, ev):
+        if self._edit and ev.mimeData().hasFormat(PANEL_MIME):
+            ev.acceptProposedAction()
+        else:
+            ev.ignore()
+
+    def dragMoveEvent(self, ev):
+        if not (self._edit and ev.mimeData().hasFormat(PANEL_MIME)):
+            ev.ignore()
+            return
+        zone = "top" if ev.pos().y() < self.height() / 2 else "bottom"
+        if zone != self._drop_zone:
+            self._drop_zone = zone
+            self._apply_frame()
+        ev.acceptProposedAction()
+
+    def dragLeaveEvent(self, ev):
+        if self._drop_zone is not None:
+            self._drop_zone = None
+            self._apply_frame()
+
+    def dropEvent(self, ev):
+        after = self._drop_zone == "bottom"
+        self._drop_zone = None
+        self._apply_frame()
+        if not (self._edit and ev.mimeData().hasFormat(PANEL_MIME)):
+            ev.ignore()
+            return
+        src = bytes(ev.mimeData().data(PANEL_MIME)).decode("utf-8")
+        self._docker._drop_panel_rel(src, self._pid, after)
+        ev.acceptProposedAction()
+
+
+# ---------------------------------------------------------------------------
+# Detach host dockers
+# ---------------------------------------------------------------------------
+
+class TyperExtraHost(DockWidget):
+    """A generic host docker for a *detached* TypeR panel. Krita only shows
+    dockers registered at startup, so a small pool of these is pre-registered
+    (see :func:`register`). They stay empty until the user detaches a panel
+    into one; each registers itself in ``_EXTRA_HOSTS`` by its slot so the
+    main docker can find a free host."""
+
+    _SLOT = 0     # overridden per registered subclass
+
+    def __init__(self):
+        super(TyperExtraHost, self).__init__()
+        slot = self.__class__._SLOT
+        self._slot = slot
+        self.setWindowTitle("TypeR panel %d" % (slot + 1))
+        host = QWidget()
+        self._lay = QVBoxLayout(host)
+        self._lay.setContentsMargins(4, 4, 4, 4)
+        self._lay.setSpacing(4)
+        self._placeholder = QLabel("")
+        self._placeholder.setStyleSheet("color: gray;")
+        self._placeholder.setWordWrap(True)
+        self._placeholder.setAlignment(Qt.AlignCenter)
+        self._lay.addWidget(self._placeholder)
+        self._lay.addStretch(1)
+        self.setWidget(host)
+        _EXTRA_HOSTS[slot] = self
+
+    def host_layout(self):
+        return self._lay
+
+    def set_hint(self, text):
+        self._placeholder.setText(text)
+
+    def show_placeholder(self, on):
+        self._placeholder.setVisible(bool(on))
+
+    def canvasChanged(self, canvas):
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -2103,10 +3364,42 @@ class TyperDocker(DockWidget):
 
         lay_type = _page()       # everyday insert loop
         lay_style = _page()      # font variants, alignment, effects, fitting
-        lay_presets = _page()    # manga -> character -> style presets
         lay_setup = _page()      # language + panel layout
+        lay_bubblr = _page()     # auto-detect bubbles + per-bubble styles
+        lay_shapr = _page()      # TextShapR: pick a shape arrangement
+        lay_sfx = _page()        # SFX Helper (embedded MangaSFX docker)
 
-        # --- language selector (Setup tab) ---
+        # Presets are no longer their own tab: they live inside the Type
+        # tab as a self-contained panel container. Building them into this
+        # container's layout keeps every `lay_presets.addWidget(...)` call
+        # below unchanged; the container is inserted into the Type tab.
+        self.presets_panel = QWidget()
+        lay_presets = QVBoxLayout()
+        lay_presets.setContentsMargins(0, 0, 0, 0)
+        lay_presets.setSpacing(6)
+        self.presets_panel.setLayout(lay_presets)
+
+        # movable-panel registry (customizable layout, step 2a)
+        self._tab_layouts = {"type": lay_type, "style": lay_style,
+                             "setup": lay_setup, "bubblr": lay_bubblr,
+                             "shapr": lay_shapr, "sfx": lay_sfx}
+        self._panels = {}          # panel id -> PanelBox
+        self._panel_tab = {}       # panel id -> current tab id
+        self._panel_home = {}      # panel id -> default (home) tab id
+        self._detached = {}        # panel id -> slot int, or "float"
+        self._float_dialogs = {}   # panel id -> floating QDialog (fallback)
+
+        # BubblR tab state. BubblR only DETECTS and orders the bubbles; the
+        # text is typed/placed from the Type tab (Insert fills the current
+        # bubble and steps to the next). So there is no script mapping here.
+        self._bp_boxes = []        # ordered detected box dicts (x/y/w/h/shape)
+        self._bp_click_seq = []    # box indices Ctrl-clicked for renumbering
+        self._bp_current = -1      # current bubble (Insert target / step ptr)
+        self._bp_placed = set()    # bubble indices already filled with text
+
+        # --- general settings panel (language + insert/preset options) ---
+        _sg_pb = self._new_panel("setup_general", "setup")
+        _sgl = _sg_pb.body_layout()
         lang_row = QHBoxLayout()
         self.lang_label = QLabel()
         self.lang_combo = NoScrollComboBox()
@@ -2120,11 +3413,24 @@ class TyperDocker(DockWidget):
         self.lang_combo.currentIndexChanged.connect(self._on_lang_change)
         lang_row.addWidget(self.lang_label)
         lang_row.addWidget(self.lang_combo, 1)
-        lay_setup.addLayout(lang_row)
+        _sgl.addLayout(lang_row)
+        # replace the layer(s) of an earlier insert when a line is re-inserted
+        self.replace_chk = QCheckBox()
+        self.replace_chk.setChecked(self._load_replace_existing())
+        self.replace_chk.toggled.connect(self._on_replace_toggle)
+        _sgl.addWidget(self.replace_chk)
+        # presets: with a character level (default) or one flat list per manga
+        self.by_char_chk = QCheckBox()
+        self.by_char_chk.setChecked(self._load_by_char())
+        self.by_char_chk.toggled.connect(self._on_by_char_toggle)
+        _sgl.addWidget(self.by_char_chk)
+        lay_setup.addWidget(_sg_pb)
 
         # --- collapsible "Layout & sizes" panel ---
         # Lets the user resize or hide the big parts of the docker (preview,
         # script box, JP/EN table, font list) and remembers it across restarts.
+        _lz_pb = self._new_panel("layout_sizes", "setup")
+        _lzl = _lz_pb.body_layout()
         v = self._load_view()
         defaults = self._view_defaults()
         for k, dv in defaults.items():
@@ -2133,7 +3439,7 @@ class TyperDocker(DockWidget):
         self.view_toggle = QPushButton()
         self.view_toggle.setCheckable(True)
         self.view_toggle.setChecked(bool(v["open"]))
-        lay_setup.addWidget(self.view_toggle)
+        _lzl.addWidget(self.view_toggle)
 
         self.view_box = QWidget()
         view_lay = QVBoxLayout()
@@ -2168,32 +3474,83 @@ class TyperDocker(DockWidget):
                   v["table_h"], v["table_show"])
         _view_row(3, "v_fonts_chk", "v_fonts_h", 40, 1200,
                   v["fonts_h"], v["fonts_show"])
+        _view_row(4, "v_bubblr_chk", "v_bubblr_h", 80, 1600,
+                  v["bubblr_h"], v["bubblr_show"])
+        _view_row(5, "v_bmap_chk", "v_bmap_h", 60, 1600,
+                  v["bmap_h"], v["bmap_show"])
         view_grid.setColumnStretch(0, 1)
         view_lay.addLayout(view_grid)
         self.view_reset_btn = QPushButton()
         self.view_reset_btn.clicked.connect(self._on_view_reset)
         view_lay.addWidget(self.view_reset_btn)
-        lay_setup.addWidget(self.view_box)
-        # replace the layer(s) of an earlier insert when a line is re-inserted
-        self.replace_chk = QCheckBox()
-        self.replace_chk.setChecked(self._load_replace_existing())
-        self.replace_chk.toggled.connect(self._on_replace_toggle)
-        lay_setup.addWidget(self.replace_chk)
-        # presets: with a character level (default) or one flat list per manga
-        self.by_char_chk = QCheckBox()
-        self.by_char_chk.setChecked(self._load_by_char())
-        self.by_char_chk.toggled.connect(self._on_by_char_toggle)
-        lay_setup.addWidget(self.by_char_chk)
+        _lzl.addWidget(self.view_box)
+        lay_setup.addWidget(_lz_pb)
+
+        # --- collapsible "Experimental" section ---
+        # Groups the not-yet-final features: enabling/disabling BubblR and
+        # TextShapR, and the customizable layout (rename/reorder tabs; panel
+        # drag/detach follows in a later phase).
+        app = Krita.instance()
+        self.exp_toggle = QPushButton()
+        self.exp_toggle.setCheckable(True)
+        self.exp_toggle.setChecked(
+            app.readSetting("typer_kr", "expOpen", "false") == "true")
+        self.exp_toggle.toggled.connect(self._on_exp_toggle)
+        lay_setup.addWidget(self.exp_toggle)
+
+        self.exp_box = QWidget()
+        exp_lay = QVBoxLayout()
+        exp_lay.setContentsMargins(6, 2, 6, 2)
+        exp_lay.setSpacing(4)
+        self.exp_box.setLayout(exp_lay)
+
+        # enable/disable the BubblR tab and the TextShapR button
+        self.enable_bubblr_chk = QCheckBox()
+        self.enable_bubblr_chk.setChecked(
+            (not BUBBLR_LOCKED)
+            and app.readSetting("typer_kr", "enableBubblr", "true") == "true")
+        self.enable_bubblr_chk.toggled.connect(self._on_enable_bubblr)
+        exp_lay.addWidget(self.enable_bubblr_chk)
+        # locked off in public releases → hide the toggle so it can't be enabled
+        self.enable_bubblr_chk.setVisible(not BUBBLR_LOCKED)
+        self.enable_shapr_chk = QCheckBox()
+        self.enable_shapr_chk.setChecked(
+            app.readSetting("typer_kr", "enableShapr", "true") == "true")
+        self.enable_shapr_chk.toggled.connect(self._on_enable_shapr)
+        exp_lay.addWidget(self.enable_shapr_chk)
+        self.enable_sfx_chk = QCheckBox()
+        self.enable_sfx_chk.setChecked(
+            app.readSetting("typer_kr", "enableSfx", "true") == "true")
+        self.enable_sfx_chk.toggled.connect(self._on_enable_sfx)
+        exp_lay.addWidget(self.enable_sfx_chk)
+
+        exp_lay.addWidget(self._hline())
+        self.customize_chk = QCheckBox()
+        self.customize_chk.setChecked(
+            app.readSetting("typer_kr", "customize", "false") == "true")
+        self.customize_chk.toggled.connect(self._on_customize_toggle)
+        exp_lay.addWidget(self.customize_chk)
+        self.customize_hint = QLabel()
+        self.customize_hint.setWordWrap(True)
+        self.customize_hint.setStyleSheet("color: gray;")
+        self.customize_hint.setVisible(self.customize_chk.isChecked())
+        exp_lay.addWidget(self.customize_hint)
+        self.layout_reset_btn = QPushButton()
+        self.layout_reset_btn.clicked.connect(self.on_layout_reset)
+        exp_lay.addWidget(self.layout_reset_btn)
+
+        lay_setup.addWidget(self.exp_box)
+        self.exp_box.setVisible(self.exp_toggle.isChecked())
         lay_setup.addStretch(1)
         self.view_box.setVisible(self.view_toggle.isChecked())
 
         # wire up after the initial values are set, so nothing fires early
         self.view_toggle.toggled.connect(self._on_view_toggle)
         for _w in (self.v_preview_chk, self.v_editor_chk, self.v_table_chk,
-                   self.v_fonts_chk):
+                   self.v_fonts_chk, self.v_bubblr_chk, self.v_bmap_chk):
             _w.toggled.connect(self._on_view_changed)
         for _w in (self.v_preview_h, self.v_editor_h, self.v_table_h,
-                   self.v_fonts_h):
+                   self.v_fonts_h, self.v_bubblr_h, self.v_bmap_h):
             _w.valueChanged.connect(self._on_view_changed)
 
         # --- presets (Presets tab) ---
@@ -2257,17 +3614,21 @@ class TyperDocker(DockWidget):
         self.preset_menu_btn.setMenu(preset_menu)
         preset_row.addWidget(self.preset_menu_btn)
         lay_presets.addLayout(preset_row)
-        lay_presets.addStretch(1)
+        # (no trailing stretch: this is a compact panel inside the Type tab)
 
-        # --- load a file (Type tab) ---
+        # --- load a file + script input (Type tab) ---
+        # Wrapped as one movable "script" panel (load button, script tabs,
+        # the parsed-text editor and the analyze row) so it can be reordered
+        # relative to the presets / preview / table panels.
+        _script_pb = self._new_panel("script_box", "type")
+        _slay = _script_pb.body_layout()
         self.load_btn = QPushButton()
         self.load_btn.clicked.connect(self.on_load)
-        lay_type.addWidget(self.load_btn)
+        _slay.addWidget(self.load_btn)
 
-        # --- script input ---
         # Generously sized so the parsed/pasted script is easy to read and edit.
         self.lbl_script = QLabel()
-        lay_type.addWidget(self.lbl_script)
+        _slay.addWidget(self.lbl_script)
         # Tabs for several loaded scripts (browser-style: closable + middle-click,
         # reorderable, eliding long names, with scroll buttons in a narrow dock).
         self.script_tabs = ScriptTabBar()
@@ -2280,11 +3641,11 @@ class TyperDocker(DockWidget):
         self.script_tabs.currentChanged.connect(self._on_tab_changed)
         self.script_tabs.tabCloseRequested.connect(self._close_tab)
         self.script_tabs.tabBarDoubleClicked.connect(self._rename_tab)
-        lay_type.addWidget(self.script_tabs)
+        _slay.addWidget(self.script_tabs)
         self.editor = QPlainTextEdit()
         self.editor.setMinimumHeight(170)
         self.editor.setMaximumHeight(320)
-        lay_type.addWidget(self.editor)
+        _slay.addWidget(self.editor)
 
         opt_row = QHBoxLayout()
         self.skip_empty = QCheckBox()
@@ -2294,7 +3655,8 @@ class TyperDocker(DockWidget):
         self.analyze_btn = QPushButton()
         self.analyze_btn.clicked.connect(self.analyze)
         opt_row.addWidget(self.analyze_btn)
-        lay_type.addLayout(opt_row)
+        _slay.addLayout(opt_row)
+        lay_type.addWidget(_script_pb)
 
         lay_type.addWidget(self._hline())
 
@@ -2313,9 +3675,13 @@ class TyperDocker(DockWidget):
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.itemSelectionChanged.connect(self._on_table_select)
         self.table.cellDoubleClicked.connect(self._on_table_double)
-        lay_type.addWidget(self.table, 1)
+        _pb = self._new_panel("jp_en_table", "type")
+        _pb.body_layout().addWidget(self.table)
+        lay_type.addWidget(_pb, 1)
 
-        # --- navigation + preview ---
+        # --- navigation panel (line nav + bubble stepper + page jump) ---
+        _nav_pb = self._new_panel("nav_line", "type")
+        _navl = _nav_pb.body_layout()
         nav_row = QHBoxLayout()
         self.prev_btn = QPushButton()
         self.prev_btn.clicked.connect(self.on_prev)
@@ -2329,7 +3695,27 @@ class TyperDocker(DockWidget):
         nav_row.addWidget(self.counter, 1)
         nav_row.addWidget(self.next_btn)
         nav_row.addWidget(self.reset_btn)
-        lay_type.addLayout(nav_row)
+        _navl.addLayout(nav_row)
+
+        # --- BubblR bubble stepper (only useful once bubbles are detected) ---
+        # Lets Insert on the Type tab fill the current bubble; ◀/▶ step the
+        # bubble pointer so a bubble can be redone. Hidden until Detect runs.
+        bnav_row = QHBoxLayout()
+        self.bubble_prev_btn = QToolButton()
+        self.bubble_prev_btn.setText("◀")
+        self.bubble_prev_btn.clicked.connect(lambda: self._bp_step(-1))
+        self.bubble_lbl = QLabel("")
+        self.bubble_lbl.setAlignment(Qt.AlignCenter)
+        self.bubble_next_btn = QToolButton()
+        self.bubble_next_btn.setText("▶")
+        self.bubble_next_btn.clicked.connect(lambda: self._bp_step(1))
+        bnav_row.addWidget(self.bubble_prev_btn)
+        bnav_row.addWidget(self.bubble_lbl, 1)
+        bnav_row.addWidget(self.bubble_next_btn)
+        self.bubble_nav_widget = QWidget()
+        self.bubble_nav_widget.setLayout(bnav_row)
+        self.bubble_nav_widget.setVisible(False)
+        _navl.addWidget(self.bubble_nav_widget)
 
         # --- page indicator + jump (only shown when the script has "Page" markers) ---
         page_row = QHBoxLayout()
@@ -2343,55 +3729,72 @@ class TyperDocker(DockWidget):
         page_row.addWidget(self.lbl_page)
         page_row.addWidget(self.page_combo, 1)
         page_row.addWidget(self.page_status)
-        lay_type.addLayout(page_row)
+        _navl.addLayout(page_row)
+        lay_type.addWidget(_nav_pb)
 
+        # --- active text field panel (edit + bold + JP reference) ---
+        _act_pb = self._new_panel("active_field", "type")
+        _actl = _act_pb.body_layout()
         self.active_edit = QPlainTextEdit()
         self.active_edit.setMinimumHeight(42)
         self.active_edit.setMaximumHeight(70)
         self.active_edit.textChanged.connect(self._update_text_preview)
-        lay_type.addWidget(self.active_edit)
+        _actl.addWidget(self.active_edit)
         bold_row = QHBoxLayout()
         self.bold_sel_btn = QPushButton()
         self.bold_sel_btn.clicked.connect(self.on_bold_selection)
         bold_row.addWidget(self.bold_sel_btn)
         bold_row.addStretch(1)
-        lay_type.addLayout(bold_row)
-        self.lbl_preview = QLabel("")
-        self.lbl_preview.setStyleSheet("color: gray; margin-top: 2px;")
-        lay_type.addWidget(self.lbl_preview)
-        self.preview = TextPreview(self)
-        lay_type.addWidget(self.preview)
+        _actl.addLayout(bold_row)
         self.jp_ref = QLabel("")
         self.jp_ref.setWordWrap(True)
         self.jp_ref.setStyleSheet("color: gray;")
-        lay_type.addWidget(self.jp_ref)
+        _actl.addWidget(self.jp_ref)
+        lay_type.addWidget(_act_pb)
 
-        lay_type.addWidget(self._hline())
+        # --- live preview panel ---
+        self.lbl_preview = QLabel("")
+        self.lbl_preview.setStyleSheet("color: gray; margin-top: 2px;")
+        self.preview = TextPreview(self)
+        _pb = self._new_panel("live_preview", "type")
+        _pb.body_layout().addWidget(self.lbl_preview)
+        _pb.body_layout().addWidget(self.preview)
+        lay_type.addWidget(_pb)
 
-        # --- font picker + text color (the everyday choices stay on Type) ---
+        # --- presets panel (Manga -> Character -> style preset) ---
+        _pb = self._new_panel("presets", "type")
+        _pb.body_layout().addWidget(self.presets_panel)
+        lay_type.addWidget(_pb)
+
+        # --- font picker + text color panel ---
+        _font_pb = self._new_panel("font_picker", "type")
+        _fontl = _font_pb.body_layout()
         self.lbl_font = QLabel()
-        lay_type.addWidget(self.lbl_font)
+        _fontl.addWidget(self.lbl_font)
         self.font_picker = FontPicker(self._load_recents(),
                                       self._tr("font_search_ph"))
-        lay_type.addWidget(self.font_picker)
+        _fontl.addWidget(self.font_picker)
         color_row = QHBoxLayout()
         self.color_btn = QPushButton()
         self.color_btn.clicked.connect(self.on_pick_color)
         color_row.addWidget(self.color_btn, 1)
-        lay_type.addLayout(color_row)
+        _fontl.addLayout(color_row)
         self._update_color_btn()
+        lay_type.addWidget(_font_pb)
 
-        # --- insert + TextShapR ---
+        # --- insert + TextShapR panel ---
+        _ins_pb = self._new_panel("insert", "type")
+        _insl = _ins_pb.body_layout()
         insert_row = QHBoxLayout()
         self.insert_btn = QPushButton()
         self.insert_btn.clicked.connect(self.on_insert)
         insert_row.addWidget(self.insert_btn, 1)
-        self.shaper_btn = QPushButton()
-        self.shaper_btn.clicked.connect(self.on_open_shaper)
-        insert_row.addWidget(self.shaper_btn)
-        lay_type.addLayout(insert_row)
+        _insl.addLayout(insert_row)
+        lay_type.addWidget(_ins_pb)
 
-        # --- font style (variant: bold/italic/underline)  (Style tab) ---
+        # --- basic style panel: variant + alignment + text processing ---
+        _sb_pb = self._new_panel("style_basic", "style")
+        _sbl = _sb_pb.body_layout()
         style_row = QHBoxLayout()
         self.lbl_style = QLabel()
         style_row.addWidget(self.lbl_style)
@@ -2402,9 +3805,8 @@ class TyperDocker(DockWidget):
         style_row.addWidget(self.italic_chk)
         style_row.addWidget(self.underline_chk)
         style_row.addStretch(1)
-        lay_style.addLayout(style_row)
+        _sbl.addLayout(style_row)
 
-        # --- alignment + text processing ---
         align_row = QHBoxLayout()
         self.lbl_alignment = QLabel()
         align_row.addWidget(self.lbl_alignment)
@@ -2413,7 +3815,7 @@ class TyperDocker(DockWidget):
             self.align_combo.addItem("", code)
         self.align_combo.setCurrentIndex(1)  # center
         align_row.addWidget(self.align_combo, 1)
-        lay_style.addLayout(align_row)
+        _sbl.addLayout(align_row)
 
         valign_row = QHBoxLayout()
         self.lbl_valign = QLabel()
@@ -2423,7 +3825,7 @@ class TyperDocker(DockWidget):
             self.valign_combo.addItem("", code)
         self.valign_combo.setCurrentIndex(1)  # middle
         valign_row.addWidget(self.valign_combo, 1)
-        lay_style.addLayout(valign_row)
+        _sbl.addLayout(valign_row)
 
         text_row = QHBoxLayout()
         self.case_label = QLabel()
@@ -2436,9 +3838,12 @@ class TyperDocker(DockWidget):
         self.tidy_chk = QCheckBox()
         text_row.addWidget(self.tidy_chk)
         text_row.addStretch(1)
-        lay_style.addLayout(text_row)
+        _sbl.addLayout(text_row)
+        lay_style.addWidget(_sb_pb)
 
-        # --- remaining style options ---
+        # --- size / spacing / auto-fit panel ---
+        _ss_pb = self._new_panel("style_size", "style")
+        _ssl = _ss_pb.body_layout()
         grid = QGridLayout()
         self.size_label = QLabel()
         grid.addWidget(self.size_label, 0, 0)
@@ -2460,9 +3865,19 @@ class TyperDocker(DockWidget):
         self.spacing_spin.setRange(80, 250)
         self.spacing_spin.setValue(105)
         grid.addWidget(self.spacing_spin, 2, 1)
-        lay_style.addLayout(grid)
+        _ssl.addLayout(grid)
 
-        # --- outline: checkbox on the tab, color + width in a small popup ---
+        self.auto_chk = QCheckBox()
+        self.auto_chk.setChecked(True)
+        self.auto_chk.stateChanged.connect(self._on_auto_toggle)
+        _ssl.addWidget(self.auto_chk)
+
+        self.round_chk = QCheckBox()
+        self.round_chk.stateChanged.connect(self._on_auto_toggle)
+        _ssl.addWidget(self.round_chk)
+        lay_style.addWidget(_ss_pb)
+
+        # --- outline panel: checkbox on the tab, color + width in a popup ---
         self.outline_dlg = QDialog(main)
         out_dlg_lay = QVBoxLayout()
         self.outline_dlg.setLayout(out_dlg_lay)
@@ -2481,6 +3896,7 @@ class TyperDocker(DockWidget):
         self.outline_close_btn.clicked.connect(self.outline_dlg.accept)
         out_dlg_lay.addWidget(self.outline_close_btn)
 
+        _out_pb = self._new_panel("style_outline", "style")
         out_row = QHBoxLayout()
         self.outline_chk = QCheckBox()
         self.outline_chk.stateChanged.connect(self._on_outline_toggle)
@@ -2489,10 +3905,11 @@ class TyperDocker(DockWidget):
         self.outline_more_btn.clicked.connect(self.outline_dlg.show)
         out_row.addWidget(self.outline_more_btn)
         out_row.addStretch(1)
-        lay_style.addLayout(out_row)
+        _out_pb.body_layout().addLayout(out_row)
+        lay_style.addWidget(_out_pb)
         self._update_outline_btn()
 
-        # --- shadow: checkbox on the tab, color + offset in a small popup ---
+        # --- shadow panel: checkbox on the tab, color + offset in a popup ---
         self.shadow_dlg = QDialog(main)
         sh_dlg_lay = QVBoxLayout()
         self.shadow_dlg.setLayout(sh_dlg_lay)
@@ -2515,6 +3932,7 @@ class TyperDocker(DockWidget):
         self.shadow_close_btn.clicked.connect(self.shadow_dlg.accept)
         sh_dlg_lay.addWidget(self.shadow_close_btn)
 
+        _sh_pb = self._new_panel("style_shadow", "style")
         sh_row = QHBoxLayout()
         self.shadow_chk = QCheckBox()
         self.shadow_chk.stateChanged.connect(self._on_shadow_toggle)
@@ -2523,23 +3941,16 @@ class TyperDocker(DockWidget):
         self.shadow_more_btn.clicked.connect(self.shadow_dlg.show)
         sh_row.addWidget(self.shadow_more_btn)
         sh_row.addStretch(1)
-        lay_style.addLayout(sh_row)
+        _sh_pb.body_layout().addLayout(sh_row)
+        lay_style.addWidget(_sh_pb)
         self._update_shadow_btn()
 
-        # --- auto-fit ---
-        self.auto_chk = QCheckBox()
-        self.auto_chk.setChecked(True)
-        self.auto_chk.stateChanged.connect(self._on_auto_toggle)
-        lay_style.addWidget(self.auto_chk)
-
-        self.round_chk = QCheckBox()
-        self.round_chk.stateChanged.connect(self._on_auto_toggle)
-        lay_style.addWidget(self.round_chk)
-
-        # --- hyphenation (split long words at syllable points) ---
+        # --- hyphenation panel (split long words at syllable points) ---
+        _hy_pb = self._new_panel("hyphenation", "style")
+        _hyl = _hy_pb.body_layout()
         self.hyph_chk = QCheckBox()
         self.hyph_chk.stateChanged.connect(self._on_hyph_toggle)
-        lay_style.addWidget(self.hyph_chk)
+        _hyl.addWidget(self.hyph_chk)
         hyph_row = QHBoxLayout()
         self.lbl_hyph_lang = QLabel()
         hyph_row.addWidget(self.lbl_hyph_lang)
@@ -2550,15 +3961,81 @@ class TyperDocker(DockWidget):
         self.hyph_lang_combo.currentIndexChanged.connect(
             lambda *_a: self._update_text_preview())
         hyph_row.addWidget(self.hyph_lang_combo, 1)
-        lay_style.addLayout(hyph_row)
+        _hyl.addLayout(hyph_row)
+        lay_style.addWidget(_hy_pb)
         lay_style.addStretch(1)
+
+        # --- BubblR tab (auto-detect bubbles + per-bubble styles) ---
+        self._build_bubblr_tab(lay_bubblr)
+
+        # --- TextShapR tab (a movable panel, so it joins the custom layout) ---
+        self.shapr_widget = TextShapRWidget(self)
+        _shapr_pb = self._new_panel("shapr_panel", "shapr")
+        _shapr_pb.body_layout().addWidget(self.shapr_widget)
+        lay_shapr.addWidget(_shapr_pb)
+
+        # --- SFX tab (embed the MangaSFX docker in a movable panel) ---
+        # Defensive: a failure to build the SFX panel must never take TypeR down.
+        self._sfx_docker = None
+        _sfx_pb = self._new_panel("sfx_panel", "sfx")
+        try:
+            from .sfx.sfx_docker import MangaSFXDocker
+            self._sfx_docker = MangaSFXDocker()
+            _sfx_root = self._sfx_docker.widget()
+            # the docker wraps its content in a QScrollArea; the tab already
+            # scrolls, so host the inner content to avoid a double scrollbar.
+            _inner = _sfx_root.widget() if hasattr(_sfx_root, "widget") else None
+            _sfx_pb.body_layout().addWidget(
+                _inner if _inner is not None else _sfx_root)
+        except Exception as _sfx_exc:      # noqa: BLE001
+            _lbl = QLabel("SFX Helper could not load:\n%s" % _sfx_exc)
+            _lbl.setWordWrap(True)
+            _lbl.setStyleSheet("color: gray;")
+            _sfx_pb.body_layout().addWidget(_lbl)
+        lay_sfx.addWidget(_sfx_pb)
 
         # status line below the tabs, always visible
         self.status = QLabel("")
         self.status.setWordWrap(True)
         outer.addWidget(self.status)
 
+        # build stamp so you can see at a glance which version Krita loaded
+        self.build_lbl = QLabel("TypeR v" + VERSION + " · Build " + BUILD)
+        self.build_lbl.setStyleSheet("color: gray; font-size: 10px;")
+        self.build_lbl.setAlignment(Qt.AlignRight)
+        outer.addWidget(self.build_lbl)
+
         self.setWidget(main)
+
+        # --- tab customization (rename / reorder / reset) ---
+        # Each tab carries a stable id in its tabData, so text and order stay
+        # correct even after the user drags tabs around. Custom names and the
+        # order are persisted; the panel-level drag/detach comes in a later
+        # phase and builds on layoutmodel.py.
+        self._tab_defaults = [("type", "tab_type"), ("style", "tab_style"),
+                              ("setup", "tab_setup"), ("bubblr", "tab_bubblr"),
+                              ("shapr", "tab_shapr"), ("sfx", "tab_sfx")]
+        self._tab_pages = {}          # id -> tab page widget (kept when hidden)
+        for i, (tid, _nk) in enumerate(self._tab_defaults):
+            self.main_tabs.tabBar().setTabData(i, tid)
+            self._tab_pages[tid] = self.main_tabs.widget(i)
+        self._tab_names = self._load_tab_names()      # id -> custom name
+        # apply the BubblR-tab / TextShapR-button enable state now that both
+        # the tabs and the toggles exist
+        self._on_enable_bubblr(self.enable_bubblr_chk.isChecked(), save=False)
+        self._on_enable_shapr(self.enable_shapr_chk.isChecked(), save=False)
+        self._on_enable_sfx(self.enable_sfx_chk.isChecked(), save=False)
+        self._apply_tab_order(self._load_tab_order())
+        self._retranslate_tabs()
+        self.main_tabs.tabBar().setMovable(self.customize_chk.isChecked())
+        self.main_tabs.tabBar().tabMoved.connect(self._on_tab_moved)
+        self.main_tabs.tabBarDoubleClicked.connect(self._on_tab_rename)
+        # restore saved panel placements (tab) + within-tab order + header
+        self._apply_panel_positions()
+        self._apply_panel_order()
+        # re-detach panels into their host windows once those dockers exist
+        # (deferred: the host dockers are constructed by Krita separately)
+        QTimer.singleShot(0, self._apply_detached)
 
         # remember the last-used main tab across restarts
         self.main_tabs.setCurrentIndex(self._load_ui_tab())
@@ -2809,10 +4286,7 @@ class TyperDocker(DockWidget):
     def _retranslate(self):
         t = self._tr
         self.setWindowTitle(t("title"))
-        self.main_tabs.setTabText(0, t("tab_type"))
-        self.main_tabs.setTabText(1, t("tab_style"))
-        self.main_tabs.setTabText(2, t("tab_presets"))
-        self.main_tabs.setTabText(3, t("tab_setup"))
+        self._retranslate_tabs()
         self.lang_label.setText(t("language"))
         self.view_toggle.setText(t("view_toggle"))
         self.view_hint.setText(t("view_hint"))
@@ -2820,6 +4294,8 @@ class TyperDocker(DockWidget):
         self.v_editor_chk.setText(t("view_editor"))
         self.v_table_chk.setText(t("view_table"))
         self.v_fonts_chk.setText(t("view_fonts"))
+        self.v_bubblr_chk.setText(t("view_bubblr"))
+        self.v_bmap_chk.setText(t("view_bmap"))
         self.view_reset_btn.setText(t("view_reset"))
         self.load_btn.setText(t("load_btn"))
         self.lbl_script.setText(t("script_label"))
@@ -2830,6 +4306,8 @@ class TyperDocker(DockWidget):
         self.table.setHorizontalHeaderLabels([t("col_source"), t("col_translation")])
         self.prev_btn.setText(t("prev"))
         self.next_btn.setText(t("next"))
+        self.bubble_prev_btn.setToolTip(t("bubble_prev_tip"))
+        self.bubble_next_btn.setToolTip(t("bubble_next_tip"))
         self.reset_btn.setText(t("reset_btn"))
         self.lbl_page.setText(t("page_jump"))
         self.active_edit.setPlaceholderText(t("active_ph"))
@@ -2911,12 +4389,67 @@ class TyperDocker(DockWidget):
             self.hyph_lang_combo.setItemText(
                 i, t("hyph_auto" if code == "auto" else "hyph_" + str(code)))
         self.insert_btn.setText(t("insert_btn"))
-        self.shaper_btn.setText(t("shaper_btn"))
-        self.shaper_btn.setToolTip(t("shaper_btn_tip"))
         self.replace_chk.setText(t("replace_existing"))
         self.replace_chk.setToolTip(t("replace_existing_tip"))
         self.by_char_chk.setText(t("presets_by_char"))
         self.by_char_chk.setToolTip(t("presets_by_char_tip"))
+        self._retranslate_panels()
+        self.exp_toggle.setText("⚗ " + t("exp_section"))
+        self.enable_bubblr_chk.setText(t("enable_bubblr"))
+        self.enable_shapr_chk.setText(t("enable_shapr"))
+        self.enable_sfx_chk.setText(t("enable_sfx"))
+        self.customize_chk.setText(t("customize_layout"))
+        self.customize_hint.setText(t("customize_hint"))
+        self.layout_reset_btn.setText(t("layout_reset"))
+        # BubblR tab
+        self.bp_backend_combo.setItemText(0, t("bp_backend_heur"))
+        self.bp_backend_combo.setItemText(1, t("bp_backend_ai"))
+        self.bp_backend_combo.setToolTip(t("bp_backend_tip"))
+        self.bp_detect_btn.setText(t("bp_detect"))
+        self.bp_add_sel_btn.setText(t("bp_add_sel"))
+        self.bp_reset_btn.setText(t("bp_reset"))
+        self.bp_order_btn.setText(t("bp_order"))
+        self.bp_order_btn.setToolTip(t("bp_order_tip"))
+        self.bp_sfxmark_btn.setText(t("bp_sfxmark"))
+        self.bp_sfxmark_btn.setToolTip(t("bp_sfxmark_tip"))
+        self.bp_shape_btn.setText(t("bp_shapemark"))
+        self.bp_shape_btn.setToolTip(t("bp_shapemark_tip"))
+        self.bp_edit_btn.setText(t("bp_edit"))
+        self.bp_edit_btn.setToolTip(t("bp_edit_tip"))
+        self.bp_panelorder_btn.setText(t("bp_panelorder"))
+        self.bp_panelorder_btn.setToolTip(t("bp_panelorder_tip"))
+        self.bp_save_btn.setText(t("bp_save_boxes"))
+        self.bp_save_btn.setToolTip(t("bp_save_boxes_tip"))
+        self.bp_load_btn.setText(t("bp_load_boxes"))
+        self.bp_load_btn.setToolTip(t("bp_load_boxes_tip"))
+        self.bp_model_lbl.setText(t("bp_model"))
+        self.bp_model_combo.setItemText(0, t("bp_model_auto"))
+        self.bp_model_combo.setItemText(1, t("bp_model_baseline"))
+        self.bp_model_combo.setItemText(2, t("bp_model_finetuned"))
+        self.bp_model_combo.setItemText(3, t("bp_model_kitsumed"))
+        self.bp_model_combo.setItemText(4, t("bp_model_hybrid"))
+        self.bp_model_combo.setToolTip(t("bp_model_tip"))
+        self.bp_conf_lbl.setText(t("bp_conf"))
+        self.bp_conf_spin.setToolTip(t("bp_conf_tip"))
+        self.bp_sfxconf_lbl.setText(t("bp_sfxconf"))
+        self.bp_sfxconf_spin.setToolTip(t("bp_conf_tip"))
+        self.bp_reset_btn.setToolTip(t("bp_reset_tip"))
+        self.bp_text_chk.setText(t("bp_chk_text"))
+        self.bp_text_chk.setToolTip(t("bp_chk_text_tip"))
+        self.bp_sfx_chk.setText(t("bp_chk_sfx"))
+        self.bp_sfx_chk.setToolTip(t("bp_chk_sfx_tip"))
+        self.bp_rtl_chk.setText(t("bp_rtl"))
+        self.bp_rtl_chk.setToolTip(t("bp_rtl_tip"))
+        self.bp_tile_chk.setText(t("bp_tile"))
+        self.bp_tile_chk.setToolTip(t("bp_tile_tip"))
+        self.bp_overlay.setToolTip(t("bp_overlay_tip"))
+        self.bp_hint_lbl.setText(t("bp_hint"))
+        self.bp_selfollow_chk.setText(t("bp_selfollow"))
+        self.bp_selfollow_chk.setToolTip(t("bp_selfollow_tip"))
+        self.bp_sfx_db_btn.setText(t("bp_sfx_db"))
+        self.bp_sfx_db_btn.setToolTip(t("bp_sfx_db_tip"))
+        self.bp_export_btn.setText(t("bp_export"))
+        self.bp_export_btn.setToolTip(t("bp_export_tip"))
         # re-label the page combo / status in the new language
         self._refresh_pages_combo()
 
@@ -2976,6 +4509,632 @@ class TyperDocker(DockWidget):
 
     # -- main tabs (remember the last-used one) --
 
+    # -- tab customization (rename / reorder / reset) ----------------------
+
+    def _tab_namekey(self, tid):
+        for t, nk in self._tab_defaults:
+            if t == tid:
+                return nk
+        return None
+
+    def _tab_label(self, tid):
+        """Display name of a tab: the user's custom name if set, else the
+        localized default."""
+        custom = self._tab_names.get(tid)
+        if custom:
+            return custom
+        nk = self._tab_namekey(tid)
+        return self._tr(nk) if nk else (tid or "")
+
+    def _retranslate_tabs(self):
+        bar = self.main_tabs.tabBar()
+        for i in range(self.main_tabs.count()):
+            self.main_tabs.setTabText(i, self._tab_label(bar.tabData(i)))
+
+    def _current_tab_order(self):
+        bar = self.main_tabs.tabBar()
+        return [bar.tabData(i) for i in range(self.main_tabs.count())]
+
+    def _apply_tab_order(self, order):
+        """Reorder the tab bar so its tab ids follow `order` (unknown/missing
+        ids are ignored / left in place). Done by moving tabs into position."""
+        if not order:
+            return
+        bar = self.main_tabs.tabBar()
+        bar.blockSignals(True)
+        try:
+            for target, tid in enumerate(order):
+                cur = next((i for i in range(self.main_tabs.count())
+                            if bar.tabData(i) == tid), None)
+                if cur is not None and cur != target:
+                    bar.moveTab(cur, target)
+        except Exception:
+            pass
+        finally:
+            bar.blockSignals(False)
+
+    def _on_tab_moved(self, *_a):
+        Krita.instance().writeSetting(
+            "typer_kr", "tabOrder", ",".join(self._current_tab_order()))
+
+    def _on_tab_rename(self, index):
+        if not self.customize_chk.isChecked():
+            return
+        if not (0 <= index < self.main_tabs.count()):
+            return
+        tid = self.main_tabs.tabBar().tabData(index)
+        cur = self._tab_label(tid)
+        name, ok = QInputDialog.getText(
+            self.widget(), self._tr("tab_rename_title"),
+            self._tr("tab_rename_prompt"), text=cur)
+        if not ok:
+            return
+        name = name.strip()
+        if name and name != self._tr(self._tab_namekey(tid) or ""):
+            self._tab_names[tid] = name
+        else:
+            self._tab_names.pop(tid, None)      # empty / default -> reset name
+        self._save_tab_names()
+        self._retranslate_tabs()
+
+    def _on_customize_toggle(self, on):
+        self.main_tabs.tabBar().setMovable(bool(on))
+        if hasattr(self, "customize_hint"):
+            self.customize_hint.setVisible(bool(on))
+        for pid, box in getattr(self, "_panels", {}).items():
+            box.set_edit(on or pid in self._detached)
+        Krita.instance().writeSetting(
+            "typer_kr", "customize", "true" if on else "false")
+
+    def _on_exp_toggle(self, on):
+        if hasattr(self, "exp_box"):
+            self.exp_box.setVisible(bool(on))
+        Krita.instance().writeSetting(
+            "typer_kr", "expOpen", "true" if on else "false")
+
+    # -- movable panels (customizable layout, step 2a) ---------------------
+
+    _PANEL_TITLES = {"presets": "panel_presets",
+                     "jp_en_table": "panel_table",
+                     "live_preview": "panel_preview",
+                     "script_box": "panel_script",
+                     "nav_line": "panel_nav",
+                     "active_field": "panel_active",
+                     "font_picker": "panel_font",
+                     "insert": "panel_insert",
+                     "style_basic": "panel_style_basic",
+                     "style_size": "panel_style_size",
+                     "style_outline": "panel_style_outline",
+                     "style_shadow": "panel_style_shadow",
+                     "hyphenation": "panel_hyphenation",
+                     "bubblr_detect": "panel_bubblr_detect",
+                     "bubblr_overlay": "panel_bubblr_overlay",
+                     "setup_general": "panel_setup_general",
+                     "layout_sizes": "panel_layout_sizes",
+                     "shapr_panel": "panel_shapr",
+                     "sfx_panel": "panel_sfx"}
+
+    def _new_panel(self, pid, tab_id):
+        """Create a PanelBox for panel `pid`, initially living in `tab_id`.
+        Called during UI build; the caller adds the box to that tab's
+        layout."""
+        box = PanelBox(pid, self)
+        self._panels[pid] = box
+        self._panel_tab[pid] = tab_id
+        self._panel_home[pid] = tab_id     # default tab, used by layout reset
+        return box
+
+    def _panel_title(self, pid):
+        return self._tr(self._PANEL_TITLES.get(pid, pid))
+
+    def _retranslate_panels(self):
+        for pid, box in self._panels.items():
+            box.set_title(self._panel_title(pid))
+
+    def _fill_panel_menu(self, menu, pid):
+        """Populate a panel's ⋮ menu: reorder within the tab (up/down), move
+        to another tab, and detach into / reattach from a separate window."""
+        if pid in self._detached:
+            act = menu.addAction("⧉  " + self._tr("panel_reattach"))
+            act.triggered.connect(
+                lambda _c=False, p=pid: self._reattach_panel(p))
+            return
+        up = menu.addAction("▲  " + self._tr("panel_up"))
+        up.triggered.connect(lambda _c=False, p=pid: self._reorder_panel(p, -1))
+        down = menu.addAction("▼  " + self._tr("panel_down"))
+        down.triggered.connect(
+            lambda _c=False, p=pid: self._reorder_panel(p, 1))
+        menu.addSeparator()
+        cur = self._panel_tab.get(pid)
+        for i in range(self.main_tabs.count()):
+            tid = self.main_tabs.tabBar().tabData(i)
+            if tid == cur or tid not in self._tab_layouts:
+                continue
+            act = menu.addAction(self._tr("panel_move_to").format(
+                tab=self.main_tabs.tabText(i)))
+            act.triggered.connect(
+                lambda _c=False, t=tid, p=pid: self._move_panel_to_tab(p, t))
+        menu.addSeparator()
+        det = menu.addAction("⧉  " + self._tr("panel_detach"))
+        det.triggered.connect(lambda _c=False, p=pid: self._detach_panel(p))
+
+    def _panel_layout_index(self, lay, box):
+        for i in range(lay.count()):
+            if lay.itemAt(i).widget() is box:
+                return i
+        return None
+
+    def _reorder_panel(self, pid, delta):
+        """Move the panel up/down by one position within its current tab.
+        Swaps past whatever widget is adjacent (panel or inline section)."""
+        box = self._panels.get(pid)
+        lay = self._tab_layouts.get(self._panel_tab.get(pid))
+        if box is None or lay is None:
+            return
+        idx = self._panel_layout_index(lay, box)
+        if idx is None:
+            return
+        lay.removeWidget(box)
+        target = idx + delta
+        # after removal the max insert index is lay.count(); clamp, but skip a
+        # trailing stretch so the panel never ends up below it
+        maxpos = lay.count()
+        if maxpos > 0 and lay.itemAt(maxpos - 1).spacerItem() is not None:
+            maxpos -= 1
+        target = max(0, min(target, maxpos))
+        lay.insertWidget(target, box)
+        box.show()
+        self._save_panel_order()
+
+    def _save_panel_order(self):
+        """Persist the per-tab panel order (list of panel ids per tab), so
+        reordering survives a restart."""
+        order = {}
+        for tid, lay in self._tab_layouts.items():
+            ids = []
+            for i in range(lay.count()):
+                w = lay.itemAt(i).widget()
+                if isinstance(w, PanelBox):
+                    ids.append(w._pid)
+            order[tid] = ids
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "panelOrder", json.dumps(order))
+        except Exception:
+            pass
+
+    def _panels_in_tab(self, lay):
+        """List of (pid, layout_index) for the PanelBoxes in a tab layout,
+        in layout order."""
+        out = []
+        for i in range(lay.count()):
+            w = lay.itemAt(i).widget()
+            if isinstance(w, PanelBox):
+                out.append((w._pid, i))
+        return out
+
+    def _apply_panel_order(self):
+        """Restore the saved within-tab panel order. Panels are reordered
+        RELATIVE to each other only; inline (non-panel) sections keep their
+        place. Best effort — a bubble pass swaps out-of-order neighbours."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "panelOrder", "")
+            order = json.loads(raw) if raw else {}
+        except Exception:
+            return
+        for tid, ids in order.items():
+            lay = self._tab_layouts.get(tid)
+            if lay is None:
+                continue
+            present = [pid for pid, _i in self._panels_in_tab(lay)]
+            desired = [p for p in ids if p in present]
+            desired += [p for p in present if p not in desired]
+            for _ in range(len(desired) * len(desired) + 1):
+                pos = dict(self._panels_in_tab(lay))
+                swapped = False
+                for a, b in zip(desired, desired[1:]):
+                    if pos.get(a, -1) > pos.get(b, 1 << 30):
+                        box = self._panels[a]
+                        lay.removeWidget(box)
+                        bi = self._panel_layout_index(
+                            lay, self._panels[b])
+                        lay.insertWidget(bi if bi is not None
+                                         else lay.count(), box)
+                        box.show()
+                        swapped = True
+                        break
+                if not swapped:
+                    break
+
+    def _move_panel_to_tab(self, pid, tab_id, save=True):
+        box = self._panels.get(pid)
+        if box is None or tab_id not in self._tab_layouts:
+            return
+        src = self._panel_tab.get(pid)
+        if src in self._tab_layouts:
+            self._tab_layouts[src].removeWidget(box)
+        lay = self._tab_layouts[tab_id]
+        # insert before a trailing stretch so the panel stays visible
+        pos = lay.count()
+        if pos > 0 and lay.itemAt(pos - 1).spacerItem() is not None:
+            pos -= 1
+        lay.insertWidget(pos, box)
+        box.show()
+        self._panel_tab[pid] = tab_id
+        if save:
+            self._save_panel_tabs()
+            self._save_panel_order()
+
+    def _drop_panel_rel(self, dragged, target, after):
+        """Drop `dragged` next to `target` (before it, or after it when
+        `after`). Handles both within-tab reordering and moving into the
+        target's tab. Called by PanelBox.dropEvent."""
+        if dragged == target:
+            return
+        box = self._panels.get(dragged)
+        tgt = self._panels.get(target)
+        if box is None or tgt is None:
+            return
+        tab_id = self._panel_tab.get(target)
+        lay = self._tab_layouts.get(tab_id)
+        if lay is None:
+            return
+        src = self._panel_tab.get(dragged)
+        if src in self._tab_layouts:
+            self._tab_layouts[src].removeWidget(box)
+        # recompute the target index after a possible same-tab removal
+        ti = self._panel_layout_index(lay, tgt)
+        if ti is None:
+            pos = lay.count()
+            if pos > 0 and lay.itemAt(pos - 1).spacerItem() is not None:
+                pos -= 1
+            lay.insertWidget(pos, box)
+        else:
+            lay.insertWidget(ti + (1 if after else 0), box)
+        box.show()
+        self._panel_tab[dragged] = tab_id
+        self._save_panel_tabs()
+        self._save_panel_order()
+
+    def _panel_drag_started(self):
+        self._panel_dragging = True
+        if getattr(self, "_drag_scroll_timer", None) is None:
+            self._drag_scroll_timer = QTimer(self)
+            self._drag_scroll_timer.setInterval(30)
+            self._drag_scroll_timer.timeout.connect(self._drag_scroll_tick)
+        self._drag_scroll_timer.start()
+
+    def _panel_drag_finished(self):
+        self._panel_dragging = False
+        if getattr(self, "_drag_scroll_timer", None) is not None:
+            self._drag_scroll_timer.stop()
+
+    def _drag_scroll_tick(self):
+        """While a panel is being dragged, auto-scroll the current tab's
+        scroll area when the cursor nears its top/bottom edge, so a panel can
+        be dropped past the visible region."""
+        sa = self.main_tabs.currentWidget()
+        if not isinstance(sa, QScrollArea):
+            return
+        vp = sa.viewport()
+        pos = vp.mapFromGlobal(QCursor.pos())
+        if not (0 <= pos.x() <= vp.width()):
+            return                       # cursor is outside this list
+        margin, step = 34, 26
+        bar = sa.verticalScrollBar()
+        if pos.y() < margin:
+            bar.setValue(bar.value() - step)
+        elif pos.y() > vp.height() - margin:
+            bar.setValue(bar.value() + step)
+
+    def _ensure_tabbar_dnd(self):
+        """One-time: let the top tab bar accept panel drops (drop a panel on
+        a tab to move it into that tab)."""
+        if getattr(self, "_tabbar_dnd_ready", False):
+            return
+        bar = self.main_tabs.tabBar()
+        bar.setAcceptDrops(True)
+        bar.installEventFilter(self)
+        self._tabbar_dnd_ready = True
+
+    def eventFilter(self, obj, ev):
+        """Handle panel drops onto the top tab bar (cross-tab move)."""
+        bar = self.main_tabs.tabBar()
+        if obj is bar:
+            et = ev.type()
+            if et in (QEvent.DragEnter, QEvent.DragMove):
+                if ev.mimeData().hasFormat(PANEL_MIME):
+                    i = bar.tabAt(ev.pos())
+                    if i >= 0:
+                        # preview the destination tab so a following body drop
+                        # lands where the user expects
+                        self.main_tabs.setCurrentIndex(i)
+                    ev.acceptProposedAction()
+                    return True
+                ev.ignore()
+                return True
+            if et == QEvent.Drop:
+                if ev.mimeData().hasFormat(PANEL_MIME):
+                    pid = bytes(ev.mimeData().data(PANEL_MIME)).decode("utf-8")
+                    i = bar.tabAt(ev.pos())
+                    tid = bar.tabData(i) if i >= 0 else None
+                    if tid in self._tab_layouts:
+                        self._move_panel_to_tab(pid, tid)
+                    ev.acceptProposedAction()
+                    return True
+                ev.ignore()
+                return True
+        return super(TyperDocker, self).eventFilter(obj, ev)
+
+    def _set_panel_locked(self, pid, on):
+        """Pin/unpin a panel (called by its padlock button) and persist it."""
+        box = self._panels.get(pid)
+        if box is None:
+            return
+        box.set_locked(on)
+        self._save_panel_locked()
+
+    def _save_panel_locked(self):
+        locked = [pid for pid, box in self._panels.items()
+                  if getattr(box, "_locked", False)]
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "panelLocked", json.dumps(locked))
+        except Exception:
+            pass
+
+    def _load_panel_locked(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "panelLocked", "")
+            return json.loads(raw) if raw else []
+        except Exception:
+            return []
+
+    def _save_panel_heights(self):
+        heights = {pid: box._user_height
+                   for pid, box in self._panels.items()
+                   if getattr(box, "_user_height", 0) > 0}
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "panelHeights", json.dumps(heights))
+        except Exception:
+            pass
+
+    def _load_panel_heights(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "panelHeights", "")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    # -- detach into a separate window (customizable layout, step 2c) -------
+
+    def _free_detach_slot(self):
+        """Lowest host-docker slot that exists and holds no panel yet."""
+        used = {s for s in self._detached.values() if isinstance(s, int)}
+        for s in range(MAX_DETACH_SLOTS):
+            if s in _EXTRA_HOSTS and s not in used:
+                return s
+        return None
+
+    def _detach_panel(self, pid, prefer=None):
+        """Move a panel out of its tab into its own window: a pre-registered
+        host docker when one is free, otherwise a floating tool dialog."""
+        box = self._panels.get(pid)
+        if box is None or pid in self._detached:
+            return
+        src = self._panel_tab.get(pid)
+        if src in self._tab_layouts:
+            self._tab_layouts[src].removeWidget(box)
+        slot = prefer if (isinstance(prefer, int)
+                          and prefer in _EXTRA_HOSTS
+                          and prefer not in
+                          {s for s in self._detached.values()
+                           if isinstance(s, int)}) else None
+        if slot is None and prefer != "float":
+            slot = self._free_detach_slot()
+        if slot is not None:
+            host = _EXTRA_HOSTS[slot]
+            host.show_placeholder(False)
+            host.host_layout().insertWidget(0, box)
+            host.setVisible(True)
+            host.raise_()
+            self._detached[pid] = slot
+        else:
+            dlg = QDialog(self, Qt.Tool)
+            dlg.setWindowTitle(self._panel_title(pid))
+            dl = QVBoxLayout(dlg)
+            dl.setContentsMargins(4, 4, 4, 4)
+            dl.addWidget(box)
+            dlg.resize(320, 420)
+            dlg.finished.connect(
+                lambda _r=0, p=pid: self._reattach_panel(p))
+            self._float_dialogs[pid] = dlg
+            self._detached[pid] = "float"
+            dlg.show()
+        box.show()
+        box.set_edit(True)   # keep the header (⋮ Reattach) reachable
+        self._save_detached()
+
+    def _reattach_panel(self, pid):
+        """Bring a detached panel back into its home tab."""
+        box = self._panels.get(pid)
+        if box is None or pid not in self._detached:
+            return
+        slot = self._detached.pop(pid)
+        if slot == "float":
+            dlg = self._float_dialogs.pop(pid, None)
+            box.setParent(None)
+            if dlg is not None:
+                dlg.deleteLater()
+        else:
+            host = _EXTRA_HOSTS.get(slot)
+            if host is not None:
+                host.host_layout().removeWidget(box)
+                box.setParent(None)
+                # show the placeholder again if the host is now empty
+                if not any(s == slot for s in self._detached.values()):
+                    host.show_placeholder(True)
+        home = self._panel_home.get(pid, "type")
+        self._panel_tab[pid] = None
+        self._move_panel_to_tab(pid, home)
+        box.set_edit(self.customize_chk.isChecked())
+        self._save_detached()
+
+    def _save_detached(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "panelDetached", json.dumps(self._detached))
+        except Exception:
+            pass
+
+    def _load_detached(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "panelDetached", "")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    def _apply_detached(self):
+        """Re-detach panels that were detached last session. Runs deferred so
+        the pre-registered host dockers are already constructed."""
+        saved = self._load_detached()
+        for pid, slot in saved.items():
+            if pid in self._panels and pid not in self._detached:
+                self._detach_panel(
+                    pid, prefer=slot if isinstance(slot, int) else "float")
+        for host in _EXTRA_HOSTS.values():
+            host.set_hint(self._tr("detach_host_hint"))
+
+    def _save_panel_tabs(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "panelTabs", json.dumps(self._panel_tab))
+        except Exception:
+            pass
+
+    def _load_panel_tabs(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "panelTabs", "")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    def _apply_panel_positions(self):
+        """Restore saved panel->tab placements, and reflect the current
+        customize-mode state on every panel header."""
+        self._ensure_tabbar_dnd()
+        saved = self._load_panel_tabs()
+        for pid, tid in saved.items():
+            if (pid in self._panels and tid in self._tab_layouts
+                    and tid != self._panel_tab.get(pid)):
+                self._move_panel_to_tab(pid, tid)
+        locked = set(self._load_panel_locked())
+        for pid, box in self._panels.items():
+            box.set_locked(pid in locked)
+        heights = self._load_panel_heights()
+        for pid, box in self._panels.items():
+            box.set_user_height(heights.get(pid, 0))
+        edit = self.customize_chk.isChecked()
+        for box in self._panels.values():
+            box.set_edit(edit)
+
+    def _tab_index_of(self, tid):
+        bar = self.main_tabs.tabBar()
+        for i in range(self.main_tabs.count()):
+            if bar.tabData(i) == tid:
+                return i
+        return None
+
+    def _on_enable_bubblr(self, on, save=True):
+        """Show or hide the BubblR tab. The page widget is kept alive when
+        hidden so its state (detected boxes, mapping) survives re-enabling."""
+        idx = self._tab_index_of("bubblr")
+        if on and idx is None:
+            page = self._tab_pages.get("bubblr")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("bubblr"))
+                self.main_tabs.tabBar().setTabData(i, "bubblr")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableBubblr", "true" if on else "false")
+
+    def _on_enable_shapr(self, on, save=True):
+        """Show or hide the TextShapR tab. The page widget is kept alive when
+        hidden so its state survives re-enabling."""
+        idx = self._tab_index_of("shapr")
+        if on and idx is None:
+            page = self._tab_pages.get("shapr")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("shapr"))
+                self.main_tabs.tabBar().setTabData(i, "shapr")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableShapr", "true" if on else "false")
+
+    def _on_enable_sfx(self, on, save=True):
+        """Show or hide the SFX tab (kept alive when hidden)."""
+        idx = self._tab_index_of("sfx")
+        if on and idx is None:
+            page = self._tab_pages.get("sfx")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("sfx"))
+                self.main_tabs.tabBar().setTabData(i, "sfx")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableSfx", "true" if on else "false")
+
+    def on_layout_reset(self):
+        """Back to the built-in tab names/order AND panel homes (unpin
+        everything, drop custom panel order + placement)."""
+        self._tab_names = {}
+        self._save_tab_names()
+        self._apply_tab_order([t for t, _nk in self._tab_defaults])
+        self._on_tab_moved()
+        self._retranslate_tabs()
+        # panels: reattach any detached, unpin, clear saved state, send home
+        for pid in list(self._detached.keys()):
+            self._reattach_panel(pid)
+        for box in self._panels.values():
+            box.set_locked(False)
+            box.set_user_height(0)
+        for pid, home in self._panel_home.items():
+            self._move_panel_to_tab(pid, home, save=False)
+        try:
+            app = Krita.instance()
+            app.writeSetting("typer_kr", "panelOrder", "")
+            app.writeSetting("typer_kr", "panelTabs", "")
+            app.writeSetting("typer_kr", "panelLocked", "")
+            app.writeSetting("typer_kr", "panelDetached", "")
+            app.writeSetting("typer_kr", "panelHeights", "")
+        except Exception:
+            pass
+        self._set_status(self._tr("layout_reset_done"))
+
+    def _load_tab_names(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "tabNames", "")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    def _save_tab_names(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "tabNames", json.dumps(self._tab_names))
+        except Exception:
+            pass
+
+    def _load_tab_order(self):
+        raw = Krita.instance().readSetting("typer_kr", "tabOrder", "")
+        return [t for t in raw.split(",") if t] if raw else []
+
     def _load_ui_tab(self):
         try:
             return max(0, min(3, int(
@@ -3000,6 +5159,8 @@ class TyperDocker(DockWidget):
             "editor_show": True, "editor_h": 200,
             "table_show": True, "table_h": 240,
             "fonts_show": True, "fonts_h": 160,
+            "bubblr_show": True, "bubblr_h": 280,
+            "bmap_show": True, "bmap_h": 160,
         }
 
     def _load_view(self):
@@ -3022,6 +5183,10 @@ class TyperDocker(DockWidget):
                 "table_h": self.v_table_h.value(),
                 "fonts_show": self.v_fonts_chk.isChecked(),
                 "fonts_h": self.v_fonts_h.value(),
+                "bubblr_show": self.v_bubblr_chk.isChecked(),
+                "bubblr_h": self.v_bubblr_h.value(),
+                "bmap_show": self.v_bmap_chk.isChecked(),
+                "bmap_h": self.v_bmap_h.value(),
             }))
         except Exception:
             pass
@@ -3064,6 +5229,18 @@ class TyperDocker(DockWidget):
         fixed(self.font_picker.list, self.v_fonts_h.value())
         self.v_fonts_h.setEnabled(fv)
 
+        if hasattr(self, "bp_overlay"):
+            # The overlay always FILLS its panel: a small floor so it can never
+            # collapse to nothing, no upper cap, and it expands via its stretch
+            # in the panel. Its size now follows the panel size (drag the
+            # panel's bottom edge in Customize mode to resize it); the old
+            # height slider no longer fights the layout.
+            self.bp_overlay.setVisible(self.v_bubblr_chk.isChecked())
+            self.bp_overlay.setMinimumHeight(140)
+            self.bp_overlay.setMaximumHeight(self._QWIDGET_MAX)
+            self.v_bubblr_h.setEnabled(False)
+            self.v_bmap_h.setEnabled(False)
+
     def _on_view_toggle(self, checked):
         self.view_box.setVisible(checked)
         self._save_view()
@@ -3076,7 +5253,9 @@ class TyperDocker(DockWidget):
         d = self._view_defaults()
         widgets = (self.v_preview_chk, self.v_editor_chk, self.v_table_chk,
                    self.v_fonts_chk, self.v_preview_h, self.v_editor_h,
-                   self.v_table_h, self.v_fonts_h)
+                   self.v_table_h, self.v_fonts_h,
+                   self.v_bubblr_chk, self.v_bubblr_h,
+                   self.v_bmap_chk, self.v_bmap_h)
         for w in widgets:
             w.blockSignals(True)
         self.v_preview_chk.setChecked(d["preview_show"])
@@ -3087,6 +5266,10 @@ class TyperDocker(DockWidget):
         self.v_table_h.setValue(d["table_h"])
         self.v_fonts_chk.setChecked(d["fonts_show"])
         self.v_fonts_h.setValue(d["fonts_h"])
+        self.v_bubblr_chk.setChecked(d["bubblr_show"])
+        self.v_bubblr_h.setValue(d["bubblr_h"])
+        self.v_bmap_chk.setChecked(d["bmap_show"])
+        self.v_bmap_h.setValue(d["bmap_h"])
         for w in widgets:
             w.blockSignals(False)
         self._apply_view()
@@ -3865,16 +6048,20 @@ class TyperDocker(DockWidget):
             self.auto_chk.isChecked() and self.hyph_chk.isChecked())
         self._update_text_preview()
 
-    def _hyph_lang_for(self, text):
-        """Resolve the hyphenation language. An explicit choice wins. 'Auto'
-        prefers the UI language (when its patterns are bundled), then a simple
-        accent heuristic, then English."""
-        code = self.hyph_lang_combo.currentData() or "auto"
-        if code != "auto":
+    def _resolve_hyph(self, code, text):
+        """Resolve a hyphenation-language code. An explicit choice wins.
+        'Auto' prefers the UI language (when its patterns are bundled), then
+        a simple accent heuristic, then English."""
+        if code and code != "auto":
             return code
         if self._lang in L.HYPH_LANGS:
             return self._lang
         return self._accent_lang(text) or "en"
+
+    def _hyph_lang_for(self, text):
+        """Hyphenation language for the CURRENT UI choice."""
+        return self._resolve_hyph(
+            self.hyph_lang_combo.currentData() or "auto", text)
 
     @staticmethod
     def _accent_lang(text):
@@ -3944,6 +6131,33 @@ class TyperDocker(DockWidget):
                      self.outline_spin, self.shadow_x_spin, self.shadow_y_spin):
             spin.valueChanged.connect(lambda *a: self._update_text_preview())
 
+    def _bp_link_active(self):
+        """True when a detected BubblR bubble is armed to receive the next
+        Insert (boxes exist and a valid current bubble is set). While this
+        holds, the Type tab's Insert fills that bubble (and advances) instead
+        of using the document selection."""
+        return (bool(self._bp_boxes)
+                and 0 <= self._bp_current < len(self._bp_boxes))
+
+    def _bp_step(self, delta):
+        """Step the current-bubble pointer by delta (for the ◀/▶ redo
+        buttons); clamps to the ends."""
+        if not self._bp_boxes:
+            return
+        cur = self._bp_current if self._bp_current >= 0 else 0
+        self._bp_set_current(max(0, min(cur + delta, len(self._bp_boxes) - 1)))
+
+    def _bp_update_nav(self):
+        """Show/label the Type-tab bubble stepper to mirror BubblR state."""
+        if not hasattr(self, "bubble_nav_widget"):
+            return
+        have = bool(self._bp_boxes)
+        self.bubble_nav_widget.setVisible(have)
+        if have:
+            cur = self._bp_current + 1 if self._bp_current >= 0 else 0
+            self.bubble_lbl.setText(
+                self._tr("bubble_of").format(cur=cur, n=len(self._bp_boxes)))
+
     def on_insert(self):
         if not self._pairs:
             self._set_status(self._tr("st_nothing"), error=True)
@@ -3953,6 +6167,22 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_no_font"), error=True)
             return
         text = self._current_text()
+        # default shape from the auto-fit + round toggles
+        shape = "ellipse" if (self.auto_chk.isChecked()
+                              and self.round_chk.isChecked()) else "rect"
+        # When a BubblR bubble is armed, Insert fills THAT bubble: use its
+        # rect as the box and its detected shape (round bubbles -> ellipse).
+        box = None
+        linked = self._bp_link_active()
+        if linked:
+            b = self._bp_boxes[self._bp_current]
+            box = (b["x"], b["y"], b["w"], b["h"])
+            # Fit to whatever suits the bubble: an ellipse for round speech
+            # bubbles, a rectangle for caption boxes / SFX / free text.
+            if self.auto_chk.isChecked():
+                shape = ("rect" if b.get("kind") == "sfx"
+                         else ("ellipse" if b.get("shape") == "round"
+                               else "rect"))
         ok, key, fmt = insert_text_layer(
             text,
             family,
@@ -3971,8 +6201,7 @@ class TyperDocker(DockWidget):
             self.align_combo.currentData() or "center",
             self.case_combo.currentData() or "none",
             self.tidy_chk.isChecked(),
-            "ellipse" if (self.auto_chk.isChecked()
-                          and self.round_chk.isChecked()) else "rect",
+            shape,
             self.shadow_chk.isChecked(),
             self._shadow_color,
             self.shadow_x_spin.value(),
@@ -3982,6 +6211,7 @@ class TyperDocker(DockWidget):
             hyphenate=self.hyph_chk.isChecked(),
             hyph_lang=self._hyph_lang_for(text),
             replace_existing=self.replace_chk.isChecked(),
+            box=box,
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
@@ -3993,21 +6223,23 @@ class TyperDocker(DockWidget):
             if self._index < len(self._pairs) - 1:
                 self._index += 1
             self._refresh_view()
+            # in the BubblR flow, mark this bubble filled and step to the next
+            if linked:
+                self._bp_placed.add(self._bp_current)
+                nxt = self._bp_next_bubble(self._bp_current + 1)
+                self._bp_set_current(nxt if nxt is not None else -1)
 
     def _insert_msg(self, key, fmt):
         """Status message for an insert result; notes when old layer(s) of the
         same line were replaced."""
+        if fmt.get("px"):
+            self._last_insert_px = fmt["px"]   # for TextShapR 'match size'
         msg = self._tr(key).format(**fmt)
         if fmt.get("replaced"):
             msg += "  " + self._tr("st_replaced")
         return msg
 
-    def on_open_shaper(self):
-        """Open the TextShapR picker for the current line."""
-        dlg = TextShapRDialog(self)
-        dlg.exec_()
-
-    def insert_arrangement(self, cand, advance):
+    def insert_arrangement(self, cand, advance, replace=None):
         """Insert a TextShapR candidate through the normal insert path. The
         chosen line breaks (and any hyphens) are baked into the text as hard
         breaks, and the size is capped at the candidate's px, so the layer
@@ -4043,7 +6275,8 @@ class TyperDocker(DockWidget):
             self.valign_combo.currentData() or "middle",
             self._index + 1,
             hyphenate=False,       # hyphens are already in the baked text
-            replace_existing=self.replace_chk.isChecked(),
+            replace_existing=(self.replace_chk.isChecked()
+                              if replace is None else replace),
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
@@ -4095,6 +6328,828 @@ class TyperDocker(DockWidget):
             self.table.blockSignals(False)
 
     # mandatory override from DockWidget
+    # ------------------------------------------------------------------
+    # BubblR tab: detect bubbles, map script lines, per-bubble styles
+    # ------------------------------------------------------------------
+
+    def _build_bubblr_tab(self, lay):
+        app = Krita.instance()
+
+        # detection controls live in one movable panel; the overlay preview in
+        # another so the two can be reordered / moved like every other panel.
+        _det_pb = self._new_panel("bubblr_detect", "bubblr")
+        det = _det_pb.body_layout()
+
+        # detection row: backend + actions (wraps to the docker width)
+        row = FlowLayout()
+        self.bp_backend_combo = NoScrollComboBox()
+        self.bp_backend_combo.addItem("", "heur")
+        self.bp_backend_combo.addItem("", "ai")
+        saved = app.readSetting("typer_kr", "bpBackend", "")
+        if not saved:
+            saved = "ai" if AB.find_ai_dir(
+                app.readSetting("typer_kr", "aidir", "")) else "heur"
+        self.bp_backend_combo.setCurrentIndex(1 if saved == "ai" else 0)
+        self.bp_backend_combo.currentIndexChanged.connect(
+            self._on_bp_backend)
+        row.addWidget(self.bp_backend_combo)
+        self.bp_detect_btn = QPushButton()
+        self.bp_detect_btn.clicked.connect(self.on_bp_detect)
+        row.addWidget(self.bp_detect_btn)
+        self.bp_add_sel_btn = QPushButton()
+        self.bp_add_sel_btn.clicked.connect(self.on_bp_add_from_selection)
+        row.addWidget(self.bp_add_sel_btn)
+        self.bp_reset_btn = QPushButton()
+        self.bp_reset_btn.clicked.connect(self.on_bp_reset_order)
+        row.addWidget(self.bp_reset_btn)
+        # "Set reading order": while active, click the bubbles in the order
+        # you want them numbered (finish by clicking them all, or click again
+        # to cancel). Same effect as Ctrl+clicking, but as an explicit mode.
+        self.bp_order_btn = QPushButton()
+        self.bp_order_btn.setCheckable(True)
+        self.bp_order_btn.toggled.connect(self._on_bp_order_toggle)
+        row.addWidget(self.bp_order_btn)
+        # "Mark SFX": while active, click a box to flip it between speech
+        # bubble and SFX / free text (blue). Same mode idea as 'Set order'.
+        self.bp_sfxmark_btn = QPushButton()
+        self.bp_sfxmark_btn.setCheckable(True)
+        self.bp_sfxmark_btn.toggled.connect(self._on_bp_sfxmark_toggle)
+        row.addWidget(self.bp_sfxmark_btn)
+        # "Toggle shape": while active, click a box to force it round <-> rect
+        # (overrides the auto shape from the fill ratio).
+        self.bp_shape_btn = QPushButton()
+        self.bp_shape_btn.setCheckable(True)
+        self.bp_shape_btn.toggled.connect(self._on_bp_shapemark_toggle)
+        row.addWidget(self.bp_shape_btn)
+        # "Edit boxes": draw a new box on empty canvas, drag a box body to move
+        # it, drag a corner to resize; right-click still removes.
+        self.bp_edit_btn = QPushButton()
+        self.bp_edit_btn.setCheckable(True)
+        self.bp_edit_btn.toggled.connect(self._on_bp_edit_toggle)
+        row.addWidget(self.bp_edit_btn)
+        # "Panel order": use Magi to detect comic panels and renumber the
+        # bubbles panel-by-panel (fixes interleaving across side-by-side panels)
+        self.bp_panelorder_btn = QPushButton()
+        self.bp_panelorder_btn.clicked.connect(self.on_bp_panel_order)
+        row.addWidget(self.bp_panelorder_btn)
+        # Save / load the current boxes to a JSON sidecar, so labelling a page
+        # can be paused and resumed (correct now, export later).
+        self.bp_save_btn = QPushButton()
+        self.bp_save_btn.clicked.connect(self.on_bp_save_boxes)
+        row.addWidget(self.bp_save_btn)
+        self.bp_load_btn = QPushButton()
+        self.bp_load_btn.clicked.connect(self.on_bp_load_boxes)
+        row.addWidget(self.bp_load_btn)
+        det.addLayout(row)
+
+        # AI model + sensitivity (which weights, and the detection thresholds)
+        mrow = FlowLayout()
+        self.bp_model_lbl = QLabel()
+        mrow.addWidget(self.bp_model_lbl)
+        self.bp_model_combo = NoScrollComboBox()
+        self.bp_model_combo.addItem("", "auto")
+        self.bp_model_combo.addItem("", "baseline")
+        self.bp_model_combo.addItem("", "finetuned")
+        self.bp_model_combo.addItem("", "kitsumed")
+        self.bp_model_combo.addItem("", "hybrid")
+        _mi = {"auto": 0, "baseline": 1, "finetuned": 2,
+               "kitsumed": 3, "hybrid": 4}.get(
+            app.readSetting("typer_kr", "bpModel", "auto"), 0)
+        self.bp_model_combo.setCurrentIndex(_mi)
+        self.bp_model_combo.currentIndexChanged.connect(
+            lambda *_a: Krita.instance().writeSetting(
+                "typer_kr", "bpModel",
+                self.bp_model_combo.currentData() or "auto"))
+        mrow.addWidget(self.bp_model_combo)
+        self.bp_conf_lbl = QLabel()
+        mrow.addWidget(self.bp_conf_lbl)
+        self.bp_conf_spin = NoScrollSpinBox()
+        self.bp_conf_spin.setRange(5, 95)
+        self.bp_conf_spin.setSuffix(" %")
+        self.bp_conf_spin.setValue(self._read_int_setting("bpConf", 40))
+        self.bp_conf_spin.valueChanged.connect(
+            lambda v: Krita.instance().writeSetting(
+                "typer_kr", "bpConf", str(v)))
+        mrow.addWidget(self.bp_conf_spin)
+        self.bp_sfxconf_lbl = QLabel()
+        mrow.addWidget(self.bp_sfxconf_lbl)
+        self.bp_sfxconf_spin = NoScrollSpinBox()
+        self.bp_sfxconf_spin.setRange(5, 95)
+        self.bp_sfxconf_spin.setSuffix(" %")
+        self.bp_sfxconf_spin.setValue(self._read_int_setting("bpSfxConf", 20))
+        self.bp_sfxconf_spin.valueChanged.connect(
+            lambda v: Krita.instance().writeSetting(
+                "typer_kr", "bpSfxConf", str(v)))
+        mrow.addWidget(self.bp_sfxconf_spin)
+        det.addLayout(mrow)
+
+        # options row (SFX handling is off by default for now: sfx boxes are
+        # dropped AND script lines matching the SFX word DB are skipped)
+        row = FlowLayout()
+        self.bp_text_chk = QCheckBox()
+        self.bp_text_chk.setChecked(
+            app.readSetting("typer_kr", "bpReqText", "true") == "true")
+        self.bp_text_chk.toggled.connect(
+            lambda on: Krita.instance().writeSetting(
+                "typer_kr", "bpReqText", "true" if on else "false"))
+        row.addWidget(self.bp_text_chk)
+        self.bp_sfx_chk = QCheckBox()
+        self.bp_sfx_chk.setChecked(
+            app.readSetting("typer_kr", "bpSfx", "false") == "true")
+        self.bp_sfx_chk.toggled.connect(self._on_bp_sfx_toggle)
+        row.addWidget(self.bp_sfx_chk)
+        self.bp_rtl_chk = QCheckBox()
+        self.bp_rtl_chk.setChecked(
+            app.readSetting("typer_kr", "bpRtl", "true") == "true")
+        self.bp_rtl_chk.toggled.connect(self._on_bp_rtl)
+        row.addWidget(self.bp_rtl_chk)
+        # Tiling: more accurate on big pages (finds small SFX/text) but slower
+        # on weak machines. On by default; turn off for a fast, low-power run.
+        self.bp_tile_chk = QCheckBox()
+        self.bp_tile_chk.setChecked(
+            app.readSetting("typer_kr", "bpTile", "false") == "true")
+        self.bp_tile_chk.toggled.connect(
+            lambda on: Krita.instance().writeSetting(
+                "typer_kr", "bpTile", "true" if on else "false"))
+        row.addWidget(self.bp_tile_chk)
+        det.addLayout(row)
+
+        row = FlowLayout()
+        self.bp_selfollow_chk = QCheckBox()
+        self.bp_selfollow_chk.setChecked(
+            app.readSetting("typer_kr", "bpSelFollow", "true") == "true")
+        self.bp_selfollow_chk.toggled.connect(
+            lambda on: Krita.instance().writeSetting(
+                "typer_kr", "bpSelFollow", "true" if on else "false"))
+        row.addWidget(self.bp_selfollow_chk)
+        self.bp_sfx_db_btn = QPushButton()
+        self.bp_sfx_db_btn.clicked.connect(self.on_bp_sfx_db)
+        row.addWidget(self.bp_sfx_db_btn)
+        det.addLayout(row)
+
+        # short hint: BubblR only marks the bubbles; text is placed from Type
+        self.bp_hint_lbl = QLabel("")
+        self.bp_hint_lbl.setStyleSheet("color: gray;")
+        self.bp_hint_lbl.setWordWrap(True)
+        det.addWidget(self.bp_hint_lbl)
+
+        # actions: only training export remains (placement is done in Type)
+        row = QHBoxLayout()
+        self.bp_export_btn = QPushButton()
+        self.bp_export_btn.clicked.connect(self.on_bp_export_training)
+        row.addWidget(self.bp_export_btn)
+        row.addStretch(1)
+        det.addLayout(row)
+        lay.addWidget(_det_pb)
+
+        # overlay preview: the numbered bubbles on the page thumbnail
+        _ov_pb = self._new_panel("bubblr_overlay", "bubblr")
+        self.bp_overlay = BubbleOverlay()
+        self.bp_overlay.boxClicked.connect(self._on_bp_box_clicked)
+        self.bp_overlay.boxRemoved.connect(self._on_bp_box_removed)
+        self.bp_overlay.boxAdded.connect(self._on_bp_box_added)
+        self.bp_overlay.boxChanged.connect(self._on_bp_box_changed)
+        self.bp_overlay.setFocusPolicy(Qt.StrongFocus)
+        # keyboard shortcuts while the overlay has focus (fast labelling)
+        for keys, fn in (
+                (("E", "."), lambda: self._bp_step(1)),
+                (("Q", ","), lambda: self._bp_step(-1)),
+                (("Delete", "Backspace"), self._bp_delete_current),
+                (("S",), self._bp_toggle_current_sfx),
+                (("R",), self._bp_toggle_current_shape)):
+            for key in keys:
+                sc = QShortcut(QKeySequence(key), self.bp_overlay)
+                sc.setContext(Qt.WidgetShortcut)
+                sc.activated.connect(fn)
+        _ov_pb.body_layout().addWidget(self.bp_overlay, 2)
+        lay.addWidget(_ov_pb, 2)
+
+        self._on_bp_backend()
+
+    def _on_bp_backend(self, *_a):
+        mode = self.bp_backend_combo.currentData() or "heur"
+        Krita.instance().writeSetting("typer_kr", "bpBackend", mode)
+        # the text filter is a heuristic-only concept
+        self.bp_text_chk.setVisible(mode == "heur")
+
+    def _on_bp_sfx_toggle(self, on):
+        """Whether free-text (SFX) boxes are kept; applied on the next
+        Detect run."""
+        Krita.instance().writeSetting(
+            "typer_kr", "bpSfx", "true" if on else "false")
+
+    # -- SFX word database ---------------------------------------------------
+
+    def _bp_sfx_db_path(self):
+        """Path of sfx_db.json in the shared ai folder, or None (then the
+        user words live in the Krita setting 'sfxDb')."""
+        d = AB.find_ai_dir(
+            Krita.instance().readSetting("typer_kr", "aidir", ""))
+        return os.path.join(d, "sfx_db.json") if d else None
+
+    def _bp_sfx_words(self):
+        """Combined seed + user SFX vocabulary."""
+        path = self._bp_sfx_db_path()
+        if path:
+            seed, user = BB.load_sfx_db(path)
+        else:
+            seed = list(BB.SFX_SEED_WORDS)
+            try:
+                raw = Krita.instance().readSetting("typer_kr", "sfxDb", "")
+                user = json.loads(raw) if raw else []
+            except Exception:
+                user = []
+        return list(seed) + [w for w in user if w]
+
+    def _bp_user_sfx_words(self):
+        path = self._bp_sfx_db_path()
+        if path:
+            return BB.load_sfx_db(path)[1]
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "sfxDb", "")
+            return json.loads(raw) if raw else []
+        except Exception:
+            return []
+
+    def _bp_save_user_sfx_words(self, words):
+        path = self._bp_sfx_db_path()
+        if path:
+            seed, _user = BB.load_sfx_db(path)
+            BB.save_sfx_db(path, words, seed)
+        else:
+            try:
+                Krita.instance().writeSetting(
+                    "typer_kr", "sfxDb", json.dumps(list(words)))
+            except Exception:
+                pass
+
+    def on_bp_sfx_db(self):
+        """Tiny editor for the user part of the SFX vocabulary."""
+        dlg = QDialog(self.widget())
+        dlg.setWindowTitle(self._tr("bp_sfx_db"))
+        lay = QVBoxLayout(dlg)
+        hint = QLabel(self._tr("bp_sfx_dlg_hint"))
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+        edit = QPlainTextEdit()
+        edit.setPlainText("\n".join(self._bp_user_sfx_words()))
+        lay.addWidget(edit, 1)
+        btns = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        dlg.resize(320, 380)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        words = [w.strip() for w in edit.toPlainText().split("\n")
+                 if w.strip()]
+        self._bp_save_user_sfx_words(words)
+
+    # -- current bubble + selection sync ---------------------------------------
+
+    def _bp_apply_selection(self):
+        """Make the current bubble the Krita selection (when enabled), so
+        the Type tab's Insert/TextShapR work on it too."""
+        if not self.bp_selfollow_chk.isChecked():
+            return
+        if not (0 <= self._bp_current < len(self._bp_boxes)):
+            return
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            return
+        b = self._bp_boxes[self._bp_current]
+        x, y = int(b["x"]), int(b["y"])
+        w, h = int(b["w"]), int(b["h"])
+        try:
+            sel = Selection()
+            sel.select(x, y, w, h, 255)
+            # a round bubble gets a matching ELLIPTICAL selection (a rectangle
+            # would grab the corners outside the balloon). SFX / rect stay box.
+            if (b.get("shape") == "round" and b.get("kind") != "sfx"
+                    and 0 < w * h <= 4000000):
+                sel.setPixelData(BB.ellipse_mask(w, h), x, y, w, h)
+            doc.setSelection(sel)
+        except Exception:
+            pass
+
+    def _bp_set_current(self, idx):
+        """Move the current-bubble pointer (and the doc selection) to `idx`."""
+        if not (0 <= idx < len(self._bp_boxes)):
+            idx = -1
+        self._bp_current = idx
+        self._bp_refresh_overlay()
+        self._bp_apply_selection()
+        self._bp_update_nav()
+
+    def _bp_reset_state(self):
+        """After a (re)detect / reorder: forget which bubbles were placed and
+        point at the first one. No script mapping is involved."""
+        self._bp_placed = set()
+        self._bp_set_current(0 if self._bp_boxes else -1)
+
+    def _bp_next_bubble(self, start):
+        """Next bubble index >= start that has not been placed yet, or None."""
+        for k in range(max(0, start), len(self._bp_boxes)):
+            if k not in self._bp_placed:
+                return k
+        return None
+
+    # -- detection -----------------------------------------------------------
+
+    def _bp_ai_dir(self):
+        app = Krita.instance()
+        d = AB.find_ai_dir(app.readSetting("typer_kr", "aidir", ""))
+        if d:
+            return d
+        picked = QFileDialog.getExistingDirectory(
+            self.widget(), self._tr("bp_pick_ai"))
+        if picked and AB.find_ai_dir(picked):
+            app.writeSetting("typer_kr", "aidir", picked)
+            return picked
+        return None
+
+    @staticmethod
+    def _bp_save_page_png(gray, w, h, path):
+        """Write the grayscale page to a PNG (input for the AI detector)."""
+        data = bytes(gray)
+        img = QImage(data, w, h, w, QImage.Format_Grayscale8)
+        return img.save(path, "PNG")
+
+    @staticmethod
+    def _bp_refine_shapes(boxes, gray, w, h):
+        """Round vs. rect for AI bubble boxes: a caption box fills its bbox
+        almost completely with white, an ellipse only ~78 %."""
+        for b in boxes:
+            if b.get("kind") != "bubble":
+                continue
+            step = max(1, int(((b["w"] * b["h"]) / 20000.0) ** 0.5))
+            white = total = 0
+            for y in range(b["y"], min(h, b["y"] + b["h"]), step):
+                base = y * w
+                for x in range(b["x"], min(w, b["x"] + b["w"]), step):
+                    total += 1
+                    if gray[base + x] >= BB.BRIGHT_THRESH:
+                        white += 1
+            frac = white / float(total or 1)
+            b["shape"] = "rect" if frac >= 0.9 else "round"
+            b["fill"] = frac
+            # trace the real outline from the pixels for round/irregular
+            # balloons; caption boxes (near-full fill) stay a plain rectangle.
+            b.pop("poly", None)
+            if frac < 0.9:
+                try:
+                    poly = BB.contour_in_box(
+                        gray, w, h, (b["x"], b["y"], b["w"], b["h"]))
+                except Exception:               # never let shape refine crash
+                    poly = None
+                if poly and len(poly) >= 3:
+                    b["poly"] = poly
+
+    def _bp_detect_ai(self, gray, w, h):
+        """Run the external detector; boxes or None (status already set)."""
+        ai_dir = self._bp_ai_dir()
+        if not ai_dir:
+            self._set_status(self._tr("st_bp_ai_missing"), error=True)
+            return None
+        tmp = os.path.join(tempfile.gettempdir(),
+                           "typer_bp_page_%d.png" % os.getpid())
+        try:
+            if not self._bp_save_page_png(gray, w, h, tmp):
+                self._set_status(
+                    self._tr("st_bp_ai_error").format(
+                        msg="could not write page"), error=True)
+                return None
+            try:
+                tile = "auto" if self.bp_tile_chk.isChecked() else "off"
+                boxes = AB.detect(
+                    ai_dir, tmp, tile=tile,
+                    model=self.bp_model_combo.currentData() or "auto",
+                    conf=self.bp_conf_spin.value() / 100.0,
+                    sfx_conf=self.bp_sfxconf_spin.value() / 100.0)
+            except AB.AIUnavailableError:
+                self._set_status(self._tr("st_bp_ai_missing"), error=True)
+                return None
+            except AB.AIRunError as exc:
+                self._set_status(
+                    self._tr("st_bp_ai_error").format(msg=exc), error=True)
+                return None
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        if not self.bp_sfx_chk.isChecked():
+            boxes = [b for b in boxes if b.get("kind") != "sfx"]
+        self._bp_refine_shapes(boxes, gray, w, h)
+        return boxes
+
+    def on_bp_detect(self):
+        # BubblR marks bubbles on the page image — a loaded script is NOT
+        # required (text is placed later from the Type tab).
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            self._set_status(self._tr("st_no_doc"), error=True)
+            return
+        gray, a, b = grab_gray(doc)
+        if gray is None:
+            self._set_status(
+                self._tr("st_bp_unsupported").format(model=a, depth=b),
+                error=True)
+            return
+        w, h = a, b
+        if (self.bp_backend_combo.currentData() or "heur") == "ai":
+            boxes = self._bp_detect_ai(gray, w, h)
+            if boxes is None:
+                return
+        else:
+            boxes = BB.detect_bubbles(
+                gray, w, h, require_text=self.bp_text_chk.isChecked())
+            if self.bp_sfx_chk.isChecked():
+                boxes = boxes + BB.detect_text_blocks(gray, w, h, boxes)
+        self._bp_boxes = BB.reading_order(
+            boxes, rtl=self.bp_rtl_chk.isChecked())
+        self._bp_click_seq = []
+        thumb = doc.thumbnail(600, max(1, int(h * 600 / float(w))))
+        self.bp_overlay.set_page(thumb, w, h)
+        self._bp_reset_state()
+        self._bp_refresh()
+        if self._bp_boxes:
+            self._set_status(
+                self._tr("st_bp_detected").format(n=len(self._bp_boxes)))
+        else:
+            self._set_status(self._tr("st_bp_none"), error=True)
+
+    def _on_bp_rtl(self, checked):
+        Krita.instance().writeSetting(
+            "typer_kr", "bpRtl", "true" if checked else "false")
+        if self._bp_boxes:
+            self._bp_boxes = BB.reading_order(self._bp_boxes, rtl=checked)
+            self._bp_click_seq = []
+            self._bp_reset_state()
+            self._bp_refresh()
+
+    def on_bp_reset_order(self):
+        if self._bp_boxes:
+            self._bp_boxes = BB.reading_order(
+                self._bp_boxes, rtl=self.bp_rtl_chk.isChecked())
+        self._bp_click_seq = []
+        self._bp_reset_state()
+        self._bp_refresh()
+
+    def on_bp_save_boxes(self):
+        """Write the current boxes to a JSON sidecar so labelling can resume
+        later (correct now, export another day)."""
+        if not self._bp_boxes:
+            self._set_status(self._tr("st_bp_export_none"), error=True)
+            return
+        doc = Krita.instance().activeDocument()
+        base = "boxes"
+        if doc is not None and doc.fileName():
+            base = os.path.splitext(os.path.basename(doc.fileName()))[0]
+        path, _ = QFileDialog.getSaveFileName(
+            self, self._tr("bp_save_boxes"), base + ".bubblr.json",
+            "BubblR boxes (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"boxes": self._bp_boxes}, fh)
+            self._set_status(self._tr("st_bp_saved").format(
+                name=os.path.basename(path)))
+        except Exception as exc:                    # noqa: BLE001
+            self._set_status(str(exc), error=True)
+
+    def on_bp_load_boxes(self):
+        """Load boxes from a JSON sidecar written by on_bp_save_boxes."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, self._tr("bp_load_boxes"), "", "BubblR boxes (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            raw = data.get("boxes", data) if isinstance(data, dict) else data
+            boxes = []
+            for b in raw:
+                boxes.append({"x": int(b["x"]), "y": int(b["y"]),
+                              "w": int(b["w"]), "h": int(b["h"]),
+                              "kind": b.get("kind", "bubble"),
+                              "shape": b.get("shape", "rect"),
+                              "score": float(b.get("score", 1.0))})
+        except Exception as exc:                    # noqa: BLE001
+            self._set_status(str(exc), error=True)
+            return
+        self._bp_boxes = boxes
+        self._bp_click_seq = []
+        self._bp_reset_state()
+        self._bp_refresh()
+        self._set_status(self._tr("st_bp_loaded").format(n=len(boxes)))
+
+    def on_bp_panel_order(self):
+        """Panel-aware reading order: detect comic panels with Magi, then
+        renumber the bubbles panel by panel (a hybrid with the online model)."""
+        if not self._bp_boxes:
+            self._set_status(self._tr("st_bp_export_none"), error=True)
+            return
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            self._set_status(self._tr("st_no_doc"), error=True)
+            return
+        ai_dir = self._bp_ai_dir()
+        if not ai_dir:
+            self._set_status(self._tr("st_bp_ai_missing"), error=True)
+            return
+        gray, w, h = grab_gray(doc)
+        if gray is None:
+            self._set_status(
+                self._tr("st_bp_unsupported").format(model=w, depth=h),
+                error=True)
+            return
+        self._set_status(self._tr("st_bp_panels_wait"))
+        tmp = os.path.join(tempfile.gettempdir(),
+                           "typer_panels_%d.png" % os.getpid())
+        try:
+            self._bp_save_page_png(gray, w, h, tmp)
+            try:
+                panels = AB.detect_panels(ai_dir, tmp)
+            except AB.AIUnavailableError:
+                self._set_status(self._tr("st_bp_ai_missing"), error=True)
+                return
+            except AB.AIRunError as exc:
+                self._set_status(
+                    self._tr("st_bp_ai_error").format(msg=exc), error=True)
+                return
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        self._bp_boxes = BB.order_by_panels(
+            self._bp_boxes, panels, rtl=self.bp_rtl_chk.isChecked())
+        self._bp_click_seq = []
+        self._bp_reset_state()
+        self._bp_refresh()
+        self._set_status(self._tr("st_bp_panels").format(n=len(panels)))
+
+    def _selection_fill(self, sel):
+        """Fraction of the selection's bounding box that is actually
+        selected (marked px / bbox area). A rectangular marquee is ~1.0,
+        an elliptical one ~pi/4. Subsampled for speed; 1.0 on any error so
+        the shape falls back to 'rect'."""
+        try:
+            w, h = int(sel.width()), int(sel.height())
+            if w <= 0 or h <= 0:
+                return 1.0
+            data = sel.pixelData(sel.x(), sel.y(), w, h)
+            if not data:
+                return 1.0
+            n = len(data)
+            step = max(1, n // 20000)      # cap the work on huge selections
+            marked = total = 0
+            for i in range(0, n, step):
+                total += 1
+                if data[i]:
+                    marked += 1
+            return marked / float(total) if total else 1.0
+        except Exception:
+            return 1.0
+
+    def on_bp_add_from_selection(self):
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            self._set_status(self._tr("st_no_doc"), error=True)
+            return
+        sel = doc.selection()
+        if sel is None or sel.width() <= 0 or sel.height() <= 0:
+            self._set_status(self._tr("st_bp_no_sel"), error=True)
+            return
+        fill = self._selection_fill(sel)
+        self._bp_boxes.append({"x": sel.x(), "y": sel.y(),
+                               "w": sel.width(), "h": sel.height(),
+                               "kind": "bubble",
+                               "shape": BB.shape_from_fill(fill),
+                               "fill": fill})
+        self._bp_click_seq = []
+        self._bp_reset_state()
+        self._bp_refresh()
+        self._set_status(
+            self._tr("st_bp_added").format(n=len(self._bp_boxes)))
+
+    # -- overlay interaction ---------------------------------------------------
+
+    def _read_int_setting(self, key, default):
+        try:
+            return int(Krita.instance().readSetting(
+                "typer_kr", key, str(default)) or default)
+        except Exception:
+            return default
+
+    def _bp_exclusive_modes(self, keep):
+        """Uncheck every click-mode button except `keep` so only one is on."""
+        for name in ("bp_order_btn", "bp_sfxmark_btn", "bp_shape_btn",
+                     "bp_edit_btn"):
+            btn = getattr(self, name, None)
+            if btn is not None and name != keep and btn.isChecked():
+                btn.setChecked(False)
+
+    def _on_bp_edit_toggle(self, on):
+        """Enter/leave 'edit boxes' mode (draw / move / resize on the page)."""
+        if on:
+            self._bp_exclusive_modes("bp_edit_btn")
+            self._set_status(self._tr("st_bp_edit_mode"))
+        if hasattr(self, "bp_overlay"):
+            self.bp_overlay.set_edit_mode(on)
+
+    def _on_bp_box_added(self, x, y, w, h):
+        self._bp_boxes.append({"x": int(round(x)), "y": int(round(y)),
+                               "w": int(round(w)), "h": int(round(h)),
+                               "kind": "bubble", "shape": "rect",
+                               "score": 1.0})
+        self._bp_click_seq = []
+        self._bp_refresh()
+        self._bp_set_current(len(self._bp_boxes) - 1)
+
+    def _on_bp_box_changed(self, idx, x, y, w, h):
+        if 0 <= idx < len(self._bp_boxes):
+            b = self._bp_boxes[idx]
+            b["x"], b["y"] = int(round(x)), int(round(y))
+            b["w"], b["h"] = int(round(w)), int(round(h))
+            b.pop("poly", None)     # box moved/resized -> old outline is stale
+            self._bp_refresh_overlay()
+
+    def _bp_delete_current(self):
+        if 0 <= self._bp_current < len(self._bp_boxes):
+            self._on_bp_box_removed(self._bp_current)
+
+    def _bp_toggle_current_sfx(self):
+        if 0 <= self._bp_current < len(self._bp_boxes):
+            b = self._bp_boxes[self._bp_current]
+            b["kind"] = "bubble" if b.get("kind") == "sfx" else "sfx"
+            self._bp_refresh_overlay()
+
+    def _bp_toggle_current_shape(self):
+        if 0 <= self._bp_current < len(self._bp_boxes):
+            b = self._bp_boxes[self._bp_current]
+            b["shape"] = "rect" if b.get("shape") == "round" else "round"
+            b.pop("poly", None)     # explicit override -> drop the traced outline
+            self._bp_refresh_overlay()
+
+    def _on_bp_order_toggle(self, on):
+        """Enter/leave 'set reading order' mode. Leaving mid-way cancels the
+        partial numbering."""
+        if on:
+            self._bp_exclusive_modes("bp_order_btn")
+        if not on and self._bp_click_seq:
+            self._bp_click_seq = []
+            self._bp_refresh_overlay()
+        if on:
+            self._set_status(self._tr("st_bp_order_mode"))
+
+    def _on_bp_sfxmark_toggle(self, on):
+        """Enter/leave 'mark SFX' mode: clicking a box flips bubble <-> SFX."""
+        if on:
+            self._bp_exclusive_modes("bp_sfxmark_btn")
+            self._set_status(self._tr("st_bp_sfx_mode"))
+
+    def _on_bp_shapemark_toggle(self, on):
+        """Enter/leave 'toggle shape' mode: clicking a box flips round <->
+        rect, overriding the automatic shape."""
+        if on:
+            self._bp_exclusive_modes("bp_shape_btn")
+            self._set_status(self._tr("st_bp_shape_mode"))
+
+    def _on_bp_box_clicked(self, idx, ctrl):
+        # 'mark SFX' mode: a click toggles the box kind (bubble <-> sfx).
+        if (not ctrl and getattr(self, "bp_sfxmark_btn", None) is not None
+                and self.bp_sfxmark_btn.isChecked()):
+            if 0 <= idx < len(self._bp_boxes):
+                b = self._bp_boxes[idx]
+                b["kind"] = "bubble" if b.get("kind") == "sfx" else "sfx"
+                self._bp_refresh_overlay()
+            return
+        # 'toggle shape' mode: a click flips the box shape (round <-> rect).
+        if (not ctrl and getattr(self, "bp_shape_btn", None) is not None
+                and self.bp_shape_btn.isChecked()):
+            if 0 <= idx < len(self._bp_boxes):
+                b = self._bp_boxes[idx]
+                b["shape"] = "rect" if b.get("shape") == "round" else "round"
+                b.pop("poly", None)   # explicit override -> drop traced outline
+                self._bp_refresh_overlay()
+            return
+        ordering = ctrl or (hasattr(self, "bp_order_btn")
+                            and self.bp_order_btn.isChecked())
+        if not ordering:
+            # plain click: make this the current bubble
+            self._bp_set_current(idx)
+            return
+        if idx in self._bp_click_seq:
+            return
+        self._bp_click_seq.append(idx)
+        if len(self._bp_click_seq) == len(self._bp_boxes):
+            # every box clicked once -> apply the new order
+            self._bp_boxes = [self._bp_boxes[i] for i in self._bp_click_seq]
+            self._bp_click_seq = []
+            if hasattr(self, "bp_order_btn"):
+                self.bp_order_btn.setChecked(False)   # leave the mode
+            self._bp_reset_state()
+            self._bp_refresh()
+            self._set_status(self._tr("st_bp_renumbered"))
+            return
+        self._bp_refresh_overlay()
+
+    def _on_bp_box_removed(self, idx):
+        del self._bp_boxes[idx]
+        self._bp_click_seq = []
+        self._bp_reset_state()
+        self._bp_refresh()
+
+    def _bp_refresh_overlay(self):
+        pending = {b: n + 1 for n, b in enumerate(self._bp_click_seq)}
+        self.bp_overlay.set_boxes(self._bp_boxes, pending,
+                                  current=self._bp_current)
+
+    def _bp_refresh(self):
+        self._bp_refresh_overlay()
+        self._bp_update_nav()
+
+    # -- training-data export ------------------------------------------------------------
+
+    def on_bp_export_training(self):
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            self._set_status(self._tr("st_no_doc"), error=True)
+            return
+        if not self._bp_boxes:
+            self._set_status(self._tr("st_bp_export_none"), error=True)
+            return
+        gray, a, b = grab_gray(doc)
+        if gray is None:
+            self._set_status(
+                self._tr("st_bp_unsupported").format(model=a, depth=b),
+                error=True)
+            return
+        w, h = a, b
+        ai_dir = self._bp_ai_dir()
+        if not ai_dir:
+            self._set_status(self._tr("st_bp_ai_missing"), error=True)
+            return
+        base = os.path.splitext(
+            os.path.basename(doc.fileName() or "page"))[0]
+        base = "".join(ch if (ch.isalnum() or ch in "-_") else "_"
+                       for ch in base) or "page"
+        stem = "%s_%d" % (base, int(time.time()))
+        boxes = list(self._bp_boxes)
+        path = AB.export_training_example(
+            ai_dir, stem,
+            lambda p: self._bp_save_page_png(gray, w, h, p),
+            boxes, w, h,
+            save_preview_fn=lambda p: self._bp_save_preview_png(
+                gray, w, h, boxes, p))
+        self._set_status(
+            self._tr("st_bp_exported").format(name=os.path.basename(path)))
+
+    @staticmethod
+    def _bp_save_preview_png(gray, w, h, boxes, path):
+        """Write a human-viewable copy of the page with the markings drawn on
+        top: numbered boxes, red = speech bubble, blue = SFX / free text,
+        ellipse for round bubbles and rectangle otherwise. This is only for
+        eyeballing what was labelled; training uses the plain PNG + .txt."""
+        data = bytes(gray)
+        base = QImage(data, w, h, w, QImage.Format_Grayscale8)
+        img = base.convertToFormat(QImage.Format_RGB888)
+        p = QPainter(img)
+        try:
+            f = p.font()
+            f.setPixelSize(max(14, h // 90))
+            f.setBold(True)
+            p.setFont(f)
+            pen_w = max(2, w // 400)
+            bw, bh = max(26, w // 70), max(20, h // 110)
+            for i, b in enumerate(boxes, 1):
+                sfx = b.get("kind") == "sfx"
+                col = QColor(70, 130, 230) if sfx else QColor(230, 60, 60)
+                p.setPen(QPen(col, pen_w))
+                p.setBrush(QBrush(Qt.NoBrush))
+                r = QRectF(float(b["x"]), float(b["y"]),
+                           float(b["w"]), float(b["h"]))
+                poly = b.get("poly")
+                if poly and not sfx and len(poly) >= 3:
+                    p.drawPolygon(QPolygonF(
+                        [QPointF(float(px), float(py)) for px, py in poly]))
+                elif b.get("shape") == "round" and not sfx:
+                    p.drawEllipse(r)
+                else:
+                    p.drawRect(r)
+                badge = QRectF(float(b["x"]), float(b["y"]),
+                               float(bw), float(bh))
+                p.fillRect(badge, col)
+                p.setPen(QPen(QColor(255, 255, 255)))
+                p.drawText(badge, Qt.AlignCenter, str(i))
+        finally:
+            p.end()
+        return img.save(path, "PNG")
+
     def canvasChanged(self, canvas):
         pass
 
@@ -4111,3 +7166,14 @@ def register():
         TyperDocker,
     )
     instance.addDockWidgetFactory(factory)
+    # Pre-register a small pool of host dockers so detached panels can live in
+    # a real Krita-dockable window. Krita only shows dockers registered here at
+    # startup, hence the fixed pool; empty hosts just sit in the Dockers menu.
+    for slot in range(MAX_DETACH_SLOTS):
+        cls = type("TyperExtraHost%d" % (slot + 1),
+                   (TyperExtraHost,), {"_SLOT": slot})
+        instance.addDockWidgetFactory(DockWidgetFactory(
+            "typer_extra_%d" % (slot + 1),
+            DockWidgetFactoryBase.DockPosition.DockRight,
+            cls,
+        ))
