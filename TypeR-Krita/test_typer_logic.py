@@ -5,7 +5,9 @@ Run:  python test_typer_logic.py
 Covers detect_manga() and default_preset_for() in typer_kr/langpair.py.
 """
 import importlib.util
+import math
 import os
+import re
 import sys
 
 # the Windows console defaults to cp1252, which cannot print the kana used
@@ -131,6 +133,148 @@ check("line_x_positions left = same left for all",
       LO.line_x_positions([100.0, 60.0], "left", 10, 200, 300) == [10.0, 10.0])
 check("line_x_positions right = right edge minus width",
       LO.line_x_positions([100.0, 60.0], "right", 10, 200, 300) == [200.0, 240.0])
+
+# --- vertical text / tategaki ----------------------------------------------
+# The trap this guards: measuring a vertical run with horizontal advances.
+_vm = LO.vertical_measurer(1.0)
+_width_of, _space_w, _line_h, _asc, _desc = _vm(20)
+check("vertical_measurer: a run is characters * em, not advance widths",
+      _width_of("abc") == 60.0)
+check("vertical_measurer: narrow and wide glyphs stack identically",
+      _width_of("IIII") == _width_of("WWWW"))
+check("vertical_measurer: space advances a full em",
+      _space_w == 20.0)
+check("vertical_measurer: line_h is the column advance = em * spacing",
+      LO.vertical_measurer(1.5)(20)[2] == 30.0)
+check("vertical_measurer: measures run lists too",
+      _width_of([("ab", False), ("c", True)]) == 60.0)
+
+check("column_y_positions middle centers each column on its length",
+      LO.column_y_positions([100.0, 60.0], "middle", 10, 200, 300)
+      == [150.0, 170.0])
+check("column_y_positions top = same top for all",
+      LO.column_y_positions([100.0, 60.0], "top", 10, 200, 300) == [10.0, 10.0])
+check("column_y_positions bottom = bottom edge minus length",
+      LO.column_y_positions([100.0, 60.0], "bottom", 10, 200, 300)
+      == [200.0, 240.0])
+
+# 3 columns of 20px in a 200-wide box at x=0, no padding: the block is 60 wide,
+# centered -> spans x=70..130, and vertical-rl starts at the RIGHT column.
+check("horizontal_start centers the block, first column rightmost",
+      LO.horizontal_start("center", 0, 200, 0.0, 3, 20) == 120.0)
+check("horizontal_start right hugs the right edge",
+      LO.horizontal_start("right", 0, 200, 0.0, 3, 20) == 190.0)
+check("horizontal_start left hugs the left edge",
+      LO.horizontal_start("left", 0, 200, 0.0, 3, 20) == 50.0)
+check("horizontal_start honours padding",
+      LO.horizontal_start("right", 0, 200, 0.1, 3, 20) == 180.0)
+_hs = LO.horizontal_start("center", 0, 200, 0.0, 3, 20)
+check("columns march leftwards from the first one",
+      [_hs - i * 20 for i in range(3)] == [120.0, 100.0, 80.0])
+
+# fit_text is axis-agnostic: hand it the transposed box + the vertical measurer
+# and it wraps into columns. A short, wide box must not stack it all in one.
+_vfit = LO.fit_text("AAA BBB CCC", LO.vertical_measurer(1.0),
+                    120, 40, 20, 6, 0.0, "rect")
+check("fit_text with the vertical measurer wraps into columns",
+      _vfit is not None and len(_vfit[1]) >= 2)
+
+# --- balloon shape library --------------------------------------------------
+_bspec = importlib.util.spec_from_file_location(
+    "balloons", os.path.join(_HERE, "typer_kr", "balloons.py"))
+BL = importlib.util.module_from_spec(_bspec)
+_bspec.loader.exec_module(BL)
+
+
+def _path_points(d):
+    """Every absolute coordinate pair in a generated path (M/L/C only)."""
+    nums = [float(n) for n in re.findall(r"-?\d+\.?\d*", d)]
+    return list(zip(nums[0::2], nums[1::2]))
+
+
+check("SHAPE_ORDER lists every shape exactly once",
+      sorted(BL.SHAPE_ORDER) == sorted(BL.SHAPES.keys())
+      and len(BL.SHAPE_ORDER) == len(set(BL.SHAPE_ORDER)))
+check("every shape maps to a text type",
+      set(BL.SHAPE_FOR_TYPE) == set(BL.SHAPES))
+check("unknown shape -> None", BL.balloon_path("banana", 0, 0, 100, 70) is None)
+check("degenerate box -> None", BL.balloon_path("oval", 0, 0, 0, 70) is None)
+
+for _s in BL.SHAPE_ORDER:
+    _d = BL.balloon_path(_s, 10, 20, 200, 140)
+    check("%s: produces a closed path" % _s,
+          _d is not None and _d.startswith("M") and _d.endswith("Z"))
+    # the point of _fit: whatever the modulation does, the shape fills the box
+    _pts = _path_points(_d)
+    _xs = [p[0] for p in _pts]
+    _ys = [p[1] for p in _pts]
+    check("%s: fills the box it was given" % _s,
+          abs(min(_xs) - 10) < 0.6 and abs(max(_xs) - 210) < 0.6
+          and abs(min(_ys) - 20) < 0.6 and abs(max(_ys) - 160) < 0.6)
+
+check("round shapes are smoothed into beziers", "C" in BL.balloon_path("cloud", 0, 0, 100, 70))
+check("angular shapes stay polygons", "C" not in BL.balloon_path("burst", 0, 0, 100, 70))
+check("a burst has deeper spikes than a radio balloon",
+      # the inset is what separates a shout from a phone voice
+      BL._mod_burst(0.0, 1) < BL._mod_radio(0.0, 1))
+
+# a rough balloon must look the same every time it is inserted
+check("rough is deterministic",
+      BL.balloon_path("rough", 0, 0, 100, 70)
+      == BL.balloon_path("rough", 0, 0, 100, 70))
+check("rough is not a plain oval",
+      BL.balloon_path("rough", 0, 0, 100, 70)
+      != BL.balloon_path("oval", 0, 0, 100, 70))
+
+check("cloud gets a circle trail, not a spike",
+      [t["kind"] for t in BL.tail_path("cloud", 0, 0, 100, 70)] == ["circle", "circle"])
+check("oval gets a pointed tail",
+      [t["kind"] for t in BL.tail_path("oval", 0, 0, 100, 70)] == ["path"])
+check("the tail hangs below the balloon box",
+      max(p[1] for p in _path_points(BL.tail_path("oval", 0, 0, 100, 70)[0]["d"])) > 70)
+
+# Regression, seen rendered in Krita: a tail with a straight base drew a chord
+# across the balloon's interior, and no stacking order hid it. The base must
+# follow the balloon's own bottom outline between the two base points.
+
+
+def _seg_dist(p, a, b):
+    """Distance from p to the segment a-b."""
+    vx, vy = b[0] - a[0], b[1] - a[1]
+    L2 = vx * vx + vy * vy
+    if L2 == 0:
+        return math.hypot(p[0] - a[0], p[1] - a[1])
+    t = max(0.0, min(1.0, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2))
+    return math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy))
+
+
+for _s in ("oval", "burst", "radio", "wavy", "rough", "robot"):
+    _outline = BL.shape_points(_s, 0, 0, 100, 70)
+    _tpts = _path_points(BL.tail_path(_s, 0, 0, 100, 70)[0]["d"])
+    # the base runs along the bottom outline, so every base point (all but the
+    # tip and the bolt's zigzag, which hang below the box) lies ON the outline
+    _on_outline = [p for p in _tpts if p[1] <= 70.001]
+    _off = [p for p in _on_outline
+            if min(_seg_dist(p, _outline[i], _outline[(i + 1) % len(_outline)])
+                   for i in range(len(_outline))) > 0.01]
+    check("%s: the tail base follows the balloon outline" % _s, not _off)
+    check("%s: the tail base spans a real width" % _s,
+          max(p[0] for p in _on_outline) - min(p[0] for p in _on_outline) > 15)
+    check("%s: the tail reaches below the balloon" % _s,
+          max(p[1] for p in _tpts) > 70)
+
+_svg = BL.balloon_svg("oval", 10, 20, 200, 140, 800, 1200)
+check("balloon_svg wraps a document at image size",
+      _svg.startswith("<svg") and 'width="800"' in _svg and 'height="1200"' in _svg)
+check("balloon_svg is opaque white with a black stroke",
+      'fill="#ffffff"' in _svg and 'stroke="#000000"' in _svg)
+check("only the whisper balloon is dashed",
+      "stroke-dasharray" in BL.balloon_svg("dashed", 0, 0, 100, 70, 100, 100)
+      and "stroke-dasharray" not in _svg)
+check("balloon_svg without a tail is just the balloon",
+      BL.balloon_svg("oval", 0, 0, 100, 70, 100, 100, tail=False).count("<path") == 1)
+check("balloon_svg: unknown shape -> None",
+      BL.balloon_svg("banana", 0, 0, 100, 70, 100, 100) is None)
 
 # --- column-aware pairing (tabular scripts, any source language) ------------
 check("split_columns splits on tab",
@@ -646,6 +790,106 @@ check("ellipse_mask: corner outside (0)", _em[0] == 0 and _em[9] == 0)
 check("ellipse_mask: ~pi/4 fill ratio",
       0.70 <= (sum(_em) / 255.0) / 100.0 <= 0.85)
 check("ellipse_mask: degenerate -> empty", BB.ellipse_mask(0, 5) == b"")
+
+# --- SFX strategies + kana->romaji ------------------------------------------
+_mspec = importlib.util.spec_from_file_location(
+    "sfxmodes", os.path.join(_HERE, "typer_kr", "sfx", "modes.py"))
+MD = importlib.util.module_from_spec(_mspec)
+_mspec.loader.exec_module(MD)
+
+check("the five strategies, cheapest first",
+      MD.STRATEGY_IDS == ["ignore", "romaji", "note", "overlay", "redraw"])
+check("only 'ignore' puts nothing on the page",
+      [s for s in MD.STRATEGY_IDS if not MD.inserts_text(s)] == ["ignore"])
+check("ignore and romaji need no English word",
+      [s for s in MD.STRATEGY_IDS if not MD.needs_translation(s)]
+      == ["ignore", "romaji"])
+check("unknown strategy is not claimed", MD.strategy("banana") is None
+      and not MD.inserts_text("banana") and not MD.needs_translation("banana"))
+
+# katakana is what SFX are actually written in
+check("romaji: katakana ドカン -> dokan", MD.to_romaji("ドカン") == "dokan")
+check("romaji: hiragana too", MD.to_romaji("どかん") == "dokan")
+check("romaji: ゴゴゴ -> gogogo", MD.to_romaji("ゴゴゴ") == "gogogo")
+check("romaji: ドキドキ -> dokidoki", MD.to_romaji("ドキドキ") == "dokidoki")
+check("romaji: ガチャン -> gachan", MD.to_romaji("ガチャン") == "gachan")
+check("romaji: ザーッ (prolong) -> zaa", MD.to_romaji("ザーッ") == "zaa")
+check("romaji: ドーン doubles the vowel, no macron",
+      MD.to_romaji("ドーン") == "doon")
+check("romaji: シーン -> shiin", MD.to_romaji("シーン") == "shiin")
+# sokuon: the small tsu doubles the NEXT consonant
+check("romaji: バッ -> ba (trailing sokuon has nothing to double)",
+      MD.to_romaji("バッ") == "ba")
+check("romaji: ドッカン -> dokkan", MD.to_romaji("ドッカン") == "dokkan")
+check("romaji: ビシッと -> bishitto", MD.to_romaji("ビシッと") == "bishitto")
+check("romaji: sokuon before ch becomes 't', not 'c'",
+      MD.to_romaji("まっちゃ") == "matcha")
+# youon
+check("romaji: キャ -> kya", MD.to_romaji("キャ") == "kya")
+check("romaji: ジャ -> ja", MD.to_romaji("ジャ") == "ja")
+check("romaji: シュゴー -> shugoo", MD.to_romaji("シュゴー") == "shugoo")
+# foreign-sound clusters common in SFX
+check("romaji: ファ -> fa", MD.to_romaji("ファ") == "fa")
+check("romaji: ヴォ -> vo", MD.to_romaji("ヴォ") == "vo")
+check("romaji: ティ -> ti", MD.to_romaji("ティ") == "ti")
+# non-kana must survive untouched
+check("romaji: latin passes through", MD.to_romaji("BOOM!") == "BOOM!")
+check("romaji: mixed keeps the non-kana", MD.to_romaji("ドンbang") == "donbang")
+check("romaji: kanji is left alone", MD.to_romaji("音ドン") == "音don")
+check("romaji: empty stays empty", MD.to_romaji("") == "" and MD.to_romaji(None) == "")
+check("romaji: middle dot becomes a space", MD.to_romaji("ド・ン") == "do n")
+
+# note list
+check("note_marker: circled numbers to 20",
+      MD.note_marker(1) == "①" and MD.note_marker(20) == "⑳")
+check("note_marker: past 20 falls back, never renumbers",
+      MD.note_marker(21) == "(21)")
+check("note_line: marker, original, romaji, meaning",
+      MD.note_line(1, "ドキ", "heartbeat") == "① ドキ = doki (heartbeat)")
+check("note_line: meaning is optional",
+      MD.note_line(2, "ドキ") == "② ドキ = doki")
+check("note_line: no romaji repeat when there is nothing to transliterate",
+      MD.note_line(3, "BOOM") == "③ BOOM")
+
+# --- #21: Drive image comments as a script source --------------------------
+check("drive_file_id: /file/d/<id>/view",
+      LP.drive_file_id("https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQr/view?usp=sharing")
+      == "1A2b3C4d5E6f7G8h9I0jKlMnOpQr")
+check("drive_file_id: open?id=",
+      LP.drive_file_id("https://drive.google.com/open?id=1A2b3C4d5E6f7G8h9I0jKlMnOpQr")
+      == "1A2b3C4d5E6f7G8h9I0jKlMnOpQr")
+check("drive_file_id: uc?id=",
+      LP.drive_file_id("https://drive.google.com/uc?id=1A2b3C4d5E6f7G8h9I0jKlMnOpQr&export=download")
+      == "1A2b3C4d5E6f7G8h9I0jKlMnOpQr")
+check("drive_file_id: bare id passes through",
+      LP.drive_file_id("1A2b3C4d5E6f7G8h9I0jKlMnOpQr") == "1A2b3C4d5E6f7G8h9I0jKlMnOpQr")
+check("drive_file_id: junk -> empty",
+      LP.drive_file_id("https://example.com/not-a-drive-link") == "")
+check("drive_file_id: empty -> empty",
+      LP.drive_file_id("") == "" and LP.drive_file_id(None) == "")
+
+
+class _FakeComment(object):
+    def __init__(self, text): self.text = text
+
+
+_imgc = [_FakeComment("Everyone clap"), _FakeComment("As an idol"),
+         _FakeComment("")]
+_script = LP.image_comments_to_script(_imgc)
+check("image_comments_to_script: skips empty comments",
+      _script.count("\n") == 1)
+# the whole point: each comment must survive as exactly ONE unit
+_pairs, _pp, _pg = LP.pair_lines_paged(_script.split("\n"))
+check("image comments -> one unit per comment",
+      len(_pairs) == 2)
+check("image comment text lands as the translation",
+      [LP.unit_text(p) for p in _pairs] == ["Everyone clap", "As an idol"])
+check("a multi-line comment stays one unit",
+      len(LP.pair_lines_paged(
+          LP.image_comments_to_script([_FakeComment("line one\nline two")]).split("\n"))[0])
+      == 1)
+check("image_comments_to_script: no comments -> empty script",
+      LP.image_comments_to_script([]) == "")
 
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

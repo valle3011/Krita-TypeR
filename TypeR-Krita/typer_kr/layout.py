@@ -903,3 +903,79 @@ def line_x_positions(line_widths, align, left, center, right):
     if align == "right":
         return [float(right) - w for w in line_widths]
     return [float(center) - w / 2.0 for w in line_widths]
+
+
+# --- vertical text (tategaki) ---------------------------------------------
+# Vertical text turns the page's axes around: a "line" is a column running
+# downwards, and successive columns march LEFTWARDS (writing-mode
+# 'vertical-rl'). The fitter is axis-agnostic — it only ever asks the measurer
+# how long a run is along the line and how far apart lines sit — so vertical
+# text reuses fit_text with the box passed in transposed (box_h as the width)
+# and a measurer that measures DOWN the column. See _make_vertical_measurer in
+# typer_kr.py: measuring horizontal advances here would be silently wrong.
+#
+# The two controls keep their literal meaning: `align` (left/center/right)
+# places the block of columns horizontally, `valign` (top/middle/bottom) places
+# the text along each column.
+
+def vertical_measurer(line_spacing):
+    """measurer(px) -> (width_of, space_w, line_h, ascent, descent) for vertical
+    text, in the same shape as typer_kr's Qt measurer so fit_text can use it.
+
+    THE POINT OF THIS FUNCTION: with text-orientation 'upright' every glyph
+    advances by roughly one em DOWNWARDS, so a run's length along its column is
+    `characters * px`. A font's horizontal advance is the wrong tape measure
+    here — "I" and "W" differ wildly in width but stack to exactly the same
+    height — and feeding it to fit_text makes wrap and auto-fit systematically
+    wrong. `line_h` is the column-to-column advance, across the columns.
+
+    Neither the family nor bold/italic enter into it: the upright advance is the
+    em box whatever the face, which is why this needs no Qt. ascent/descent are
+    the em half-box; vertical text places its block with horizontal_start(),
+    which doesn't consult them.
+    """
+    def measurer(px):
+        px = max(1, int(round(px)))
+        em = float(px)
+
+        def width_of(x):
+            runs = getattr(x, "runs", None)
+            if runs is None:
+                if isinstance(x, (list, tuple)):
+                    runs = x          # a plain run list [(text, bold), ...]
+                else:
+                    return len(x) * em          # a plain string
+            return sum(len(t) for (t, _b) in runs) * em
+
+        return width_of, em, em * line_spacing, em / 2.0, em / 2.0
+    return measurer
+
+
+_VALIGN_ANCHOR = {"top": "left", "bottom": "right"}
+
+
+def column_y_positions(line_lengths, valign, top, center, bottom):
+    """Absolute TOP y for each column of vertical text.
+
+    `line_lengths` are column lengths as returned by a vertical measurer
+    (character count * font size, not glyph advance widths).
+    """
+    return line_x_positions(line_lengths, _VALIGN_ANCHOR.get(valign, "center"),
+                            top, center, bottom)
+
+
+def horizontal_start(align, box_x, box_w, pad_frac, k, line_h):
+    """Center x of the FIRST column of vertical-rl text (k columns total).
+
+    Vertical-rl starts at the right and runs leftwards, so column i sits at
+    ``horizontal_start(...) - i * line_h``.
+    """
+    pad = box_w * pad_frac / 2.0
+    block_w = k * line_h
+    if align == "left":
+        right = box_x + pad + block_w
+    elif align == "right":
+        right = box_x + box_w - pad
+    else:
+        right = box_x + box_w / 2.0 + block_w / 2.0
+    return right - line_h / 2.0

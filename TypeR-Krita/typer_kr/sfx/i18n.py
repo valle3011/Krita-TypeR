@@ -26,6 +26,34 @@ _T = {
         "lang_label": "Language",
         "sfx_text": "SFX text",
         "sfx_placeholder": "e.g. BOOM",
+        "sfx_placeholder_jp": "the original, e.g. ドカン",
+        "strategy": "Strategy:",
+        "strategy_ignore": "Ignore — leave it Japanese",
+        "strategy_romaji": "Romaji — transliterate the sound",
+        "strategy_note": "Note — numbered list at the panel edge",
+        "strategy_overlay": "Overlay — small word beside the original",
+        "strategy_redraw": "Redraw — replace it fully",
+        "strategy_ignore_hint": "The sound effect stays as drawn. Nothing is "
+                                "placed; Insert just records the decision.",
+        "strategy_romaji_hint": "Type or read the original: it is transliterated "
+                                "for you (ドカン → dokan) and set small beside it.",
+        "strategy_note_hint": "A numbered marker goes on the artwork and the "
+                              "reading collects into a list you place at the "
+                              "panel edge. The art is never touched.",
+        "strategy_overlay_hint": "A small English word next to the original, "
+                                 "which stays visible. Gets a halo so it reads "
+                                 "over the artwork.",
+        "strategy_redraw_hint": "The full-size English sound effect. Remove the "
+                                "Japanese and rebuild the art behind it first.",
+        "skip_btn": "○  Skip this SFX",
+        "note_meaning": "Means:",
+        "note_meaning_ph": "e.g. heartbeat (optional)",
+        "note_place_list": "Place list",
+        "note_place_list_tip": "Put the collected notes at the bottom of the "
+                               "page as one text layer, then drag it to where "
+                               "the panel has room.",
+        "st_sfx_ignored": "Left as-is: {word}",
+        "st_notes_placed": "{n} note(s) placed at the page edge.",
         "from_layer": "From layer",
         "from_layer_tip": "Read the SFX word from the active (vector) text layer",
         "st_no_layer_text": "No text found on the active layer.",
@@ -70,8 +98,28 @@ _T = {
         "add_rule_tip": "Map one/several SFX words to one/several fonts.",
         "no_rules": "No rules yet – use “＋ Add font rule” below.",
         "rule_tip": "Left click: edit · Right click: edit/delete",
-        "rule_builtin_tip": "Built-in rule — click to use its first font.",
+        "rule_builtin_tip": "Built-in rule — left click: use first font · "
+                            "right click: edit / hide.",
         "rules_builtin_head": "Built-in (always on)",
+        # work modes + per-mode built-ins
+        "mode": "Mode:",
+        "mode_tip": "Own rules are tagged with the active mode; suggestions use "
+                    "only this mode's own rules.",
+        "builtins_per_mode": "Built-ins per mode",
+        "builtins_per_mode_tip": "Store hidden/edited built-in rules per mode "
+                                 "instead of globally (on by default).",
+        "hide_all_builtins": "Hide all built-ins",
+        "hide_all_builtins_tip": "Hide every built-in rule so this mode can "
+                                 "start empty.",
+        "restore_builtins": "Restore built-ins",
+        "restore_builtins_tip": "Bring back the built-in rules hidden in this "
+                                "mode.",
+        "menu_hide": "Hide",
+        "not_installed": "not installed",
+        "rule_mode_tip": "Own rule — only active in mode “{mode}”.",
+        "st_builtins_hidden": "All built-ins hidden for this mode.",
+        "st_builtins_restored": "Built-in rules restored.",
+        "st_builtin_hidden": "Built-in rule hidden.",
         "view_toggle": "⚙  Layout & sizes",
         "view_hint": "Show, resize, hide or collapse parts of this panel "
                      "(click a section's title to collapse it):",
@@ -179,6 +227,36 @@ _T = {
         "lang_label": "Sprache",
         "sfx_text": "SFX-Wort",
         "sfx_placeholder": "z. B. BOOM",
+        "sfx_placeholder_jp": "das Original, z. B. ドカン",
+        "strategy": "Strategie:",
+        "strategy_ignore": "Ignorieren — japanisch lassen",
+        "strategy_romaji": "Romaji — den Laut umschreiben",
+        "strategy_note": "Notiz — nummerierte Liste am Panelrand",
+        "strategy_overlay": "Overlay — kleines Wort daneben",
+        "strategy_redraw": "Redraw — vollständig ersetzen",
+        "strategy_ignore_hint": "Der Soundeffekt bleibt, wie er gezeichnet ist. "
+                                "Es wird nichts gesetzt; „Überspringen“ hält nur "
+                                "die Entscheidung fest.",
+        "strategy_romaji_hint": "Original eintippen oder aus der Ebene lesen: "
+                                "die Umschrift entsteht automatisch (ドカン → "
+                                "dokan) und wird klein danebengesetzt.",
+        "strategy_note_hint": "Eine nummerierte Marke kommt aufs Bild, die "
+                              "Lesung sammelt sich in einer Liste, die du an "
+                              "den Panelrand setzt. Die Kunst bleibt unberührt.",
+        "strategy_overlay_hint": "Ein kleines englisches Wort neben dem "
+                                 "Original, das sichtbar bleibt. Bekommt einen "
+                                 "Halo, damit es über der Kunst lesbar ist.",
+        "strategy_redraw_hint": "Der SFX in voller Größe. Vorher das Japanische "
+                                "entfernen und die Kunst dahinter rekonstruieren.",
+        "skip_btn": "○  SFX überspringen",
+        "note_meaning": "Bedeutet:",
+        "note_meaning_ph": "z. B. Herzklopfen (optional)",
+        "note_place_list": "Liste setzen",
+        "note_place_list_tip": "Setzt die gesammelten Notizen als eine "
+                               "Textebene an den unteren Seitenrand; danach "
+                               "dorthin ziehen, wo das Panel Platz hat.",
+        "st_sfx_ignored": "Unverändert gelassen: {word}",
+        "st_notes_placed": "{n} Notiz(en) am Seitenrand gesetzt.",
         "from_layer": "Aus Ebene",
         "from_layer_tip": "SFX-Wort aus der aktiven (Vektor-)Textebene lesen",
         "st_no_layer_text": "Kein Text auf der aktiven Ebene gefunden.",
@@ -223,8 +301,28 @@ _T = {
         "add_rule_tip": "Einem/mehreren SFX-Wörtern einen/mehrere Fonts zuordnen.",
         "no_rules": "Noch keine Regeln – unten „＋ Font-Regel hinzufügen“.",
         "rule_tip": "Linksklick: bearbeiten · Rechtsklick: bearbeiten/löschen",
-        "rule_builtin_tip": "Eingebaute Regel — Klick übernimmt ihren ersten Font.",
+        "rule_builtin_tip": "Eingebaute Regel — Linksklick: ersten Font "
+                            "übernehmen · Rechtsklick: bearbeiten / ausblenden.",
         "rules_builtin_head": "Eingebaut (immer aktiv)",
+        # Arbeits-Modi + eingebaute pro Modus
+        "mode": "Modus:",
+        "mode_tip": "Eigene Regeln werden mit dem aktiven Modus getaggt; "
+                    "Vorschläge nutzen nur die eigenen Regeln dieses Modus.",
+        "builtins_per_mode": "Eingebaute pro Modus",
+        "builtins_per_mode_tip": "Ausgeblendete/bearbeitete eingebaute Regeln "
+                                 "pro Modus statt global speichern (Standard an).",
+        "hide_all_builtins": "Alle Eingebauten ausblenden",
+        "hide_all_builtins_tip": "Alle eingebauten Regeln ausblenden, damit "
+                                 "dieser Modus ohne Built-ins starten kann.",
+        "restore_builtins": "Eingebaute zurücksetzen",
+        "restore_builtins_tip": "Holt die in diesem Modus ausgeblendeten "
+                                "eingebauten Regeln zurück.",
+        "menu_hide": "Ausblenden",
+        "not_installed": "nicht installiert",
+        "rule_mode_tip": "Eigene Regel — nur im Modus „{mode}“ aktiv.",
+        "st_builtins_hidden": "Alle Eingebauten für diesen Modus ausgeblendet.",
+        "st_builtins_restored": "Eingebaute Regeln zurückgeholt.",
+        "st_builtin_hidden": "Eingebaute Regel ausgeblendet.",
         "view_toggle": "⚙  Layout & Größen",
         "view_hint": "Teile dieses Panels zeigen, vergrößern/verkleinern, "
                      "ausblenden oder einklappen (Klick auf eine Überschrift "

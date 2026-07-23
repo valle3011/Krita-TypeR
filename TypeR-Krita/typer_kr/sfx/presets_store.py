@@ -17,6 +17,10 @@ _KEY_LANG = "language"
 _KEY_VIEW = "view"
 _KEY_USAGE = "usage"
 _KEY_RULE_LANG = "rule_lang"
+_KEY_MODE = "mode"
+_KEY_SEP_BUILTINS = "separate_builtins"
+_KEY_HIDDEN_MODES = "hidden_builtins_modes"
+_KEY_HIDDEN_GLOBAL = "hidden_builtins"
 
 
 def load_user_presets():
@@ -71,11 +75,14 @@ def load_font_rules():
         if isinstance(kws, list) and isinstance(fonts, list):
             # "lang": Regelsprache; fehlt sie (alte Daten) -> "*" = immer aktiv,
             # damit alte Regeln nicht verschwinden.
+            # "mode": work mode this rule belongs to ("" = every mode). Legacy
+            # rules have none; the docker adopts the active mode once on load.
             rules.append({
                 "group": str(r.get("group", "")),
                 "keywords": [str(k) for k in kws],
                 "fonts": [str(f) for f in fonts],
                 "lang": str(r.get("lang", "*")) or "*",
+                "mode": str(r.get("mode", "")),
             })
     return rules
 
@@ -96,6 +103,76 @@ def load_rule_lang(default="en"):
 def save_rule_lang(lang):
     """Speichert die aktive Regelsprache."""
     Krita.instance().writeSetting(_GROUP, _KEY_RULE_LANG, str(lang))
+
+
+def load_mode(default="manga"):
+    """Active work mode (manga/manhwa/doujin); 'default' if nothing saved."""
+    val = Krita.instance().readSetting(_GROUP, _KEY_MODE, "")
+    return val if val else default
+
+
+def save_mode(mode):
+    """Speichert den aktiven Arbeits-Modus."""
+    Krita.instance().writeSetting(_GROUP, _KEY_MODE, str(mode))
+
+
+def load_separate_builtins(default=True):
+    """Whether hidden built-ins are stored per mode (True) or globally (False).
+    Default is True (per mode)."""
+    val = Krita.instance().readSetting(_GROUP, _KEY_SEP_BUILTINS, "")
+    if val == "":
+        return default
+    return val not in ("0", "false", "False")
+
+
+def save_separate_builtins(flag):
+    """Speichert den Schalter „Eingebaute pro Modus“."""
+    Krita.instance().writeSetting(
+        _GROUP, _KEY_SEP_BUILTINS, "1" if flag else "0")
+
+
+def load_hidden_builtins_modes():
+    """Per-mode hidden built-in rules: { mode: [builtin_key, ...] }."""
+    raw = Krita.instance().readSetting(_GROUP, _KEY_HIDDEN_MODES, "")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for mode, keys in data.items():
+        if isinstance(keys, list):
+            out[str(mode)] = [str(k) for k in keys]
+    return out
+
+
+def save_hidden_builtins_modes(mapping):
+    """Speichert die pro Modus ausgeblendeten eingebauten Regeln."""
+    Krita.instance().writeSetting(
+        _GROUP, _KEY_HIDDEN_MODES, json.dumps(mapping, ensure_ascii=False))
+
+
+def load_hidden_builtins():
+    """Globally hidden built-in rules (used when 'separate builtins' is off)."""
+    raw = Krita.instance().readSetting(_GROUP, _KEY_HIDDEN_GLOBAL, "")
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(k) for k in data]
+
+
+def save_hidden_builtins(keys):
+    """Speichert die global ausgeblendeten eingebauten Regeln."""
+    Krita.instance().writeSetting(
+        _GROUP, _KEY_HIDDEN_GLOBAL, json.dumps(keys, ensure_ascii=False))
 
 
 def load_language(default="en"):

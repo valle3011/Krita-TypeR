@@ -25,13 +25,18 @@ from krita import Krita, DockWidget
 
 from .config import (
     SFX_FONTS, SFX_PRESETS, SFX_RULES, DEFAULTS, SHOW_ALL_SYSTEM_FONTS,
+    SFX_MODES, SFX_MODE_NAMES,
 )
-from .svg_builder import build_sfx_svg
+from .svg_builder import build_sfx_svg, _xml_escape
+from . import modes as MODES
 from .presets_store import (
     load_user_presets, save_user_presets, load_font_rules, save_font_rules,
     load_language, save_language, load_settings, save_settings,
     load_view, save_view, load_usage, save_usage,
     load_rule_lang, save_rule_lang,
+    load_mode, save_mode, load_separate_builtins, save_separate_builtins,
+    load_hidden_builtins_modes, save_hidden_builtins_modes,
+    load_hidden_builtins, save_hidden_builtins,
 )
 
 # Sprachen, für die SFX-Regeln gewählt werden können (Endonyme fürs Dropdown).
@@ -350,7 +355,17 @@ class SFXPreview(QWidget):
         return fn
 
     def paintEvent(self, _ev):
+        # A preview paint must never be able to take Krita down: guard the whole
+        # drawing and always release the painter, whatever happens inside.
         p = QPainter(self)
+        try:
+            self._paint(p)
+        except Exception:
+            pass
+        finally:
+            p.end()
+
+    def _paint(self, p):
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setRenderHint(QPainter.TextAntialiasing, True)
         w, h = self.width(), self.height()
@@ -368,7 +383,6 @@ class SFXPreview(QWidget):
             f.setPixelSize(13)
             p.setFont(f)
             p.drawText(self.rect(), Qt.AlignCenter, "Aa")
-            p.end()
             return
 
         m = self._MARGIN
@@ -416,7 +430,19 @@ class SFXPreview(QWidget):
             p.fillPath(path, QBrush(grad))
         else:
             p.fillPath(path, QBrush(o["fill"]))
-        p.end()
+
+        # Tolerant preview: if the chosen family is not installed, Qt already
+        # substituted one above; flag it here so the result is honest instead of
+        # silently misleading.
+        if o.get("missing") and o.get("missing_label"):
+            p.resetTransform()
+            badge = QFont()
+            badge.setPixelSize(11)
+            badge.setBold(True)
+            p.setFont(badge)
+            p.setPen(QColor(0xC9, 0x96, 0x2B))     # amber, as the font chips use
+            p.drawText(self.rect().adjusted(4, 0, -4, -3),
+                       Qt.AlignLeft | Qt.AlignBottom, o["missing_label"])
 
     def _paint_background(self, p, w, h):
         """Hellgraues Schachbrett – zeigt helle wie dunkle Textfarben gut."""
@@ -478,7 +504,16 @@ class MangaSFXDocker(DockWidget):
         self._usage = load_usage()                # gelernte Wort->Font-Häufigkeit
         self._group_fonts_cache = None            # Gruppenname -> Fonts (gefiltert)
         self._rule_lang = self._load_rule_lang_merged()  # aktive Regelsprache
+        # Work mode (manga/manhwa/doujin) + per-mode built-in hiding.
+        self._mode = self._load_mode_merged()
+        self._separate_builtins = load_separate_builtins(True)
+        self._hidden_modes = load_hidden_builtins_modes()   # { mode: [keys] }
+        self._hidden_global = load_hidden_builtins()        # [keys] (sep off)
+        self._migrate_rule_modes()                 # legacy rules adopt the mode
         self._font_model = None                    # Completer-Modell (lazy gefüllt)
+        # Collected lines for the 'note' strategy, until they are placed at the
+        # panel edge. Per page, so _place_note_list() empties it.
+        self._notes = []
         # Tippen entprellen: Vorschau + Vorschläge erst nach kurzer Pause neu
         # bauen, damit schnelles Tippen den Docker nicht ausbremst.
         self._pending_text = ""
@@ -496,6 +531,24 @@ class MangaSFXDocker(DockWidget):
         if saved in RULE_LANGS:
             return saved
         return self._lang if self._lang in RULE_LANGS else "en"
+
+    def _load_mode_merged(self):
+        """Saved work mode if valid, else the first mode."""
+        saved = load_mode(default="")
+        if saved in SFX_MODES:
+            return saved
+        return SFX_MODES[0] if SFX_MODES else "manga"
+
+    def _migrate_rule_modes(self):
+        """One-time migration: own rules without a mode adopt the active mode,
+        so the modes stay cleanly separated. The mode then stays stored."""
+        changed = False
+        for rr in self._font_rules:
+            if not rr.get("mode"):
+                rr["mode"] = self._mode
+                changed = True
+        if changed:
+            save_font_rules(self._font_rules)
 
     def _families(self):
         """Liste aller System-Font-Familien – modulweit nur EINMAL ermittelt
@@ -623,6 +676,42 @@ class MangaSFXDocker(DockWidget):
                    self.v_rules_chk, self.v_clear_after_chk):
             _w.toggled.connect(self._on_view_changed)
         self.v_preview_h.valueChanged.connect(self._on_view_changed)
+
+        # --- 0) Strategie ---------------------------------------------
+        # Wie mit dem japanischen Soundwort umgegangen wird. Das war bisher
+        # jedes Mal eine Handentscheidung; hier steht sie einmal und steuert,
+        # was "Einfügen" tut. Siehe modes.py.
+        strat_row = QHBoxLayout()
+        self.lbl_strategy = QLabel(self.t("strategy"))
+        strat_row.addWidget(self.lbl_strategy)
+        self.strategy_combo = NoScrollComboBox()
+        for _sid in MODES.STRATEGY_IDS:
+            self.strategy_combo.addItem(self.t("strategy_" + _sid), _sid)
+        self.strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
+        strat_row.addWidget(self.strategy_combo, 1)
+        layout.addLayout(strat_row)
+        self.strategy_hint = QLabel()
+        self.strategy_hint.setWordWrap(True)
+        self.strategy_hint.setStyleSheet("color:#999;")
+        layout.addWidget(self.strategy_hint)
+
+        # 'note' is the one strategy that needs two things: the original sound
+        # (text box, usually read off the layer) and what it MEANS. Its row only
+        # appears for that strategy.
+        self.note_row = QWidget()
+        _nl = QHBoxLayout(self.note_row)
+        _nl.setContentsMargins(0, 0, 0, 0)
+        self.lbl_note_meaning = QLabel(self.t("note_meaning"))
+        _nl.addWidget(self.lbl_note_meaning)
+        self.note_meaning_input = QLineEdit()
+        self.note_meaning_input.setPlaceholderText(self.t("note_meaning_ph"))
+        _nl.addWidget(self.note_meaning_input, 1)
+        self.note_list_btn = QPushButton(self.t("note_place_list"))
+        self.note_list_btn.setToolTip(self.t("note_place_list_tip"))
+        self.note_list_btn.clicked.connect(self._place_note_list)
+        _nl.addWidget(self.note_list_btn)
+        layout.addWidget(self.note_row)
+        self.note_row.setVisible(False)
 
         # --- 1) Texteingabe -------------------------------------------
         layout.addWidget(self._heading(self.t("sfx_text")))
@@ -772,6 +861,21 @@ class MangaSFXDocker(DockWidget):
         self.sec_rules = CollapsibleSection(self.t("font_suggestions"), "rules",
                                             self._on_section_collapsed)
         rb = self.sec_rules.body_layout()
+        # Arbeits-Modus: eigene Regeln gelten nur im Modus, in dem sie entstanden.
+        mode_row = QHBoxLayout()
+        self.lbl_mode = QLabel(self.t("mode"))
+        self.lbl_mode.setToolTip(self.t("mode_tip"))
+        mode_row.addWidget(self.lbl_mode)
+        self.mode_combo = NoScrollComboBox()
+        for code in SFX_MODES:
+            self.mode_combo.addItem(SFX_MODE_NAMES.get(code, code), code)
+        mi = self.mode_combo.findData(self._mode)
+        self.mode_combo.setCurrentIndex(mi if mi >= 0 else 0)
+        self.mode_combo.setToolTip(self.t("mode_tip"))
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        self._make_shrinkable(self.mode_combo)
+        mode_row.addWidget(self.mode_combo, 1)
+        rb.addLayout(mode_row)
         # Regelsprache: nur Regeln dieser Sprache (+ "*") werden gezeigt/aktiv.
         rl_row = QHBoxLayout()
         self.lbl_rule_lang = QLabel(self.t("rule_lang"))
@@ -785,6 +889,24 @@ class MangaSFXDocker(DockWidget):
         self._make_shrinkable(self.rule_lang_combo)
         rl_row.addWidget(self.rule_lang_combo, 1)
         rb.addLayout(rl_row)
+        # „Eingebaute pro Modus“ + Alle ausblenden / zurücksetzen.
+        self.sep_builtins_chk = QCheckBox(self.t("builtins_per_mode"))
+        self.sep_builtins_chk.setToolTip(self.t("builtins_per_mode_tip"))
+        self.sep_builtins_chk.setChecked(bool(self._separate_builtins))
+        self.sep_builtins_chk.toggled.connect(self._on_sep_builtins_changed)
+        rb.addWidget(self.sep_builtins_chk)
+        bi_row = QHBoxLayout()
+        self.hide_all_btn = QPushButton(self.t("hide_all_builtins"))
+        self.hide_all_btn.setToolTip(self.t("hide_all_builtins_tip"))
+        self.hide_all_btn.clicked.connect(self._hide_all_builtins)
+        self._make_shrinkable(self.hide_all_btn)
+        self.restore_builtins_btn = QPushButton(self.t("restore_builtins"))
+        self.restore_builtins_btn.setToolTip(self.t("restore_builtins_tip"))
+        self.restore_builtins_btn.clicked.connect(self._restore_builtins)
+        self._make_shrinkable(self.restore_builtins_btn)
+        bi_row.addWidget(self.hide_all_btn)
+        bi_row.addWidget(self.restore_builtins_btn)
+        rb.addLayout(bi_row)
         rules_hint = QLabel(self.t("rules_hint"))
         rules_hint.setWordWrap(True)
         rb.addWidget(rules_hint)
@@ -830,6 +952,10 @@ class MangaSFXDocker(DockWidget):
         layout.addWidget(self.reset_btn)
 
         layout.addStretch(1)
+
+        # Last: the strategy drives insert_btn's label and the note row, and
+        # both are only built by now.
+        self._on_strategy_changed()
 
         # In ScrollArea verpacken; alte (bei Sprachwechsel) sauber entsorgen
         old = self.widget()
@@ -1016,10 +1142,80 @@ class MangaSFXDocker(DockWidget):
             self._set_btn_color(btn, c)
             self._update_preview()
 
+    # --- Strategie ----------------------------------------------------
+    def _strategy(self):
+        return self.strategy_combo.currentData() or "redraw"
+
+    def _on_strategy_changed(self, *_a):
+        sid = self._strategy()
+        self.strategy_hint.setText(self.t("strategy_" + sid + "_hint"))
+        inserts = MODES.inserts_text(sid)
+        # 'ignore' places nothing, so Insert is really Skip.
+        self.insert_btn.setText(
+            self.t("insert_btn") if inserts else self.t("skip_btn"))
+        # romaji and note read the ORIGINAL sound; the rest take the English.
+        self.text_input.setPlaceholderText(
+            self.t("sfx_placeholder_jp") if sid in ("romaji", "note")
+            else self.t("sfx_placeholder"))
+        self.note_row.setVisible(sid == "note")
+        self._update_note_btn()
+        self._update_preview()
+
+    def _update_note_btn(self):
+        n = len(self._notes)
+        self.note_list_btn.setEnabled(bool(n))
+        self.note_list_btn.setText(
+            self.t("note_place_list") + (" ({})".format(n) if n else ""))
+
+    def _place_note_list(self):
+        """Put the collected notes at the panel edge, as one text block.
+
+        Bottom-left of the page, small: this is a reader's aid, not lettering.
+        The typesetter drags it wherever the panel actually has room."""
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            self._warn(self.t("st_no_doc"))
+            return
+        if not self._notes:
+            return
+        size = max(10, int(round(self.size_spin.value() * 0.28)))
+        img_w, img_h = doc.width(), doc.height()
+        x = int(img_w * 0.04)
+        y = int(img_h - size * (len(self._notes) + 1) * 1.35)
+        lines = []
+        for i, line in enumerate(self._notes):
+            lines.append(
+                '<tspan x="{x}" y="{y:.0f}">{t}</tspan>'.format(
+                    x=x, y=y + i * size * 1.35, t=_xml_escape(line)))
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">'
+            '<text text-anchor="start" fill="#000000" font-family="{f}" '
+            'font-size="{s}">{body}</text></svg>'
+        ).format(w=img_w, h=img_h, f=_xml_escape("Segoe UI"), s=size,
+                 body="".join(lines))
+        try:
+            node = doc.createVectorLayer("SFX notes")
+            doc.rootNode().addChildNode(node, None)
+            node.addShapesFromSvg(svg)
+            doc.refreshProjection()
+        except Exception as e:                      # noqa: BLE001
+            self._warn(self.t("st_insert_fail", err=e))
+            return
+        self._info(self.t("st_notes_placed", n=len(self._notes)))
+        self._notes = []
+        self._update_note_btn()
+
     # --- Vorschau / Großbuchstaben ------------------------------------
     def _effective_text(self):
-        """Der Text, der wirklich eingefügt wird (ggf. in Großbuchstaben)."""
+        """Der Text, der wirklich eingefügt wird.
+
+        The strategy decides what that is: 'romaji' transliterates whatever was
+        typed/read from the layer (so the typesetter never types the romaji by
+        hand), the rest use the word as given. Uppercase is applied last, so it
+        applies to the romaji too."""
         txt = self.text_input.text().strip()
+        if self._strategy() == "romaji":
+            txt = MODES.to_romaji(txt)
         if getattr(self, "upper_chk", None) and self.upper_chk.isChecked():
             txt = txt.upper()
         return txt
@@ -1052,9 +1248,15 @@ class MangaSFXDocker(DockWidget):
         chk = getattr(self, "v_preview_chk", None)
         if chk is not None and not chk.isChecked():
             return                       # ausgeblendet -> nicht rechnen/zeichnen
+        fam = self.font_combo.currentText()
         self.preview.set_data({
             "text": self._effective_text(),
-            "family": self.font_combo.currentText(),
+            "family": fam,
+            # Tolerant preview: never abort the fit when a font is unresolved;
+            # just flag it so the preview shows "not installed" (Qt substitutes
+            # a fallback family for the actual drawing).
+            "missing": bool(fam.strip()) and not self._is_installed(fam),
+            "missing_label": self.t("not_installed"),
             "size_ref": max(1, self.size_spin.value()),
             "bold": self.bold_chk.isChecked(),
             "italic": self.italic_chk.isChecked(),
@@ -1552,19 +1754,28 @@ class MangaSFXDocker(DockWidget):
             pass
 
     def _all_rules(self):
-        """(rule, is_builtin) für eingebaute + eigene Regeln – aber NUR die der
-        aktiven Regelsprache (plus die sprachübergreifenden "*"-Regeln).
+        """(rule, is_builtin) for the rules active RIGHT NOW: built-ins of the
+        active rule language MINUS the ones hidden in this mode, plus own rules
+        of the active language AND the active work mode.
 
-        Für eigene Regeln wird das Original-Dict zurückgegeben, damit
-        Bearbeiten/Löschen über die Identität weiter funktioniert."""
+        Own rules without a mode apply in every mode (legacy/imported); built-in
+        rules apply in every mode. For own rules the original dict is returned so
+        edit/delete keeps working by identity."""
         active = self._rule_lang
 
-        def ok(r):
+        def lang_ok(r):
             lang = r.get("lang", "*")
             return lang == "*" or lang == active
 
-        rules = [(r, True) for r in SFX_RULES if ok(r)]
-        rules += [(r, False) for r in self._font_rules if ok(r)]
+        def mode_ok(r):
+            m = r.get("mode", "")
+            return not m or m == self._mode
+
+        hidden = self._hidden_set()
+        rules = [(r, True) for r in SFX_RULES
+                 if lang_ok(r) and self._builtin_key(r) not in hidden]
+        rules += [(r, False) for r in self._font_rules
+                  if lang_ok(r) and mode_ok(r)]
         return rules
 
     def _on_rule_lang_changed(self, _idx):
@@ -1576,6 +1787,76 @@ class MangaSFXDocker(DockWidget):
         save_rule_lang(code)
         self._rebuild_rules()
         self._refresh_suggestions(self.text_input.text())
+
+    # ------------------------------------------------------------------
+    #  Work mode + built-in hiding (per mode)
+    # ------------------------------------------------------------------
+    def _on_mode_changed(self, _idx):
+        """Work mode switched: save, rebuild rule list + suggestions."""
+        code = self.mode_combo.currentData()
+        if not code or code == self._mode:
+            return
+        self._mode = code
+        save_mode(code)
+        self._rebuild_rules()
+        self._refresh_suggestions(self.text_input.text())
+
+    def _on_sep_builtins_changed(self, checked):
+        """Toggle whether hidden built-ins are stored per mode or globally."""
+        self._separate_builtins = bool(checked)
+        save_separate_builtins(self._separate_builtins)
+        self._rebuild_rules()
+        self._refresh_suggestions(self.text_input.text())
+
+    @staticmethod
+    def _builtin_key(rule):
+        """Stable identity of a built-in rule for the hidden list (group+lang)."""
+        return (rule.get("group") or "") + "\n" + (rule.get("lang") or "*")
+
+    def _hidden_arr(self):
+        """The hidden-key list for the current store: per mode when
+        'built-ins per mode' is on, else global. Created on demand."""
+        if self._separate_builtins:
+            return self._hidden_modes.setdefault(self._mode, [])
+        return self._hidden_global
+
+    def _hidden_set(self):
+        return set(self._hidden_arr())
+
+    def _save_hidden(self):
+        if self._separate_builtins:
+            save_hidden_builtins_modes(self._hidden_modes)
+        else:
+            save_hidden_builtins(self._hidden_global)
+
+    def _hide_builtin(self, key):
+        arr = self._hidden_arr()
+        if key not in arr:
+            arr.append(key)
+
+    def _hide_all_builtins(self):
+        """Hide every built-in rule in the current store so this mode can start
+        empty. 'Restore built-ins' brings them all back."""
+        arr = self._hidden_arr()
+        for r in SFX_RULES:
+            key = self._builtin_key(r)
+            if key not in arr:
+                arr.append(key)
+        self._save_hidden()
+        self._rebuild_rules()
+        self._refresh_suggestions(self.text_input.text())
+        self.status_label.setText(self.t("st_builtins_hidden"))
+
+    def _restore_builtins(self):
+        """Un-hide the built-ins hidden in the current store."""
+        if self._separate_builtins:
+            self._hidden_modes[self._mode] = []
+        else:
+            self._hidden_global = []
+        self._save_hidden()
+        self._rebuild_rules()
+        self._refresh_suggestions(self.text_input.text())
+        self.status_label.setText(self.t("st_builtins_restored"))
 
     def _suggested_groups(self, text):
         """[(group, [fonts]), ...] für Regeln, deren Stichwort im Text vorkommt.
@@ -1639,6 +1920,10 @@ class MangaSFXDocker(DockWidget):
         klickbar zum Bearbeiten/Löschen."""
         self._clear_layout(self.rules_box)
         all_rules = self._all_rules()
+        # Restore only helps when something is hidden; Hide-all only while a
+        # built-in is still visible.
+        self.restore_builtins_btn.setEnabled(bool(self._hidden_arr()))
+        self.hide_all_btn.setEnabled(any(is_b for _r, is_b in all_rules))
         if not all_rules:
             hint = QLabel(self.t("no_rules"))
             hint.setWordWrap(True)
@@ -1653,7 +1938,12 @@ class MangaSFXDocker(DockWidget):
                 kw = ", ".join(rule.get("keywords", []))
                 fo = ", ".join(rule.get("fonts", []))
                 full = f"{kw}  →  {fo}"
-                btn = QPushButton(f"{self._elide(kw, 22)}  →  {self._elide(fo, 22)}")
+                # Show the mode tag on each own rule (built-ins apply everywhere).
+                mode = rule.get("mode") if not is_builtin else ""
+                prefix = ("[{}] ".format(SFX_MODE_NAMES.get(mode, mode))
+                          if mode else "")
+                btn = QPushButton(
+                    prefix + f"{self._elide(kw, 22)}  →  {self._elide(fo, 22)}")
                 self._make_shrinkable(btn)
                 if is_builtin:
                     btn.setToolTip(full + "\n" + self.t("rule_builtin_tip"))
@@ -1662,8 +1952,16 @@ class MangaSFXDocker(DockWidget):
                         first = fonts[0]
                         btn.clicked.connect(
                             lambda _c=False, f=first: self._select_font(f))
+                    btn.setContextMenuPolicy(Qt.CustomContextMenu)
+                    btn.customContextMenuRequested.connect(
+                        lambda pos, r=rule, b=btn:
+                            self._show_builtin_menu(r, b, pos))
                 else:
-                    btn.setToolTip(full + "\n" + self.t("rule_tip"))
+                    tip = full + "\n" + self.t("rule_tip")
+                    if mode:
+                        tip += "\n" + self.t(
+                            "rule_mode_tip", mode=SFX_MODE_NAMES.get(mode, mode))
+                    btn.setToolTip(tip)
                     btn.clicked.connect(
                         lambda _c=False, r=rule: self._edit_font_rule(r))
                     btn.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1706,6 +2004,48 @@ class MangaSFXDocker(DockWidget):
             self._edit_font_rule(rule)
         elif chosen == act_del:
             self._delete_font_rule(rule)
+
+    def _show_builtin_menu(self, rule, button, pos):
+        """Context menu for a built-in rule: edit (hides the original and adds an
+        editable own copy in the active mode) or hide it. Left click still just
+        uses the rule's first font."""
+        menu = QMenu(self.widget())
+        act_edit = menu.addAction(self.t("menu_edit"))
+        menu.addSeparator()
+        act_hide = menu.addAction(self.t("menu_hide"))
+        chosen = menu.exec_(button.mapToGlobal(pos))
+        if chosen == act_edit:
+            self._edit_builtin_rule(rule)
+        elif chosen == act_hide:
+            self._hide_builtin_rule(rule)
+
+    def _hide_builtin_rule(self, rule):
+        """Hide a single built-in rule in the current store (per mode/global)."""
+        self._hide_builtin(self._builtin_key(rule))
+        self._save_hidden()
+        self._rebuild_rules()
+        self._refresh_suggestions(self.text_input.text())
+        self.status_label.setText(self.t("st_builtin_hidden"))
+
+    def _edit_builtin_rule(self, rule):
+        """Edit a built-in: hide the original and add an editable own copy that
+        keeps the built-in's language and belongs to the active mode."""
+        res = self._prompt_font_rule(
+            rule.get("group", ""),
+            ", ".join(rule.get("keywords", [])),
+            ", ".join(rule.get("fonts", [])))
+        if res is None:
+            return
+        group, keywords, fonts = res
+        self._hide_builtin(self._builtin_key(rule))
+        self._save_hidden()
+        self._font_rules.append(
+            {"group": group, "keywords": keywords, "fonts": fonts,
+             "lang": rule.get("lang", "*"), "mode": self._mode})
+        save_font_rules(self._font_rules)
+        self._rebuild_rules()
+        self._refresh_suggestions(self.text_input.text())
+        self.status_label.setText(self.t("st_rule_updated"))
 
     def _ask_fonts(self, fonts_init):
         """
@@ -1795,10 +2135,10 @@ class MangaSFXDocker(DockWidget):
         if res is None:
             return
         group, keywords, fonts = res
-        # neue Regel gehört zur aktuell aktiven Regelsprache
+        # neue Regel gehört zur aktiven Regelsprache UND zum aktiven Modus
         self._font_rules.append(
             {"group": group, "keywords": keywords, "fonts": fonts,
-             "lang": self._rule_lang})
+             "lang": self._rule_lang, "mode": self._mode})
         save_font_rules(self._font_rules)
         self._rebuild_rules()
         self._refresh_suggestions(self.text_input.text())
@@ -1855,15 +2195,21 @@ class MangaSFXDocker(DockWidget):
         self.text_input.setText(txt)
         self.text_input.setFocus()
 
-    def _build_svg(self, text, tx, ty, img_w, img_h):
-        """Build the SFX SVG from the current controls at anchor (tx, ty)."""
+    def _build_svg(self, text, tx, ty, img_w, img_h, size=None,
+                   outline_px=None):
+        """Build the SFX SVG from the current controls at anchor (tx, ty).
+
+        `size`/`outline_px` override the controls — the overlay and romaji
+        strategies set a small word with a forced halo, because they sit ON the
+        artwork next to the untouched original rather than replacing it."""
         return build_sfx_svg(
             text=text,
             font_family=self.font_combo.currentText(),
-            font_size=self.size_spin.value(),
+            font_size=size if size is not None else self.size_spin.value(),
             fill=self.fill_btn._color.name(),
             outline=self.outline_btn._color.name(),
-            outline_px=self.out_spin.value(),
+            outline_px=(outline_px if outline_px is not None
+                        else self.out_spin.value()),
             bold=self.bold_chk.isChecked(),
             italic=self.italic_chk.isChecked(),
             x=tx, y=ty, anchor="middle", img_w=img_w, img_h=img_h,
@@ -1927,10 +2273,36 @@ class MangaSFXDocker(DockWidget):
             self._warn(self.t("st_no_doc"))
             return
 
-        text = self._effective_text()
-        if not text:
-            self._warn(self.t("st_no_text"))
+        sid = self._strategy()
+
+        # 'ignore' is a real decision, not a no-op: the Japanese stays as drawn.
+        # Record it and move on without touching the page.
+        if not MODES.inserts_text(sid):
+            raw = self.text_input.text().strip()
+            self._info(self.t("st_sfx_ignored", word=raw or "—"))
+            if self.v_clear_after_chk.isChecked():
+                self.text_input.clear()
             return
+
+        # 'note' leaves the artwork alone: what goes on the page is a small
+        # numbered marker, and the reading + meaning collect into a list that
+        # _place_note_list() puts at the panel edge.
+        note_index = 0
+        if sid == "note":
+            source = self.text_input.text().strip()
+            if not source:
+                self._warn(self.t("st_no_text"))
+                return
+            note_index = len(self._notes) + 1
+            self._notes.append(MODES.note_line(
+                note_index, source, self.note_meaning_input.text().strip()))
+            self._update_note_btn()     # the list button counts them
+            text = MODES.note_marker(note_index)
+        else:
+            text = self._effective_text()
+            if not text:
+                self._warn(self.t("st_no_text"))
+                return
 
         # Aktive Ebene prüfen – ist es keine Vektor-Ebene, neue anlegen.
         node = doc.activeNode()
@@ -1956,11 +2328,38 @@ class MangaSFXDocker(DockWidget):
                     box_w, box_h = sel.width(), sel.height()
             except Exception:
                 pass
+        # Where and how big depends on the strategy. Redraw replaces the
+        # original, so it takes the box at full size. Romaji and overlay sit
+        # BESIDE an original that is still there: small, just under the box, and
+        # with a halo whether or not the style asked for one — they land on
+        # artwork and would be unreadable without it.
         fsize = self.size_spin.value()
-        tx = box_x + box_w / 2.0
-        ty = box_y + box_h / 2.0 + fsize * 0.35   # grobe senkrechte Zentrierung
+        size = fsize
+        outline_px = None
+        if sid == "note":
+            # a marker, not lettering: small, haloed, tucked at the box's corner
+            size = max(10, int(round(fsize * 0.35)))
+            outline_px = max(2, self.out_spin.value())
+            tx = box_x + size * 0.6
+            ty = box_y + size
+        elif sid in ("romaji", "overlay"):
+            size = max(8, int(round(fsize * 0.45)))
+            outline_px = max(2, self.out_spin.value())
+            tx = box_x + box_w / 2.0
+            ty = box_y + box_h + size * 0.9
+        else:
+            tx = box_x + box_w / 2.0
+            ty = box_y + box_h / 2.0 + size * 0.35   # grobe senkrechte Zentrierung
 
-        svg = self._build_svg(text, tx, ty, img_w, img_h)
+        # Keep it on the page. "Just below the original" runs off the bottom
+        # whenever there is no selection — the box is then the whole image — and
+        # the layer lands where nobody can see it.
+        ty = min(ty, img_h - size * 0.3)
+        ty = max(ty, size)
+        tx = min(max(tx, size * 0.5), img_w - size * 0.5)
+
+        svg = self._build_svg(text, tx, ty, img_w, img_h,
+                              size=size, outline_px=outline_px)
 
         try:
             ok = node.addShapesFromSvg(svg)
@@ -2008,8 +2407,12 @@ class MangaSFXDocker(DockWidget):
         if clicked is btn_all:
             self._user_presets = []
             self._font_rules = []
+            self._hidden_modes = {}
+            self._hidden_global = []
             save_user_presets(self._user_presets)
             save_font_rules(self._font_rules)
+            save_hidden_builtins_modes(self._hidden_modes)
+            save_hidden_builtins(self._hidden_global)
             self._rebuild_presets()
             self._rebuild_rules()
             msg = self.t("st_reset_all")
@@ -2046,6 +2449,9 @@ class MangaSFXDocker(DockWidget):
 
     def _warn(self, msg):
         self.status_label.setText("⚠ " + msg)
+
+    def _info(self, msg):
+        self.status_label.setText(msg)
 
     # ==================================================================
     #  Import / Export (eigene Presets + Font-Regeln)
@@ -2091,6 +2497,11 @@ class MangaSFXDocker(DockWidget):
 
         presets = self._sanitize_presets(data.get("presets", []))
         rules = self._sanitize_rules(data.get("font_rules", []))
+        # Imported rules without a mode adopt the active mode (like the
+        # reference), so they show up in the mode the user imported them into.
+        for rr in rules:
+            if not rr.get("mode"):
+                rr["mode"] = self._mode
         if not presets and not rules:
             self._warn(self.t("st_import_empty"))
             return
@@ -2185,6 +2596,7 @@ class MangaSFXDocker(DockWidget):
                 "keywords": keywords,
                 "fonts": fontlist,
                 "lang": lang,
+                "mode": str(r.get("mode", "")).strip(),
             })
         return out
 
@@ -2201,7 +2613,8 @@ class MangaSFXDocker(DockWidget):
         (statt eine zweite Regel mit gleicher Gruppe anzulegen); sonst wird die
         Regel angehängt. So bleibt die Liste beim mehrfachen Import sauber."""
         def key(r):
-            return ((r.get("group") or "").strip().lower(), r.get("lang") or "*")
+            return ((r.get("group") or "").strip().lower(),
+                    r.get("lang") or "*", r.get("mode") or "")
         index = {}
         for i, r in enumerate(self._font_rules):
             index.setdefault(key(r), i)

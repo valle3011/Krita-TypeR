@@ -284,6 +284,69 @@ def speaker_name(text):
 # source language.
 # ---------------------------------------------------------------------------
 
+# --- Drive image comments as a script source (#21) -------------------------
+# The translator sometimes writes the translation as comments straight on the
+# raw image in Drive, so the comments ARE the script, not just QC notes. These
+# two helpers turn that into the plain tab-separated script TypeR already
+# parses, so nothing downstream (units, pages, the insert loop) has to change.
+# Both are Qt-free and string-only, hence tested here rather than in the Qt UI.
+
+import re as _re
+
+# Drive file ids are long url-safe tokens; the URL forms all carry them the
+# same way.
+_DRIVE_ID = r"[A-Za-z0-9_-]{20,}"
+_DRIVE_URL_PATTERNS = [
+    _re.compile(r"/file/d/(" + _DRIVE_ID + r")"),      # .../file/d/<id>/view
+    _re.compile(r"[?&]id=(" + _DRIVE_ID + r")"),        # ...open?id=<id>, uc?id=<id>
+    _re.compile(r"/d/(" + _DRIVE_ID + r")"),            # short .../d/<id>
+]
+_DRIVE_ID_ONLY = _re.compile(r"^" + _DRIVE_ID + r"$")
+
+
+def drive_file_id(url_or_id):
+    """The Drive file id from a share URL, or a bare id passed through.
+
+    Accepts what a translator actually pastes: a /file/d/<id>/view link, an
+    open?id= / uc?id= link, or the id on its own. Returns "" for anything that
+    is clearly neither, so the caller can say so instead of fetching nonsense.
+    """
+    s = (url_or_id or "").strip()
+    if not s:
+        return ""
+    if _DRIVE_ID_ONLY.match(s):
+        return s
+    for pat in _DRIVE_URL_PATTERNS:
+        m = pat.search(s)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def image_comments_to_script(comments):
+    """Turn a Drive image's comments into a TypeR script string.
+
+    One comment becomes one line to typeset. Each is emitted as an explicit
+    two-column row so it lands as exactly one translation unit (empty source,
+    the comment text as the translation) — a comment's own line breaks are
+    folded to spaces so it does not split into several units, which the reader
+    never intends.
+
+    `comments` is any sequence of objects with a `.text` attribute (TypeR's
+    Comment, or a plain stand-in in tests). Empty comments are skipped. Order is
+    the caller's — fetch sorts by creation time, which is close to reading
+    order on a page.
+    """
+    lines = []
+    for c in comments:
+        text = " ".join((getattr(c, "text", "") or "").split())
+        if not text:
+            continue
+        # leading TAB => split_columns yields ("", text) => one unit
+        lines.append("\t" + text)
+    return "\n".join(lines)
+
+
 def split_columns(line):
     """If `line` is an explicit two-column row ('source<TAB>translation'),
     return (source, translation); otherwise None. Extra tab-separated cells are

@@ -23,6 +23,7 @@ nothing extra needs to be installed.
 """
 
 import os
+import html as _html
 import re
 import json
 import tempfile
@@ -40,6 +41,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QPlainTextEdit, QSpinBox, QCheckBox, QFileDialog, QColorDialog,
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
+    QTextBrowser, QFontDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
     QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
     QDialog, QButtonGroup, QSplitter, QDialogButtonBox, QApplication,
@@ -64,7 +66,12 @@ from krita import (DockWidget, DockWidgetFactory, DockWidgetFactoryBase,
 
 from . import layout as L
 from . import langpair as LP
+from . import texttypes as TT
+from . import gauth as GA
+from . import gdocs as GD
+from . import comments as CM
 from . import bubbles as BB
+from . import balloons as BAL
 from . import ai_backend as AB
 
 
@@ -75,6 +82,7 @@ VERSION = "1.7"
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
 # hidden and its enable toggle is not shown. Set this to False to bring it back
 # once the AI is ready (all the BubblR code stays in place, just dormant).
+# Local/dev build: unlocked so the AI tab is available.
 BUBBLR_LOCKED = True
 
 # Build stamp = last-modified time of THIS installed file. copy/xcopy keep the
@@ -150,7 +158,7 @@ LANG = {
     "en": {
         "title": "TypeR for Krita",
         "language": "Language:",
-        "load_btn": "Load script (.docx / .xlsx / .odt / .txt)",
+        "load_btn": "Load script (.docx / .odt / .txt / .gdoc)",
         "script_label": "Script (load a file or paste directly):",
         "editor_ph": "Paste the script here, or load a file above …",
         "skip_empty": "Skip empty lines",
@@ -173,6 +181,127 @@ LANG = {
         "view_reset": "Reset layout",
         "font": "Font:",
         "font_search_ph": "Search font … (type to filter)",
+        # --- text types ---
+        "panel_text_type": "Text type",
+        "text_type_label": "Kind of text:",
+        "tt_apply": "Apply text type",
+        "tt_none": "—",
+        "tt_missing_font": "Wants “{font}” — not installed, using a stand-in.",
+        "st_tt_pick": "Pick a kind of text first.",
+        "st_tt_applied": "Text type “{name}” applied.",
+        "panel_balloon": "Balloon",
+        "balloon_tail": "Tail",
+        "balloon_tail_tip": "Draw a tail hanging off the balloon. Move it to the speaker's mouth afterwards — TypeR can't know where that is.",
+        "balloon_insert": "Insert balloon",
+        "balloon_insert_tip": "Draw the balloon into the armed BubblR bubble, or into the selection. It becomes its own layer, so insert the balloon first and the text after it.",
+        "balloon_hint": "The shape for: {kind}",
+        "balloon_oval": "Oval (speech)",
+        "balloon_cloud": "Cloud (thought)",
+        "balloon_burst": "Burst (shout)",
+        "balloon_radio": "Spiky (radio / phone)",
+        "balloon_dashed": "Dashed (whisper)",
+        "balloon_robot": "Cut corners (robot)",
+        "balloon_wavy": "Wavy (weak voice)",
+        "balloon_rough": "Rough (monster)",
+        "st_balloon_no_box": "Select the area for the balloon first (or detect bubbles with BubblR).",
+        "st_balloon_inserted": "Balloon “{shape}” inserted.",
+        "st_balloon_fail": "Could not create the balloon layer: {exc}",
+        "tt_dialogue": "Dialogue",
+        "tt_emphasis": "Emphasis (bold-italic)",
+        "tt_thought": "Thought",
+        "tt_whisper": "Whisper",
+        "tt_shout": "Shout / burst",
+        "tt_weak": "Weak voice",
+        "tt_radio": "Radio / phone / TV",
+        "tt_robot": "Robot",
+        "tt_telepathy": "Telepathy",
+        "tt_monster": "Monster",
+        "tt_song": "Song ♪",
+        "tt_foreign": "Foreign language <>",
+        "tt_distress": "Dying / unconscious",
+        "tt_narration": "Narration / caption",
+        "tt_monologue": "Inner monologue",
+        "tt_offpanel": "Off-panel",
+        "tt_aside": "Aside / handwritten",
+        "tt_sfx": "SFX / sound word",
+        "tt_signage": "Sign / label",
+        "tt_display": "Title / display",
+        "tt_tn": "Translator's note",
+        "comic": "Comic lettering",
+        "comic_tip": ("Comic-lettering grammar: keeps the double dash --\n"
+                      "(comics do not use em dashes), an ellipsis is exactly\n"
+                      "three dots and hugs the words, and a shouted question\n"
+                      "is ?! with the question mark first."),
+        "crossbar": "Crossbar-I",
+        "crossbar_tip": ("Only the pronoun \u201cI\u201d and acronyms keep the barred I;\n"
+                         "every other capital I is lowered so a comic font\n"
+                         "renders the plain stroke. Needs a real comic font \u2014\n"
+                         "with an ordinary font this looks like a typo."),
+        "panel_google": "Google account (for .gdoc)",
+        "g_client_label": "OAuth client ID (Desktop app):",
+        "g_client_ph": "123-abc.apps.googleusercontent.com",
+        "g_sign_in": "Sign in \u2026",
+        "g_sign_out": "Sign out",
+        "g_state_in": "Signed in.",
+        "g_state_out": "Not signed in.",
+        "g_hint": ("TypeR ships no Google credentials on purpose \u2014 this repository "
+                   "is public. Create your own Cloud project, add an OAuth client of "
+                   "type \u201cDesktop app\u201d and paste its ID here. Set the project to "
+                   "\u201cIn production\u201d, otherwise Google drops the sign-in every 7 days."),
+        "st_g_no_client": "Set your OAuth client ID in Setup first.",
+        "st_g_not_signed_in": "Not signed in to Google yet (Setup \u2192 Google account).",
+        "st_g_wait": "Finish the sign-in in your browser \u2026",
+        "st_g_ok": "Signed in to Google.",
+        "st_g_out": "Signed out.",
+        "st_g_loading": "Fetching the document from Google \u2026",
+        "st_g_loaded": "Loaded {name}: {n} lines, {c} comments.",
+        "g_image_label": "Or: comments on a Drive image as the script",
+        "g_image_ph": "paste the image's Drive share link",
+        "g_image_btn": "Load image comments",
+        "img_tab_label": "Image comments",
+        "st_img_no_id": "Paste a Google Drive image link (or its file id) first.",
+        "st_img_none": "That image has no comments (or none you can see).",
+        "st_img_loaded": "Loaded {c} image comment(s) as a script.",
+        "g_export_title": "Google Doc",
+        "g_export_msg": ("A .gdoc is only a shortcut to Google Drive \u2014 the text lives "
+                         "online.\n\nYour browser is already signed in, so it can export "
+                         "the document without any setup. TypeR watches for the "
+                         "download and loads it \u2014 comments included.\n\n(Signing in "
+                         "under Setup \u2192 Google account skips this step.)"),
+        "g_export_open": "Open export in browser",
+        "st_g_waiting_dl": "Waiting for the download \u2026 save it and TypeR picks it up.",
+        "st_g_dl_timeout": ("No download spotted. Open the saved .docx with "
+                            "\u201cLoad script\u201d \u2014 it has the comments in it."),
+        "g_export_cancel": "Cancel",
+        "panel_comments": "Comments",
+        "cm_line": "this line",
+        "cm_page": "this page",
+        "st_loaded_c": "Loaded {name}: {n} lines, {c} comments.",
+        "panel_tt_fonts": "Fonts per text type",
+        "ttf_open": "Choose fonts \u2026",
+        "ttf_hint": ("Which font each kind of text uses. The defaults are the comic "
+                     "faces the convention asks for \u2014 those are licensed, so if "
+                     "one is not installed a stand-in is used until you pick your own."),
+        "ttf_title": "Fonts per text type",
+        "ttf_intro": ("Pick the font for each kind of text. Anything you do not set "
+                      "keeps the catalogue default, which falls back to a font you "
+                      "actually have installed."),
+        "ttf_choose": "Choose \u2026",
+        "ttf_reset_one": "Reset",
+        "ttf_reset_one_tip": "Back to the default for this text type",
+        "ttf_reset_all": "Reset all",
+        "ttf_close": "Close",
+        "ttf_default": "{font}  (default)",
+        "ttf_pick_for": "Font for \u201c{name}\u201d",
+        "ttf_add": "Add text type \u2026",
+        "ttf_add_tip": "Create your own text type with a name and a font.",
+        "ttf_add_name": "Name of the new text type:",
+        "ttf_add_style_q": ("Give the new type the current style (font + size + "
+                            "colours + effects), or the neutral default?"),
+        "ttf_add_current": "Use current style",
+        "ttf_add_default": "Default + pick font",
+        "ttf_remove": "Remove",
+        "ttf_remove_tip": "Delete this custom text type",
         "style": "Style:",
         "bold": "Bold",
         "italic": "Italic",
@@ -201,6 +330,8 @@ LANG = {
         "tidy_tip": "Turn straight quotes into curly ones, ... into …, -- into —.",
         "round": "Round bubble (fit ellipse)",
         "round_tip": "Fit the text into the ellipse inside the selection so it doesn't overflow a round balloon. Only with auto-fit.",
+        "vertical": "Vertical text (tategaki)",
+        "vertical_tip": "Set the text in columns running top to bottom, right to left – for narrow bubbles and signs. Alignment places the block of columns, vertical alignment the text inside each column.",
         "shadow": "Shadow",
         "shadow_color_btn": "Shadow color …",
         "shadow_off": "Offset X / Y (px):",
@@ -286,7 +417,7 @@ LANG = {
         "color_dlg": "Choose text color",
         "outline_color_dlg": "Choose outline color",
         "file_dlg": "Choose a script file",
-        "file_filter": "Scripts (*.docx *.xlsx *.xlsm *.odt *.txt *.md);;All files (*.*)",
+        "file_filter": "Scripts (*.docx *.xlsx *.xlsm *.odt *.txt *.md *.gdoc);;All files (*.*)",
         # status
         "st_no_doc": "No document is open.",
         "st_empty_line": "The active line is empty.",
@@ -314,6 +445,10 @@ LANG = {
         "tab_setup": "Setup",
         "tab_shapr": "TextShapR",
         "tab_sfx": "SFX",
+        # Setup-tab section headings (group the flat settings list)
+        "setup_h_general": "General",
+        "setup_h_fonts": "Fonts",
+        "setup_h_google": "Google account",
         "close": "Close",
         "preset_actions": "Preset actions (save, delete, import, export)",
         "outline_more": "Outline settings …",
@@ -433,6 +568,19 @@ LANG = {
                         "text are found at full resolution. Turn OFF on a "
                         "weak PC or laptop for a much faster (but coarser) "
                         "detection."),
+        "bp_models": "Models…",
+        "bp_models_tip": ("Show which detection models are installed and open "
+                          "the folder they live in."),
+        "bp_models_title": "BubblR models",
+        "bp_models_none": ("No AI folder set yet — run a detection once and "
+                           "point TypeR at your BubblR ai/ folder."),
+        "bp_models_dir": "Models folder:",
+        "bp_models_open": "Open folder",
+        "bp_models_trainer": ("After training in BubblR Model Trainer the "
+                              "weights land in runs\\<name>\\weights\\best.pt. "
+                              "Export that to ONNX and copy it in here as "
+                              "bubblr-finetuned.onnx to use it as 'finetuned'. "
+                              "'auto' only uses it once eval.py promoted it."),
         "bp_overlay_tip": ("Click a box to make it the current bubble; "
                            "Ctrl+click boxes in the desired order to "
                            "renumber; right-click removes a box."),
@@ -562,7 +710,7 @@ LANG = {
     "de": {
         "title": "TypeR für Krita",
         "language": "Sprache:",
-        "load_btn": "Skript laden (.docx / .xlsx / .odt / .txt)",
+        "load_btn": "Skript laden (.docx / .odt / .txt / .gdoc)",
         "script_label": "Skript (Datei laden oder direkt einfügen):",
         "editor_ph": "Hier das Skript einfügen oder oben eine Datei laden …",
         "skip_empty": "Leere Zeilen überspringen",
@@ -585,6 +733,130 @@ LANG = {
         "view_reset": "Layout zurücksetzen",
         "font": "Schrift:",
         "font_search_ph": "Schrift suchen … (Tippen filtert)",
+        # --- Textarten ---
+        "panel_text_type": "Textart",
+        "text_type_label": "Art des Textes:",
+        "tt_apply": "Textart anwenden",
+        "tt_none": "—",
+        "tt_missing_font": "Braucht „{font}“ — nicht installiert, nutzt Ersatz.",
+        "st_tt_pick": "Erst eine Textart wählen.",
+        "st_tt_applied": "Textart „{name}“ angewendet.",
+        "panel_balloon": "Sprechblase",
+        "balloon_tail": "Schwanz",
+        "balloon_tail_tip": "Zeichnet einen Schwanz an die Blase. Danach zum Mund der sprechenden Figur ziehen — wo der ist, kann TypeR nicht wissen.",
+        "balloon_insert": "Blase einfügen",
+        "balloon_insert_tip": "Zeichnet die Blase in die scharfgeschaltete BubblR-Blase oder in die Auswahl. Sie wird eine eigene Ebene — also erst die Blase einfügen, dann den Text.",
+        "balloon_hint": "Die Form für: {kind}",
+        "balloon_oval": "Oval (Sprache)",
+        "balloon_cloud": "Wolke (Gedanke)",
+        "balloon_burst": "Zacken (Schrei)",
+        "balloon_radio": "Spitz (Funk / Telefon)",
+        "balloon_dashed": "Gestrichelt (Flüstern)",
+        "balloon_robot": "Gekappte Ecken (Roboter)",
+        "balloon_wavy": "Wellig (schwache Stimme)",
+        "balloon_rough": "Rau (Monster)",
+        "st_balloon_no_box": "Erst den Bereich für die Blase auswählen (oder mit BubblR Blasen erkennen).",
+        "st_balloon_inserted": "Blase „{shape}“ eingefügt.",
+        "st_balloon_fail": "Konnte Blasenebene nicht erstellen: {exc}",
+        "tt_dialogue": "Dialog",
+        "tt_emphasis": "Betonung (fett-kursiv)",
+        "tt_thought": "Gedanke",
+        "tt_whisper": "Flüstern",
+        "tt_shout": "Schreien / Burst",
+        "tt_weak": "Schwache Stimme",
+        "tt_radio": "Radio / Telefon / TV",
+        "tt_robot": "Roboter",
+        "tt_telepathy": "Telepathie",
+        "tt_monster": "Monster",
+        "tt_song": "Singen ♪",
+        "tt_foreign": "Fremdsprache <>",
+        "tt_distress": "Sterbend / bewusstlos",
+        "tt_narration": "Erzählung / Caption",
+        "tt_monologue": "Innerer Monolog",
+        "tt_offpanel": "Off-Panel",
+        "tt_aside": "Aside / Handschrift",
+        "tt_sfx": "SFX / Soundwort",
+        "tt_signage": "Schild / Label",
+        "tt_display": "Titel / Display",
+        "tt_tn": "Übersetzernotiz",
+        "comic": "Comic-Lettering",
+        "comic_tip": ("Comic-Lettering-Grammatik: beh\u00e4lt den Doppel-Dash --\n"
+                      "(Comics nutzen keine Geviertstriche), Ellipse ist exakt\n"
+                      "drei Punkte ohne Leerzeichen, und die geschriene Frage\n"
+                      "ist ?! mit dem Fragezeichen zuerst."),
+        "crossbar": "Crossbar-I",
+        "crossbar_tip": ("Nur das Pronomen \u201eI\u201c und Akronyme behalten das I mit\n"
+                         "Querbalken; jedes andere gro\u00dfe I wird gesenkt, damit ein\n"
+                         "Comic-Font den glatten Strich zeigt. Braucht einen echten\n"
+                         "Comic-Font \u2014 sonst sieht es wie ein Tippfehler aus."),
+        "panel_google": "Google-Konto (f\u00fcr .gdoc)",
+        "g_client_label": "OAuth-Client-ID (Desktop-App):",
+        "g_client_ph": "123-abc.apps.googleusercontent.com",
+        "g_sign_in": "Anmelden \u2026",
+        "g_sign_out": "Abmelden",
+        "g_state_in": "Angemeldet.",
+        "g_state_out": "Nicht angemeldet.",
+        "g_hint": ("TypeR liefert bewusst keine Google-Zugangsdaten mit \u2014 dieses "
+                   "Repository ist \u00f6ffentlich. Leg ein eigenes Cloud-Projekt an, "
+                   "erstelle einen OAuth-Client vom Typ \u201eDesktop-App\u201c und trag die "
+                   "ID hier ein. Stell das Projekt auf \u201eIn production\u201c, sonst "
+                   "verwirft Google die Anmeldung alle 7 Tage."),
+        "st_g_no_client": "Erst die OAuth-Client-ID unter Einstellungen eintragen.",
+        "st_g_not_signed_in": "Noch nicht bei Google angemeldet (Einstellungen \u2192 Google-Konto).",
+        "st_g_wait": "Anmeldung im Browser abschlie\u00dfen \u2026",
+        "st_g_ok": "Bei Google angemeldet.",
+        "st_g_out": "Abgemeldet.",
+        "st_g_loading": "Dokument wird von Google geholt \u2026",
+        "st_g_loaded": "{name} geladen: {n} Zeilen, {c} Kommentare.",
+        "g_image_label": "Oder: Kommentare auf einem Drive-Bild als Skript",
+        "g_image_ph": "Freigabe-Link des Bildes einfügen",
+        "g_image_btn": "Bild-Kommentare laden",
+        "img_tab_label": "Bild-Kommentare",
+        "st_img_no_id": "Erst einen Google-Drive-Bild-Link (oder die Datei-ID) einfügen.",
+        "st_img_none": "Dieses Bild hat keine (sichtbaren) Kommentare.",
+        "st_img_loaded": "{c} Bild-Kommentar(e) als Skript geladen.",
+        "g_export_title": "Google-Doc",
+        "g_export_msg": ("Eine .gdoc ist nur eine Verkn\u00fcpfung zu Google Drive \u2014 der "
+                         "Text liegt online.\n\nDein Browser ist bereits angemeldet, "
+                         "kann das Dokument also ohne jedes Setup exportieren. TypeR "
+                         "wartet auf den Download und l\u00e4dt ihn \u2014 samt Kommentaren."
+                         "\n\n(Anmelden unter Einstellungen \u2192 Google-Konto spart diesen "
+                         "Schritt.)"),
+        "g_export_open": "Export im Browser \u00f6ffnen",
+        "st_g_waiting_dl": "Warte auf den Download \u2026 speichern, TypeR holt ihn ab.",
+        "st_g_dl_timeout": ("Kein Download gefunden. \u00d6ffne die gespeicherte .docx "
+                            "mit \u201eSkript laden\u201c \u2014 die Kommentare sind darin."),
+        "g_export_cancel": "Abbrechen",
+        "panel_comments": "Kommentare",
+        "cm_line": "diese Zeile",
+        "cm_page": "diese Seite",
+        "st_loaded_c": "{name} geladen: {n} Zeilen, {c} Kommentare.",
+        "panel_tt_fonts": "Schriften je Textart",
+        "ttf_open": "Schriften w\u00e4hlen \u2026",
+        "ttf_hint": ("Welche Schrift jede Textart benutzt. Die Vorgaben sind die "
+                     "Comic-Schriften der Konvention \u2014 die sind lizenziert, also "
+                     "nimmt TypeR einen Ersatz, bis du deine eigene w\u00e4hlst."),
+        "ttf_title": "Schriften je Textart",
+        "ttf_intro": ("W\u00e4hle die Schrift f\u00fcr jede Textart. Was du nicht setzt, "
+                      "beh\u00e4lt die Katalog-Vorgabe \u2014 die f\u00e4llt auf eine Schrift "
+                      "zur\u00fcck, die du tats\u00e4chlich installiert hast."),
+        "ttf_choose": "W\u00e4hlen \u2026",
+        "ttf_reset_one": "Zur\u00fccksetzen",
+        "ttf_reset_one_tip": "Zur\u00fcck zur Vorgabe f\u00fcr diese Textart",
+        "ttf_reset_all": "Alle zur\u00fccksetzen",
+        "ttf_close": "Schlie\u00dfen",
+        "ttf_default": "{font}  (Vorgabe)",
+        "ttf_pick_for": "Schrift f\u00fcr \u201e{name}\u201c",
+        "ttf_add": "Textart hinzuf\u00fcgen \u2026",
+        "ttf_add_tip": "Eine eigene Textart mit Name und Schrift anlegen.",
+        "ttf_add_name": "Name der neuen Textart:",
+        "ttf_add_style_q": ("Der neuen Textart den aktuellen Stil geben (Schrift "
+                            "+ Gr\u00f6\u00dfe + Farben + Effekte) oder den neutralen "
+                            "Standard?"),
+        "ttf_add_current": "Aktuellen Stil \u00fcbernehmen",
+        "ttf_add_default": "Standard + Schrift w\u00e4hlen",
+        "ttf_remove": "Entfernen",
+        "ttf_remove_tip": "Diese eigene Textart l\u00f6schen",
         "style": "Stil:",
         "bold": "Fett",
         "italic": "Kursiv",
@@ -613,6 +885,8 @@ LANG = {
         "tidy_tip": "Gerade Anführungszeichen werden typografisch, ... wird …, -- wird —.",
         "round": "Runde Sprechblase (Ellipse)",
         "round_tip": "Text in die Ellipse innerhalb der Auswahl einpassen, damit er nicht über eine runde Blase hinausragt. Nur mit Auto-Anpassung.",
+        "vertical": "Vertikaltext (Tategaki)",
+        "vertical_tip": "Text in Spalten von oben nach unten setzen, rechts beginnend – für schmale Blasen und Schilder. Die Ausrichtung platziert dann den Spaltenblock, die vertikale Ausrichtung den Text in der Spalte.",
         "shadow": "Schatten",
         "shadow_color_btn": "Schattenfarbe …",
         "shadow_off": "Versatz X / Y (px):",
@@ -699,7 +973,7 @@ LANG = {
         "color_dlg": "Textfarbe wählen",
         "outline_color_dlg": "Konturfarbe wählen",
         "file_dlg": "Skript-Datei wählen",
-        "file_filter": "Skripte (*.docx *.xlsx *.xlsm *.odt *.txt *.md);;Alle Dateien (*.*)",
+        "file_filter": "Skripte (*.docx *.xlsx *.xlsm *.odt *.txt *.md *.gdoc);;Alle Dateien (*.*)",
         # status
         "st_no_doc": "Kein geöffnetes Dokument.",
         "st_empty_line": "Die aktive Zeile ist leer.",
@@ -727,6 +1001,10 @@ LANG = {
         "tab_setup": "Einstellungen",
         "tab_shapr": "TextShapR",
         "tab_sfx": "SFX",
+        # Überschriften im Einstellungen-Tab (gruppieren die flache Liste)
+        "setup_h_general": "Allgemein",
+        "setup_h_fonts": "Schriften",
+        "setup_h_google": "Google-Konto",
         "close": "Schließen",
         "preset_actions": "Preset-Aktionen (speichern, löschen, importieren, exportieren)",
         "outline_more": "Kontur-Einstellungen …",
@@ -852,6 +1130,22 @@ LANG = {
                         "gefunden werden. Auf schwachem PC oder Laptop "
                         "ausschalten für eine viel schnellere (aber gröbere) "
                         "Erkennung."),
+        "bp_models": "Modelle…",
+        "bp_models_tip": ("Zeigt, welche Erkennungs-Modelle installiert sind, "
+                          "und öffnet den Ordner, in dem sie liegen."),
+        "bp_models_title": "BubblR-Modelle",
+        "bp_models_none": ("Noch kein AI-Ordner gesetzt — einmal eine "
+                           "Erkennung starten und TypeR auf deinen "
+                           "BubblR-ai/-Ordner zeigen lassen."),
+        "bp_models_dir": "Modell-Ordner:",
+        "bp_models_open": "Ordner öffnen",
+        "bp_models_trainer": ("Nach dem Training im BubblR Model Trainer "
+                              "liegen die Gewichte in "
+                              "runs\\<name>\\weights\\best.pt. Diese nach "
+                              "ONNX exportieren und hier als "
+                              "bubblr-finetuned.onnx ablegen, um sie als "
+                              "'finetuned' zu nutzen. 'auto' benutzt sie erst, "
+                              "wenn eval.py sie promoted hat."),
         "bp_overlay_tip": ("Klick macht eine Box zur aktuellen Bubble; "
                            "Strg+Klick in gewünschter Reihenfolge "
                            "nummeriert neu; Rechtsklick entfernt eine "
@@ -1017,6 +1311,7 @@ LANG = {
         "case_lower": "minúsculas",
         "tidy": "Tipografía",
         "round": "Globo redondo (elipse)",
+        "vertical": "Texto vertical (tategaki)",
         "shadow": "Sombra",
         "outline": "Contorno",
         "auto": "Ajustar a la selección (tamaño + salto)",
@@ -1062,6 +1357,7 @@ LANG = {
         "case_lower": "minuscules",
         "tidy": "Typographie",
         "round": "Bulle ronde (ellipse)",
+        "vertical": "Texte vertical (tategaki)",
         "shadow": "Ombre",
         "outline": "Contour",
         "auto": "Ajuster à la sélection (taille + retour)",
@@ -1107,6 +1403,7 @@ LANG = {
         "case_lower": "minúsculas",
         "tidy": "Tipografia",
         "round": "Balão redondo (elipse)",
+        "vertical": "Texto vertical (tategaki)",
         "shadow": "Sombra",
         "outline": "Contorno",
         "auto": "Ajustar à seleção (tamanho + quebra)",
@@ -1152,6 +1449,7 @@ LANG = {
         "case_lower": "minuscolo",
         "tidy": "Tipografia",
         "round": "Nuvoletta tonda (ellisse)",
+        "vertical": "Testo verticale (tategaki)",
         "shadow": "Ombra",
         "outline": "Contorno",
         "auto": "Adatta alla selezione (dimensione + a capo)",
@@ -1472,21 +1770,33 @@ def _hex(color):
     return "#{:02x}{:02x}{:02x}".format(color.red(), color.green(), color.blue())
 
 
-def _text_element(text_lines, line_xs, y0, line_h, font_px, family,
+def _text_element(text_lines, line_pos, block_start, line_h, font_px, family,
                   fill_hex, stroke_hex=None, stroke_w=0.0,
-                  bold=False, italic=False, underline=False, dx=0.0, dy=0.0):
+                  bold=False, italic=False, underline=False, dx=0.0, dy=0.0,
+                  vertical=False):
     """text_lines: list of run lists ([(subtext, bold), ...] per line).
-    line_xs: absolute LEFT x for each line. Lines are pre-centered/-aligned, so
-    the element uses the default 'start' anchor – Krita's text tool keeps that
-    absolute position when the shape is edited (a 'middle'/'end' anchor would be
-    dropped and the text would snap to the corner). dx/dy shift the whole block
-    (used for the offset shadow copy). Bold runs get font-weight='bold'."""
+
+    Horizontal: `line_pos` is the absolute LEFT x of each line and `block_start`
+    the baseline y of the first line; lines step downwards by line_h.
+    Vertical (tategaki): the axes swap. `line_pos` is the absolute TOP y of each
+    column and `block_start` the center x of the first column; columns step
+    LEFTWARDS by line_h, because writing-mode 'vertical-rl' starts at the right.
+
+    Lines are pre-centered/-aligned, so the element uses the default 'start'
+    anchor – Krita's text tool keeps that absolute position when the shape is
+    edited (a 'middle'/'end' anchor would be dropped and the text would snap to
+    the corner). dx/dy shift the whole block (used for the offset shadow copy).
+    Bold runs get font-weight='bold'."""
     tspans = []
     for i, runs in enumerate(text_lines):
         if not runs:
             continue
-        x = line_xs[i] + dx
-        y = y0 + dy + i * line_h
+        if vertical:
+            x = block_start - i * line_h + dx
+            y = line_pos[i] + dy
+        else:
+            x = line_pos[i] + dx
+            y = block_start + dy + i * line_h
         first = True
         for (txt, rb) in runs:
             weight = "bold" if (bold or rb) else "normal"
@@ -1504,6 +1814,11 @@ def _text_element(text_lines, line_xs, y0, line_h, font_px, family,
         'text-anchor="start" fill="{fill}" '
         'font-family="{fam}" font-size="{size}"'
     ).format(fill=fill_hex, fam=xml_escape(family), size=int(round(font_px)))
+    if vertical:
+        # Krita parses both as plain presentation attributes
+        # (KoSvgTextProperties::parseSvgTextAttribute); 'upright' is what stacks
+        # Latin letters instead of rotating them onto their side.
+        attrs += ' writing-mode="vertical-rl" text-orientation="upright"'
     if italic:
         attrs += ' font-style="italic"'
     if underline:
@@ -1516,14 +1831,17 @@ def _text_element(text_lines, line_xs, y0, line_h, font_px, family,
     return "<text {attrs}>{spans}</text>".format(attrs=attrs, spans="".join(tspans))
 
 
-def _build_svg(text_lines, line_xs, y0, font_px, family, color, line_h, img_w, img_h,
+def _build_svg(text_lines, line_pos, block_start, font_px, family, color, line_h,
+               img_w, img_h,
                outline=False, outline_color=None, outline_px=0.0,
                bold=False, italic=False, underline=False,
-               shadow=False, shadow_color=None, shadow_dx=0.0, shadow_dy=0.0):
+               shadow=False, shadow_color=None, shadow_dx=0.0, shadow_dy=0.0,
+               vertical=False):
     """SVG with optional shadow, optional outline and style (bold/italic/
-    underline). Alignment is baked into `line_xs` (per-line absolute x) and the
-    text uses the default 'start' anchor, so the inserted shape keeps its
-    position when edited with Krita's text tool.
+    underline). Alignment is baked into `line_pos` (per-line absolute position
+    along the line axis) and the text uses the default 'start' anchor, so the
+    inserted shape keeps its position when edited with Krita's text tool.
+    See _text_element for what line_pos/block_start mean per writing direction.
 
     Bottom-to-top order: shadow (offset copy), outline (thick line), fill.
     Everything is drawn as extra text copies so it works independently of the
@@ -1535,19 +1853,22 @@ def _build_svg(text_lines, line_xs, y0, font_px, family, color, line_h, img_w, i
         sh = _hex(shadow_color)
         # the shadow takes the outline width so it keeps the full silhouette
         sw = 2.0 * outline_px if (outline and outline_px > 0) else 0.0
-        body += _text_element(text_lines, line_xs, y0, line_h, font_px, family,
-                              fill_hex=sh,
+        body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
+                              family, fill_hex=sh,
                               stroke_hex=(sh if sw > 0 else None), stroke_w=sw,
                               bold=bold, italic=italic, underline=underline,
-                              dx=shadow_dx, dy=shadow_dy)
+                              dx=shadow_dx, dy=shadow_dy, vertical=vertical)
     if outline and outline_color is not None and outline_px > 0:
         ol = _hex(outline_color)
-        body += _text_element(text_lines, line_xs, y0, line_h, font_px, family,
-                              fill_hex=ol, stroke_hex=ol, stroke_w=2.0 * outline_px,
-                              bold=bold, italic=italic, underline=underline)
-    body += _text_element(text_lines, line_xs, y0, line_h, font_px, family,
-                          fill_hex=fill_hex,
-                          bold=bold, italic=italic, underline=underline)
+        body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
+                              family, fill_hex=ol, stroke_hex=ol,
+                              stroke_w=2.0 * outline_px,
+                              bold=bold, italic=italic, underline=underline,
+                              vertical=vertical)
+    body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
+                          family, fill_hex=fill_hex,
+                          bold=bold, italic=italic, underline=underline,
+                          vertical=vertical)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" '
         'xmlns:xlink="http://www.w3.org/1999/xlink" '
@@ -1555,18 +1876,89 @@ def _build_svg(text_lines, line_xs, y0, font_px, family, color, line_h, img_w, i
     ).format(w=img_w, h=img_h, body=body)
 
 
-def tidy_text(s):
+_LINKIFY = re.compile(r"https?://[^\s<>\"']+")
+
+
+def tidy_text(s, comic=False):
     """Typographic clean-up: straight quotes -> curly quotes, ... -> …,
     -- -> —, multiple spaces -> one. Makes text look more professional
     without changing its content."""
     s = s.replace("...", "\u2026")
-    s = re.sub(r"(?<!-)--(?!-)", "\u2014", s)
+    if not comic:
+        # comics keep the double dash; em/en dashes are not used there
+        s = re.sub(r"(?<!-)--(?!-)", "\u2014", s)
     # opening double quote after line start / whitespace / bracket
     s = re.sub(r'(^|[\s([{<\u2014])"', "\\1\u201c", s)
     s = s.replace('"', "\u201d")
     s = re.sub(r"(^|[\s([{<\u2014])'", "\\1\u2018", s)
     s = s.replace("'", "\u2019")
     s = re.sub(r"[ \t]{2,}", " ", s)
+    return s
+
+
+_ACRONYM = re.compile(r"(?:\b[A-Za-z]\.){2,}")
+
+
+def _fix_crossbar_i(s):
+    """Give the crossbar "I" only to the pronoun and to acronyms.
+
+    Comic fonts put the barred I on uppercase ``I`` and the plain vertical
+    stroke on lowercase ``i`` (both render as a capital in an all-caps comic
+    face). So lowering every other capital I is what actually selects the
+    right glyph. Blambot calls using the barred I everywhere "probably the
+    biggest mistake seen among amateur letterers".
+    """
+    spans = [m.span() for m in _ACRONYM.finditer(s)]
+
+    def in_acronym(idx):
+        return any(a <= idx < b for a, b in spans)
+
+    out = []
+    n = len(s)
+    for i, ch in enumerate(s):
+        if ch != "I" or in_acronym(i):
+            out.append(ch)
+            continue
+        prev = s[i - 1] if i else ""
+        nxt = s[i + 1] if i + 1 < n else ""
+        starts_word = not (prev.isalpha() or prev == "'" or prev == "\u2019")
+        # the pronoun: a standalone I, or I'm / I'll / I've / I'd
+        if starts_word and (nxt in ("'", "\u2019") or not nxt.isalpha()):
+            out.append("I")
+        else:
+            out.append("i")
+    return "".join(out)
+
+
+def comic_letter(s, crossbar_i=False):
+    """Comic-lettering grammar (Blambot, "Comic Book Grammar & Tradition").
+
+    Deliberately different from ordinary typography:
+
+    * an ellipsis is exactly three dots and hugs the words around it
+    * interrupted speech uses a double dash ``--``; em/en dashes are not used
+    * a shouted question is ``?!`` \u2014 the question mark comes first
+    * one space after punctuation, never two
+
+    `crossbar_i` is off by default because it only makes sense with a real
+    comic font: it lowers non-pronoun capital I's so the font renders the
+    plain stroke. With an ordinary font that would just look like a typo.
+
+    Must run *after* the letter-case transform, since the crossbar rule
+    depends on the final case.
+    """
+    # an ellipsis is exactly three dots, and nothing breathes around it
+    s = re.sub(r"\.{2,}", "\u2026", s)
+    s = re.sub(r"[ \t]*\u2026[ \t]*", "\u2026", s)
+    # interrupted speech: a double dash, never an em/en dash
+    s = re.sub(r"[\u2014\u2013]", "--", s)
+    s = re.sub(r"-{3,}", "--", s)
+    s = re.sub(r"[ \t]*--[ \t]*", "--", s)
+    # a shouted question puts the question mark first
+    s = s.replace("!?", "?!")
+    s = re.sub(r"[ \t]{2,}", " ", s)
+    if crossbar_i:
+        s = _fix_crossbar_i(s)
     return s
 
 
@@ -1613,7 +2005,7 @@ def toggle_bold(text, start, end):
     return new, start + 2, end + 2
 
 
-def prepare_text(line, case, tidy):
+def prepare_text(line, case, tidy, comic=False, crossbar_i=False):
     """Prepare text before setting it (order: clean up, then letter case).
 
     case: "none" (unchanged), "upper" (UPPERCASE) or "lower" (lowercase).
@@ -1621,11 +2013,14 @@ def prepare_text(line, case, tidy):
     "none"."""
     out = line
     if tidy:
-        out = tidy_text(out)
+        out = tidy_text(out, comic=comic)
     if case is True or case == "upper":
         out = out.upper()
     elif case == "lower":
         out = out.lower()
+    if comic:
+        # last: the crossbar-I rule depends on the final letter case
+        out = comic_letter(out, crossbar_i=crossbar_i)
     return out
 
 
@@ -1660,7 +2055,7 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       shadow=False, shadow_color=None, shadow_dx=0.0,
                       shadow_dy=0.0, valign="middle", layer_index=None,
                       hyphenate=False, hyph_lang="en", replace_existing=False,
-                      box=None):
+                      box=None, comic=False, crossbar_i=False, vertical=False):
     """Insert a single line of text as a text layer.
 
     auto_fit=True: the line is wrapped automatically, balanced and scaled to the
@@ -1672,6 +2067,10 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     without touching the user's selection.
 
     auto_fit=False: fixed size font_px, only split at embedded line breaks.
+
+    vertical=True: tategaki – the text runs top-to-bottom in columns that march
+    right-to-left (for narrow bubbles and signs). `align` then places the block
+    of columns horizontally and `valign` the text along each column.
 
     outline: optional outline in outline_color with width outline_px (pixels).
     bold/italic/underline: font style (variant of the chosen font).
@@ -1691,7 +2090,7 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     if line.strip() == "":
         return False, "st_empty_line", {}
 
-    line = prepare_text(line, case, tidy)
+    line = prepare_text(line, case, tidy, comic=comic, crossbar_i=crossbar_i)
     line = line.replace("\r\n", "\n").replace("\r", "\n")
     clean, mask = parse_bold(line)
     if clean.strip() == "":
@@ -1717,10 +2116,19 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     cx = box_x + box_w / 2.0
     cy = box_y + box_h / 2.0
 
-    measurer = _make_measurer(font_family, line_spacing, bold, italic)
+    if vertical:
+        measurer = L.vertical_measurer(line_spacing)
+    else:
+        measurer = _make_measurer(font_family, line_spacing, bold, italic)
+
+    # the fitter always works "along the line, then across the lines", so
+    # vertical text hands it the box transposed. This is only correct together
+    # with the vertical measurer above — transposing on its own measures the
+    # wrong axis.
+    fit_w, fit_h = (box_h, box_w) if vertical else (box_w, box_h)
 
     if auto_fit:
-        result = L.fit_text(clean, measurer, box_w, box_h, max_px, 6,
+        result = L.fit_text(clean, measurer, fit_w, fit_h, max_px, 6,
                             padding_frac, shape, mask,
                             hyphenate=hyphenate, lang=hyph_lang)
         if result is None:
@@ -1733,24 +2141,34 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
         _wo, _sw, line_h, ascent, descent = measurer(font_px)
         fitted = True
 
-    # alignment: each line gets its own absolute left x (pre-centered/-aligned)
-    # so the SVG can use the default 'start' anchor – this keeps the text in
-    # place when it's later edited with Krita's text tool (text-anchor='middle'
-    # was getting dropped, snapping the shape into the corner).
+    # alignment: each line gets its own absolute start position along its axis
+    # (pre-centered/-aligned) so the SVG can use the default 'start' anchor –
+    # this keeps the text in place when it's later edited with Krita's text tool
+    # (text-anchor='middle' was getting dropped, snapping the shape into the
+    # corner).
     width_of = measurer(font_px)[0]
     line_widths = [width_of(runs) for runs in text_lines]
-    pad_x = box_w * padding_frac / 2.0
-    line_xs = L.line_x_positions(
-        line_widths, align, box_x + pad_x, cx, box_x + box_w - pad_x)
-
-    y0 = L.vertical_start(valign, box_y, box_h, padding_frac,
-                          len(text_lines), line_h, ascent, descent)
-    svg = _build_svg(text_lines, line_xs, y0, font_px, font_family, color, line_h,
+    if vertical:
+        # columns: position along y, block placed along x
+        pad_y = box_h * padding_frac / 2.0
+        line_pos = L.column_y_positions(
+            line_widths, valign, box_y + pad_y, cy, box_y + box_h - pad_y)
+        block_start = L.horizontal_start(align, box_x, box_w, padding_frac,
+                                         len(text_lines), line_h)
+    else:
+        pad_x = box_w * padding_frac / 2.0
+        line_pos = L.line_x_positions(
+            line_widths, align, box_x + pad_x, cx, box_x + box_w - pad_x)
+        block_start = L.vertical_start(valign, box_y, box_h, padding_frac,
+                                       len(text_lines), line_h, ascent, descent)
+    svg = _build_svg(text_lines, line_pos, block_start, font_px, font_family,
+                     color, line_h,
                      img_w, img_h, outline=outline, outline_color=outline_color,
                      outline_px=outline_px,
                      bold=bold, italic=italic, underline=underline,
                      shadow=shadow, shadow_color=shadow_color,
-                     shadow_dx=shadow_dx, shadow_dy=shadow_dy)
+                     shadow_dx=shadow_dx, shadow_dy=shadow_dy,
+                     vertical=vertical)
 
     # replace mode: drop the layer(s) of an earlier insert of this unit first
     replaced = 0
@@ -1882,18 +2300,11 @@ class BubbleOverlay(QWidget):
                 color = QColor(230, 60, 60)         # bubble
             p.setPen(QPen(color, 4 if k == self._current else 2))
             p.setBrush(Qt.NoBrush)      # outlines only — never fill the box
-            # Draw each box in the shape that fits it: the real traced outline
-            # if we have it, else an ellipse for round balloons, else a
-            # rectangle for caption boxes / SFX / free text.
-            poly = b.get("poly")
-            if poly and b.get("kind") != "sfx" and len(poly) >= 3:
-                p.drawPolygon(QPolygonF(
-                    [QPointF(t.x() + px * scale, t.y() + py * scale)
-                     for px, py in poly]))
-            elif b.get("shape") == "round" and b.get("kind") != "sfx":
-                p.drawEllipse(r)
-            else:
-                p.drawRect(r)
+            # Always the plain detection rectangle: the preview shows exactly
+            # the box the detector produced. Traced outlines/ellipses are still
+            # used for fitting, but drawing them here only obscured what the AI
+            # actually returned.
+            p.drawRect(r)
             label = str(pending if pending is not None else k + 1)
             badge = QRectF(r.x(), r.y(), 22, 18)
             p.fillRect(badge, color)
@@ -2085,6 +2496,8 @@ class FontPicker(QWidget):
     preview only for the currently selected font.
     """
 
+    familyChanged = pyqtSignal(str)
+
     def __init__(self, recents=None, search_placeholder=""):
         super().__init__()
         self._all = list(QFontDatabase().families())
@@ -2194,6 +2607,7 @@ class FontPicker(QWidget):
         f = QFont(fam)
         f.setPixelSize(20)
         self.preview.setFont(f)
+        self.familyChanged.emit(fam)
 
 
 # ---------------------------------------------------------------------------
@@ -2213,6 +2627,8 @@ class TextPreview(QWidget):
         super().__init__()
         self._docker = docker
         self._text = ""
+        # em advance while measuring vertical text; 0 = horizontal (see _word_w)
+        self._vem = 0.0
         self.setMinimumHeight(120)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
@@ -2240,6 +2656,9 @@ class TextPreview(QWidget):
             "valign": valign,
             "case": d.case_combo.currentData() or "none",
             "tidy": d.tidy_chk.isChecked(),
+            "comic": d.comic_chk.isChecked(),
+            "crossbar_i": d.crossbar_chk.isChecked(),
+            "vertical": d.vertical_chk.isChecked(),
             "spacing": d.spacing_spin.value() / 100.0,
             "size_ref": size_ref,
             "outline": d.outline_chk.isChecked(),
@@ -2265,6 +2684,12 @@ class TextPreview(QWidget):
         return fn, fb
 
     def _word_w(self, word, fmn, fmb, gbold):
+        """Length of a word ALONG its line: the advance width horizontally, the
+        stacked em height in vertical text (same reasoning as
+        L.vertical_measurer — an upright glyph advances by one em whatever its
+        width, so the font metrics are the wrong tape measure there)."""
+        if self._vem:
+            return sum(len(t) for (t, _b) in word.runs) * self._vem
         tot = 0.0
         for (t, b) in word.runs:
             tot += (fmb if (gbold or b) else fmn).horizontalAdvance(t)
@@ -2340,28 +2765,42 @@ class TextPreview(QWidget):
                 lines.append(cur)
         return lines
 
+    def _metrics(self, o, px):
+        """(fmn, fmb, space_w, line_h) for a size. In vertical text a glyph
+        advances by the em down the column and the columns step by the em
+        across, so neither comes from the horizontal font metrics."""
+        fn, fb = self._fonts(o, px)
+        fmn, fmb = QFontMetricsF(fn), QFontMetricsF(fb)
+        if o.get("vertical"):
+            return fmn, fmb, float(px), px * o["spacing"]
+        return fmn, fmb, fmn.horizontalAdvance(" "), fmn.height() * o["spacing"]
+
     def _fit(self, o, paras, avail_w, avail_h):
         """Largest integer pixel size at which the wrapped words fit.
-        Returns (px, lines); lines is a list of word lists."""
+        Returns (px, lines); lines is a list of word lists.
+
+        Vertical text runs the same search with the axes swapped: a line runs
+        down `avail_h` and the block of columns spreads across `avail_w`."""
         lo, hi, best = 6, 160, 6
         best_lines = [[]]
         hyph = o["hyph_lang"] if o.get("hyphenate") else None
+        along, across = ((avail_h, avail_w) if o.get("vertical")
+                         else (avail_w, avail_h))
         while lo <= hi:
             mid = (lo + hi) // 2
-            fn, fb = self._fonts(o, mid)
-            fmn, fmb = QFontMetricsF(fn), QFontMetricsF(fb)
-            space_w = fmn.horizontalAdvance(" ")
-            line_h = fmn.height() * o["spacing"]
+            self._vem = float(mid) if o.get("vertical") else 0.0
+            fmn, fmb, space_w, line_h = self._metrics(o, mid)
             lines = self._wrap_words(paras, fmn, fmb, o["bold"], space_w,
-                                     avail_w, hyph)
-            total_h = line_h * len(lines)
-            maxw = max((self._line_w(ws, fmn, fmb, o["bold"], space_w)
-                        for ws in lines), default=0.0)
-            if total_h <= avail_h and maxw <= avail_w:
+                                     along, hyph)
+            total_across = line_h * len(lines)
+            max_along = max((self._line_w(ws, fmn, fmb, o["bold"], space_w)
+                             for ws in lines), default=0.0)
+            if total_across <= across and max_along <= along:
                 best, best_lines = mid, lines
                 lo = mid + 1
             else:
                 hi = mid - 1
+        self._vem = float(best) if o.get("vertical") else 0.0
         return best, best_lines
 
     def paintEvent(self, _ev):
@@ -2375,7 +2814,9 @@ class TextPreview(QWidget):
         p.drawRect(0, 0, w - 1, h - 1)
 
         o = self._opts()
-        prepared = prepare_text(self._text, o["case"], o["tidy"])
+        prepared = prepare_text(self._text, o["case"], o["tidy"],
+                                comic=o.get("comic", False),
+                                crossbar_i=o.get("crossbar_i", False))
         prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
         clean, mask = parse_bold(prepared)
         if not clean.strip():
@@ -2397,9 +2838,15 @@ class TextPreview(QWidget):
         avail_h = max(10, h - 2 * m)
         fs, lines = self._fit(o, paras, avail_w, avail_h)
         fn, fb = self._fonts(o, fs)
-        fmn, fmb = QFontMetricsF(fn), QFontMetricsF(fb)
-        space_w = fmn.horizontalAdvance(" ")
-        line_h = fmn.height() * o["spacing"]
+        fmn, fmb, space_w, line_h = self._metrics(o, fs)
+        scale = fs / float(o["size_ref"])
+
+        if o.get("vertical"):
+            self._paint_path(p, self._vertical_path(
+                o, lines, fs, fn, fb, fmn, fmb, space_w, line_h,
+                m, avail_w, avail_h), o, scale)
+            return
+
         ascent = fmn.ascent()
         block_h = line_h * len(lines)
 
@@ -2410,7 +2857,6 @@ class TextPreview(QWidget):
         else:
             y0 = m + (avail_h - block_h) / 2.0 + ascent
 
-        scale = fs / float(o["size_ref"])
         underline_th = max(1.0, fs * 0.06)
         gbold = o["bold"]
 
@@ -2437,6 +2883,54 @@ class TextPreview(QWidget):
                 uy = baseline + max(1.0, fs * 0.12)
                 path.addRect(x_start, uy, x - x_start, underline_th)
 
+        self._paint_path(p, path, o, scale)
+
+    def _vertical_path(self, o, lines, fs, fn, fb, fmn, fmb, space_w, line_h,
+                       m, avail_w, avail_h):
+        """The text as columns running down, marching leftwards from the right
+        (vertical-rl) — the preview twin of the SVG that insert_text_layer
+        emits. Each glyph sits in an em-high cell, centered across the column.
+
+        `align` places the block of columns horizontally and `valign` the text
+        along each column, matching the insert path.
+        """
+        em = float(fs)
+        block_w = line_h * len(lines)
+        if o["align"] == "left":
+            right = m + block_w
+        elif o["align"] == "right":
+            right = m + avail_w
+        else:
+            right = m + (avail_w + block_w) / 2.0
+        gbold = o["bold"]
+        # baseline inside an em cell: center the ascent/descent span in the cell
+        cell_baseline = (em + fmn.ascent() - fmn.descent()) / 2.0
+
+        path = QPainterPath()
+        for i, words in enumerate(lines):
+            col_len = self._line_w(words, fmn, fmb, gbold, space_w)
+            if o["valign"] == "top":
+                y = float(m)
+            elif o["valign"] == "bottom":
+                y = m + (avail_h - col_len)
+            else:
+                y = m + (avail_h - col_len) / 2.0
+            cx = right - line_h / 2.0 - i * line_h
+            for wi, wd in enumerate(words):
+                if wi > 0:
+                    y += space_w
+                for (txt, b) in wd.runs:
+                    rf = fb if (gbold or b) else fn
+                    rfm = fmb if (gbold or b) else fmn
+                    for ch in txt:
+                        # upright: the glyph is centered in its column, not
+                        # started at its left edge
+                        path.addText(cx - rfm.horizontalAdvance(ch) / 2.0,
+                                     y + cell_baseline, rf, ch)
+                        y += em
+        return path
+
+    def _paint_path(self, p, path, o, scale):
         if o["shadow"]:
             sp = QPainterPath(path)
             sp.translate(o["shadow_dx"] * scale, o["shadow_dy"] * scale)
@@ -2829,7 +3323,9 @@ class TextShapRWidget(QWidget):
         family = d.font_picker.currentFamily()
         prepared = prepare_text(d._current_text(),
                                 d.case_combo.currentData() or "none",
-                                d.tidy_chk.isChecked())
+                                d.tidy_chk.isChecked(),
+                                comic=d.comic_chk.isChecked(),
+                                crossbar_i=d.crossbar_chk.isChecked())
         prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
         clean, mask = parse_bold(prepared)
         box_w, box_h, has_doc, sel_shape = self._box()
@@ -2878,6 +3374,15 @@ class TextShapRWidget(QWidget):
         self._select(0)
 
     # -- interaction --
+
+    def restyle(self):
+        """Re-fit after a style change (font, size, spacing, alignment).
+
+        Rebuilds the cards with the new style and, when 'live' is on, pushes
+        the selection back onto the page — so changing the size shows the
+        difference here AND on the canvas straight away."""
+        self.refresh()
+        self._live_preview()
 
     def _select(self, index, user=False):
         if not (0 <= index < len(self._cards)):
@@ -3308,6 +3813,169 @@ class TyperExtraHost(DockWidget):
 # Docker UI
 # ---------------------------------------------------------------------------
 
+class TextTypeFontsDialog(QDialog):
+    """Pick the font for each kind of text.
+
+    The catalogue names a font per type, but those are the comic faces the
+    convention asks for — licensed, and often not installed. So the defaults are
+    only ever a suggestion: this is where someone says what their dialogue
+    actually looks like. Every row can go back to the default on its own, and
+    the whole set can go back at once.
+    """
+
+    def __init__(self, parent, tr, installed, overrides, docker):
+        QDialog.__init__(self, parent)
+        self._tr = tr
+        self._installed = installed
+        self._ov = dict(overrides or {})
+        self._docker = docker          # for labels + add/remove of custom types
+        self._rows = {}
+
+        self.setWindowTitle(tr("ttf_title"))
+        self.setMinimumWidth(520)
+        outer = QVBoxLayout(self)
+
+        intro = QLabel(tr("ttf_intro"))
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color:#999;")
+        outer.addWidget(intro)
+
+        # more rows than fit a screen comfortably; the grid rebuilds itself when
+        # the user adds or removes a custom type.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        self._body = QWidget()
+        self._grid = QGridLayout(self._body)
+        self._grid.setColumnStretch(1, 1)
+        scroll.setWidget(self._body)
+        outer.addWidget(scroll, 1)
+        self._build_rows()
+
+        btns = QHBoxLayout()
+        self.add_btn = QPushButton(tr("ttf_add"))
+        self.add_btn.setToolTip(tr("ttf_add_tip"))
+        self.add_btn.clicked.connect(self._add_type)
+        btns.addWidget(self.add_btn)
+        self.reset_all_btn = QPushButton(tr("ttf_reset_all"))
+        self.reset_all_btn.clicked.connect(self._reset_all)
+        btns.addWidget(self.reset_all_btn)
+        btns.addStretch(1)
+        close = QPushButton(tr("ttf_close"))
+        close.clicked.connect(self.accept)
+        btns.addWidget(close)
+        outer.addLayout(btns)
+
+        self._refresh()
+
+    def _clear_grid(self):
+        while self._grid.count():
+            it = self._grid.takeAt(0)
+            w = it.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _build_rows(self):
+        """(Re)build one row per text type. Built-in rows offer Reset; custom
+        rows offer Remove."""
+        self._clear_grid()
+        self._rows = {}
+        for r, tid in enumerate(TT.ids()):
+            self._grid.addWidget(QLabel(self._docker._tt_label(tid)), r, 0)
+            val = QLabel()
+            val.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            self._grid.addWidget(val, r, 1)
+            pick = QPushButton(self._tr("ttf_choose"))
+            pick.clicked.connect(lambda _c=False, t=tid: self._choose(t))
+            self._grid.addWidget(pick, r, 2)
+            if TT.is_custom(tid):
+                rm = QPushButton(self._tr("ttf_remove"))
+                rm.setToolTip(self._tr("ttf_remove_tip"))
+                rm.clicked.connect(lambda _c=False, t=tid: self._remove(t))
+                self._grid.addWidget(rm, r, 3)
+                self._rows[tid] = (val, None)
+            else:
+                rst = QPushButton(self._tr("ttf_reset_one"))
+                rst.setToolTip(self._tr("ttf_reset_one_tip"))
+                rst.clicked.connect(lambda _c=False, t=tid: self._reset_one(t))
+                self._grid.addWidget(rst, r, 3)
+                self._rows[tid] = (val, rst)
+
+    def overrides(self):
+        """What the user chose; only real choices, never the defaults."""
+        return {k: v for k, v in self._ov.items() if v}
+
+    def _refresh(self):
+        for tid, (val, rst) in self._rows.items():
+            own = self._ov.get(tid)
+            fam = TT.effective_font(tid, self._installed, self._ov)
+            if own:
+                val.setText(fam)
+                val.setStyleSheet("")
+            else:
+                # say it is a default, so "why is this not my font" never comes up
+                val.setText(self._tr("ttf_default").format(font=fam))
+                val.setStyleSheet("color:#888;")
+            if rst is not None:
+                rst.setEnabled(bool(own))
+        self.reset_all_btn.setEnabled(any(self._ov.values()))
+
+    def _choose(self, tid):
+        cur = QFont(TT.effective_font(tid, self._installed, self._ov))
+        font, ok = QFontDialog.getFont(cur, self, self._tr("ttf_pick_for").format(
+            name=self._docker._tt_label(tid)))
+        if ok:
+            self._ov[tid] = font.family()
+            self._refresh()
+
+    def _reset_one(self, tid):
+        self._ov.pop(tid, None)
+        self._refresh()
+
+    def _reset_all(self):
+        self._ov = {}
+        self._refresh()
+
+    def _add_type(self):
+        """Create a user text type: ask for a name, then let the user decide
+        between snapshotting the current style or the neutral default (only when
+        they explicitly pick "current style"), then register it via the docker."""
+        name, ok = QInputDialog.getText(
+            self, self._tr("ttf_add"), self._tr("ttf_add_name"))
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        box = QMessageBox(self)
+        box.setWindowTitle(self._tr("ttf_add"))
+        box.setText(self._tr("ttf_add_style_q"))
+        b_current = box.addButton(self._tr("ttf_add_current"),
+                                  QMessageBox.AcceptRole)
+        b_default = box.addButton(self._tr("ttf_add_default"),
+                                  QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(b_default)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked is b_current:
+            # snapshot the docker's current look (font + style)
+            style = self._docker._collect_preset()
+            font = style.pop("font", "") or ""
+            self._docker._add_custom_type(name, font, style)
+        elif clicked is b_default:
+            cur = QFont(self._installed[0] if self._installed else "")
+            font, ok2 = QFontDialog.getFont(cur, self, self._tr("ttf_add"))
+            self._docker._add_custom_type(name, font.family() if ok2 else "")
+        else:
+            return                              # cancelled
+        self._build_rows()
+        self._refresh()
+
+    def _remove(self, tid):
+        self._docker._remove_custom_type(tid)
+        self._ov.pop(tid, None)         # keep the working copy consistent
+        self._build_rows()
+        self._refresh()
+
+
 class TyperDocker(DockWidget):
 
     def __init__(self):
@@ -3326,6 +3994,10 @@ class TyperDocker(DockWidget):
         self._group = ""
         self._char = ""
         self._script_path = ""             # file name of the active script
+        # The active script's comments. Must exist from the start: the docker
+        # opens an empty "Untitled" session before anything is ever loaded, and
+        # snapshotting that session already reads this.
+        self._script_comments = []
         self._preset_usage = self._load_preset_usage()
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
@@ -3335,6 +4007,15 @@ class TyperDocker(DockWidget):
         self._sessions = []
         self._active_sid = None
         self._next_sid = 1
+
+        # Load user-defined text types before any text-type list is built, so
+        # they appear everywhere the built-ins do (Style combo, Fonts dialog).
+        # Stored in kritarc, so they and the font choices survive plugin updates.
+        # Defensive: a bad stored value must never abort the whole docker.
+        try:
+            TT.register_custom(self._load_custom_types())
+        except Exception:
+            pass
 
         # The docker is organized into four top-level tabs so the everyday
         # workflow (Type: script -> line -> bubble -> font -> insert) stays
@@ -3397,9 +4078,39 @@ class TyperDocker(DockWidget):
         self._bp_current = -1      # current bubble (Insert target / step ptr)
         self._bp_placed = set()    # bubble indices already filled with text
 
+        # Make a Setup section collapsible under a checkable button, exactly
+        # like the "Layout & sizes" / "Experimental" sections: the button shows/
+        # hides a content box and remembers its open/closed state across
+        # restarts. Returns (button, inner_layout); callers add content to the
+        # inner layout so it lives inside the collapsible box (and travels with
+        # the panel when the layout is customized).
+        def _collapsible(body_lay, setting_key, default_open=True):
+            app = Krita.instance()
+            btn = QPushButton()
+            btn.setCheckable(True)
+            is_open = app.readSetting(
+                "typer_kr", setting_key,
+                "true" if default_open else "false") == "true"
+            btn.setChecked(is_open)
+            body_lay.addWidget(btn)
+            box = QWidget()
+            inner = QVBoxLayout()
+            inner.setContentsMargins(6, 2, 6, 2)
+            inner.setSpacing(4)
+            box.setLayout(inner)
+            body_lay.addWidget(box)
+            box.setVisible(is_open)
+            btn.toggled.connect(
+                lambda on, b=box, k=setting_key: (
+                    b.setVisible(bool(on)),
+                    Krita.instance().writeSetting(
+                        "typer_kr", k, "true" if on else "false")))
+            return btn, inner
+
         # --- general settings panel (language + insert/preset options) ---
         _sg_pb = self._new_panel("setup_general", "setup")
-        _sgl = _sg_pb.body_layout()
+        self.setup_general_toggle, _sgl = _collapsible(
+            _sg_pb.body_layout(), "setupGeneralOpen")
         lang_row = QHBoxLayout()
         self.lang_label = QLabel()
         self.lang_combo = NoScrollComboBox()
@@ -3429,6 +4140,59 @@ class TyperDocker(DockWidget):
         # --- collapsible "Layout & sizes" panel ---
         # Lets the user resize or hide the big parts of the docker (preview,
         # script box, JP/EN table, font list) and remembers it across restarts.
+        # --- fonts per text type ---
+        _ttf_pb = self._new_panel("tt_fonts", "setup")
+        self.setup_fonts_toggle, _ttfl = _collapsible(
+            _ttf_pb.body_layout(), "setupFontsOpen")
+        self.tt_fonts_hint = QLabel()
+        self.tt_fonts_hint.setWordWrap(True)
+        self.tt_fonts_hint.setStyleSheet("color:#999;")
+        _ttfl.addWidget(self.tt_fonts_hint)
+        self.tt_fonts_btn = QPushButton()
+        self.tt_fonts_btn.clicked.connect(self.on_tt_fonts)
+        _ttfl.addWidget(self.tt_fonts_btn)
+        lay_setup.addWidget(_ttf_pb)
+
+        # --- Google account: the user brings their own client ID, because a
+        # public plugin cannot ship credentials (see gauth.py) ---
+        _g_pb = self._new_panel("google", "setup")
+        self.setup_google_toggle, _gl = _collapsible(
+            _g_pb.body_layout(), "setupGoogleOpen", default_open=False)
+        self.lbl_g_client = QLabel()
+        _gl.addWidget(self.lbl_g_client)
+        self.g_client_edit = QLineEdit()
+        self.g_client_edit.setText(self._g_client_id())
+        self.g_client_edit.editingFinished.connect(self._on_g_client_edited)
+        _gl.addWidget(self.g_client_edit)
+        _grow = QHBoxLayout()
+        self.g_sign_in_btn = QPushButton()
+        self.g_sign_in_btn.clicked.connect(self.on_g_sign_in)
+        _grow.addWidget(self.g_sign_in_btn)
+        self.g_sign_out_btn = QPushButton()
+        self.g_sign_out_btn.clicked.connect(self.on_g_sign_out)
+        _grow.addWidget(self.g_sign_out_btn)
+        _gl.addLayout(_grow)
+        self.g_status = QLabel()
+        _gl.addWidget(self.g_status)
+        self.g_hint = QLabel()
+        self.g_hint.setWordWrap(True)
+        self.g_hint.setStyleSheet("color:#999;")
+        _gl.addWidget(self.g_hint)
+
+        # --- #21: a Drive image's comments AS the script -------------------
+        # When the translation arrives as comments on the raw image (not a
+        # Doc), the comments are the script. Paste the image's share link and
+        # each comment becomes a line to typeset. Needs sign-in above — no
+        # download carries an image's comments, so this path is OAuth-only.
+        self.lbl_g_image = QLabel()
+        _gl.addWidget(self.lbl_g_image)
+        self.g_image_edit = QLineEdit()
+        _gl.addWidget(self.g_image_edit)
+        self.g_image_btn = QPushButton()
+        self.g_image_btn.clicked.connect(self.on_load_image_comments)
+        _gl.addWidget(self.g_image_btn)
+        lay_setup.addWidget(_g_pb)
+
         _lz_pb = self._new_panel("layout_sizes", "setup")
         _lzl = _lz_pb.body_layout()
         v = self._load_view()
@@ -3756,6 +4520,18 @@ class TyperDocker(DockWidget):
         self.lbl_preview = QLabel("")
         self.lbl_preview.setStyleSheet("color: gray; margin-top: 2px;")
         self.preview = TextPreview(self)
+        # --- script comments: the translator's notes for the line/page in
+        # front of you. Hidden entirely when there is nothing to say. ---
+        _cm_pb = self._new_panel("comments", "type")
+        _cml = _cm_pb.body_layout()
+        self.comments_view = QTextBrowser()
+        self.comments_view.setOpenExternalLinks(True)
+        self.comments_view.setMinimumHeight(80)
+        _cml.addWidget(self.comments_view)
+        self._comments_panel = _cm_pb
+        _cm_pb.setVisible(False)
+        lay_type.addWidget(_cm_pb)
+
         _pb = self._new_panel("live_preview", "type")
         _pb.body_layout().addWidget(self.lbl_preview)
         _pb.body_layout().addWidget(self.preview)
@@ -3791,6 +4567,50 @@ class TyperDocker(DockWidget):
         insert_row.addWidget(self.insert_btn, 1)
         _insl.addLayout(insert_row)
         lay_type.addWidget(_ins_pb)
+
+        # --- balloon panel: draw the bubble itself, not just the text in it ---
+        _bal_pb = self._new_panel("balloon", "type")
+        _ball = _bal_pb.body_layout()
+        bal_row = QHBoxLayout()
+        self.balloon_combo = NoScrollComboBox()
+        for _sid in BAL.SHAPE_ORDER:
+            self.balloon_combo.addItem("", _sid)
+        bal_row.addWidget(self.balloon_combo, 1)
+        self.balloon_tail_chk = QCheckBox()
+        self.balloon_tail_chk.setChecked(True)
+        bal_row.addWidget(self.balloon_tail_chk)
+        _ball.addLayout(bal_row)
+        self.balloon_btn = QPushButton()
+        self.balloon_btn.clicked.connect(self.on_insert_balloon)
+        _ball.addWidget(self.balloon_btn)
+        self.balloon_hint = QLabel()
+        self.balloon_hint.setWordWrap(True)
+        self.balloon_hint.setStyleSheet("color:#999;")
+        _ball.addWidget(self.balloon_hint)
+        self.balloon_combo.currentIndexChanged.connect(self._on_balloon_changed)
+        lay_type.addWidget(_bal_pb)
+
+        # --- text type panel: one click sets the whole look for a kind of text ---
+        _tt_pb = self._new_panel("text_type", "style")
+        _ttl = _tt_pb.body_layout()
+        tt_row = QHBoxLayout()
+        self.lbl_text_type = QLabel()
+        tt_row.addWidget(self.lbl_text_type)
+        self.text_type_combo = NoScrollComboBox()
+        self.text_type_combo.addItem("", "")          # "-" = don't touch the style
+        for _tid in TT.ids():
+            self.text_type_combo.addItem("", _tid)
+        tt_row.addWidget(self.text_type_combo, 1)
+        _ttl.addLayout(tt_row)
+        self.text_type_apply_btn = QPushButton()
+        self.text_type_apply_btn.clicked.connect(self.on_text_type_apply)
+        _ttl.addWidget(self.text_type_apply_btn)
+        self.text_type_hint = QLabel()
+        self.text_type_hint.setWordWrap(True)
+        self.text_type_hint.setStyleSheet("color:#999;")
+        _ttl.addWidget(self.text_type_hint)
+        self.text_type_combo.currentIndexChanged.connect(self._on_text_type_changed)
+        lay_style.addWidget(_tt_pb)
 
         # --- basic style panel: variant + alignment + text processing ---
         _sb_pb = self._new_panel("style_basic", "style")
@@ -3839,6 +4659,18 @@ class TyperDocker(DockWidget):
         text_row.addWidget(self.tidy_chk)
         text_row.addStretch(1)
         _sbl.addLayout(text_row)
+
+        # own row: the case combo plus three toggles overflow a narrow docker
+        comic_row = QHBoxLayout()
+        self.comic_chk = QCheckBox()
+        comic_row.addWidget(self.comic_chk)
+        self.crossbar_chk = QCheckBox()
+        comic_row.addWidget(self.crossbar_chk)
+        self.comic_chk.toggled.connect(
+            lambda on: self.crossbar_chk.setEnabled(on))
+        self.crossbar_chk.setEnabled(False)
+        comic_row.addStretch(1)
+        _sbl.addLayout(comic_row)
         lay_style.addWidget(_sb_pb)
 
         # --- size / spacing / auto-fit panel ---
@@ -3875,6 +4707,9 @@ class TyperDocker(DockWidget):
         self.round_chk = QCheckBox()
         self.round_chk.stateChanged.connect(self._on_auto_toggle)
         _ssl.addWidget(self.round_chk)
+
+        self.vertical_chk = QCheckBox()
+        _ssl.addWidget(self.vertical_chk)
         lay_style.addWidget(_ss_pb)
 
         # --- outline panel: checkbox on the tab, color + width in a popup ---
@@ -3974,25 +4809,52 @@ class TyperDocker(DockWidget):
         _shapr_pb.body_layout().addWidget(self.shapr_widget)
         lay_shapr.addWidget(_shapr_pb)
 
+        # TextShapR reads the style from these controls, so a change to any of
+        # them has to re-fit the arrangements (and the live preview) right away
+        # — otherwise the cards keep showing the previous size/font.
+        for _w in (self.size_spin, self.pad_spin, self.spacing_spin):
+            _w.valueChanged.connect(self._on_style_changed)
+        for _w in (self.bold_chk, self.italic_chk, self.vertical_chk):
+            _w.toggled.connect(self._on_style_changed)
+        for _w in (self.align_combo, self.valign_combo):
+            _w.currentIndexChanged.connect(self._on_style_changed)
+        self.font_picker.familyChanged.connect(self._on_style_changed)
+        self.preset_combo.currentIndexChanged.connect(self._on_style_changed)
+
         # --- SFX tab (embed the MangaSFX docker in a movable panel) ---
         # Defensive: a failure to build the SFX panel must never take TypeR down.
         self._sfx_docker = None
         _sfx_pb = self._new_panel("sfx_panel", "sfx")
+        # Let the SFX panel grow to fill the tab instead of sitting at its
+        # natural height at the top.
+        _sfx_pb.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         try:
             from .sfx.sfx_docker import MangaSFXDocker
             self._sfx_docker = MangaSFXDocker()
             _sfx_root = self._sfx_docker.widget()
-            # the docker wraps its content in a QScrollArea; the tab already
-            # scrolls, so host the inner content to avoid a double scrollbar.
-            _inner = _sfx_root.widget() if hasattr(_sfx_root, "widget") else None
-            _sfx_pb.body_layout().addWidget(
-                _inner if _inner is not None else _sfx_root)
+            # The docker wraps its content in a QScrollArea. takeWidget() cleanly
+            # DETACHES the inner content so OUR layout owns its size — plain
+            # .widget() leaves the old scroll area still managing it, which is why
+            # it kept a fixed size and ignored the docker resizing (too small when
+            # narrow, empty space when wide, no vertical fill). Never host a second
+            # resizable QScrollArea here: nesting two loops the layout and crashes
+            # Krita. The tab's own single scroll handles overflow.
+            _inner = None
+            if hasattr(_sfx_root, "takeWidget"):
+                _inner = _sfx_root.takeWidget()
+            elif hasattr(_sfx_root, "widget"):
+                _inner = _sfx_root.widget()
+            _sfx_content = _inner if _inner is not None else _sfx_root
+            _sfx_content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            _sfx_pb.body_layout().addWidget(_sfx_content)
         except Exception as _sfx_exc:      # noqa: BLE001
             _lbl = QLabel("SFX Helper could not load:\n%s" % _sfx_exc)
             _lbl.setWordWrap(True)
             _lbl.setStyleSheet("color: gray;")
             _sfx_pb.body_layout().addWidget(_lbl)
-        lay_sfx.addWidget(_sfx_pb)
+        # Stretch so the panel takes the full tab height (the tab's own single
+        # scroll handles any overflow — no second scroll area here).
+        lay_sfx.addWidget(_sfx_pb, 1)
 
         # status line below the tabs, always visible
         self.status = QLabel("")
@@ -4032,6 +4894,7 @@ class TyperDocker(DockWidget):
         self.main_tabs.tabBarDoubleClicked.connect(self._on_tab_rename)
         # restore saved panel placements (tab) + within-tab order + header
         self._apply_panel_positions()
+        self._normalize_setup_order_once()
         self._apply_panel_order()
         # re-detach panels into their host windows once those dockers exist
         # (deferred: the host dockers are constructed by Krita separately)
@@ -4288,6 +5151,9 @@ class TyperDocker(DockWidget):
         self.setWindowTitle(t("title"))
         self._retranslate_tabs()
         self.lang_label.setText(t("language"))
+        self.setup_general_toggle.setText("⚙ " + t("setup_h_general"))
+        self.setup_fonts_toggle.setText("🅰 " + t("setup_h_fonts"))
+        self.setup_google_toggle.setText("🔑 " + t("setup_h_google"))
         self.view_toggle.setText(t("view_toggle"))
         self.view_hint.setText(t("view_hint"))
         self.v_preview_chk.setText(t("view_preview"))
@@ -4315,6 +5181,30 @@ class TyperDocker(DockWidget):
         self._update_text_preview()
         self.lbl_font.setText(t("font"))
         self.font_picker.set_search_placeholder(t("font_search_ph"))
+        self.lbl_text_type.setText(t("text_type_label"))
+        self.tt_fonts_btn.setText(t("ttf_open"))
+        self.tt_fonts_hint.setText(t("ttf_hint"))
+        self.lbl_g_client.setText(t("g_client_label"))
+        self.g_client_edit.setPlaceholderText(t("g_client_ph"))
+        self.g_sign_in_btn.setText(t("g_sign_in"))
+        self.g_sign_out_btn.setText(t("g_sign_out"))
+        self.g_hint.setText(t("g_hint"))
+        self.lbl_g_image.setText(t("g_image_label"))
+        self.g_image_edit.setPlaceholderText(t("g_image_ph"))
+        self.g_image_btn.setText(t("g_image_btn"))
+        self._refresh_g_status()
+        self.text_type_apply_btn.setText(t("tt_apply"))
+        self.text_type_combo.setItemText(0, t("tt_none"))
+        for _i, _tid in enumerate(TT.ids()):
+            self.text_type_combo.setItemText(_i + 1, self._tt_label(_tid))
+        self._on_text_type_changed()
+        for _i, _sid in enumerate(BAL.SHAPE_ORDER):
+            self.balloon_combo.setItemText(_i, t("balloon_" + _sid))
+        self.balloon_tail_chk.setText(t("balloon_tail"))
+        self.balloon_tail_chk.setToolTip(t("balloon_tail_tip"))
+        self.balloon_btn.setText(t("balloon_insert"))
+        self.balloon_btn.setToolTip(t("balloon_insert_tip"))
+        self._on_balloon_changed()
         self.lbl_style.setText(t("style"))
         self.bold_chk.setText(t("bold"))
         self.italic_chk.setText(t("italic"))
@@ -4334,9 +5224,15 @@ class TyperDocker(DockWidget):
         self.bold_sel_btn.setText(t("bold_sel"))
         self.bold_sel_btn.setToolTip(t("bold_sel_tip"))
         self.tidy_chk.setText(t("tidy"))
+        self.comic_chk.setText(t("comic"))
+        self.comic_chk.setToolTip(t("comic_tip"))
+        self.crossbar_chk.setText(t("crossbar"))
+        self.crossbar_chk.setToolTip(t("crossbar_tip"))
         self.tidy_chk.setToolTip(t("tidy_tip"))
         self.round_chk.setText(t("round"))
         self.round_chk.setToolTip(t("round_tip"))
+        self.vertical_chk.setText(t("vertical"))
+        self.vertical_chk.setToolTip(t("vertical_tip"))
         self.shadow_chk.setText(t("shadow"))
         self.shadow_chk.setToolTip(t("shadow_tip"))
         self.shadow_color_btn.setText(t("shadow_color_btn"))
@@ -4429,6 +5325,8 @@ class TyperDocker(DockWidget):
         self.bp_model_combo.setItemText(3, t("bp_model_kitsumed"))
         self.bp_model_combo.setItemText(4, t("bp_model_hybrid"))
         self.bp_model_combo.setToolTip(t("bp_model_tip"))
+        self.bp_models_btn.setText(t("bp_models"))
+        self.bp_models_btn.setToolTip(t("bp_models_tip"))
         self.bp_conf_lbl.setText(t("bp_conf"))
         self.bp_conf_spin.setToolTip(t("bp_conf_tip"))
         self.bp_sfxconf_lbl.setText(t("bp_sfxconf"))
@@ -4602,6 +5500,10 @@ class TyperDocker(DockWidget):
                      "active_field": "panel_active",
                      "font_picker": "panel_font",
                      "insert": "panel_insert",
+                     "text_type": "panel_text_type",
+                     "comments": "panel_comments",
+                     "google": "panel_google",
+                     "tt_fonts": "panel_tt_fonts",
                      "style_basic": "panel_style_basic",
                      "style_size": "panel_style_size",
                      "style_outline": "panel_style_outline",
@@ -4612,6 +5514,7 @@ class TyperDocker(DockWidget):
                      "setup_general": "panel_setup_general",
                      "layout_sizes": "panel_layout_sizes",
                      "shapr_panel": "panel_shapr",
+                     "balloon": "panel_balloon",
                      "sfx_panel": "panel_sfx"}
 
     def _new_panel(self, pid, tab_id):
@@ -4712,6 +5615,36 @@ class TyperDocker(DockWidget):
             if isinstance(w, PanelBox):
                 out.append((w._pid, i))
         return out
+
+    def _normalize_setup_order_once(self):
+        """One-time: make the General section sit above Layout & sizes in the
+        Setup tab — that is the default (code) order, but a saved layout from
+        earlier dragging may have them swapped. Fix that saved order once,
+        leaving every other panel where the user put it, then never touch it
+        again (the user can still reorder freely)."""
+        app = Krita.instance()
+        if app.readSetting("typer_kr", "setupOrderFix", "") == "done":
+            return
+        try:
+            raw = app.readSetting("typer_kr", "panelOrder", "")
+            order = json.loads(raw) if raw else {}
+        except Exception:
+            order = {}
+        ids = order.get("setup")
+        if (isinstance(ids, list) and "setup_general" in ids
+                and "layout_sizes" in ids
+                and ids.index("setup_general") > ids.index("layout_sizes")):
+            ids.remove("setup_general")
+            ids.insert(ids.index("layout_sizes"), "setup_general")
+            order["setup"] = ids
+            try:
+                app.writeSetting("typer_kr", "panelOrder", json.dumps(order))
+            except Exception:
+                pass
+        try:
+            app.writeSetting("typer_kr", "setupOrderFix", "done")
+        except Exception:
+            pass
 
     def _apply_panel_order(self):
         """Restore the saved within-tab panel order. Panels are reordered
@@ -5307,6 +6240,7 @@ class TyperDocker(DockWidget):
             "spacing": self.spacing_spin.value(),
             "auto": self.auto_chk.isChecked(),
             "round": self.round_chk.isChecked(),
+            "vertical": self.vertical_chk.isChecked(),
             "outline": self.outline_chk.isChecked(),
             "outline_w": self.outline_spin.value(),
             "bold": self.bold_chk.isChecked(),
@@ -5316,6 +6250,8 @@ class TyperDocker(DockWidget):
             "valign": self.valign_combo.currentData() or "middle",
             "case": self.case_combo.currentData() or "none",
             "tidy": self.tidy_chk.isChecked(),
+            "comic": self.comic_chk.isChecked(),
+            "crossbar_i": self.crossbar_chk.isChecked(),
             "color": self._color.name(),
             "outline_color": self._outline_color.name(),
             "shadow": self.shadow_chk.isChecked(),
@@ -5347,6 +6283,8 @@ class TyperDocker(DockWidget):
                 self.auto_chk.setChecked(bool(d["auto"]))
             if "round" in d:
                 self.round_chk.setChecked(bool(d["round"]))
+            if "vertical" in d:
+                self.vertical_chk.setChecked(bool(d["vertical"]))
             if "outline" in d:
                 self.outline_chk.setChecked(bool(d["outline"]))
             if "outline_w" in d:
@@ -5364,6 +6302,11 @@ class TyperDocker(DockWidget):
                 self.case_combo.setCurrentIndex(1 if d["caps"] else 0)
             if "tidy" in d:
                 self.tidy_chk.setChecked(bool(d["tidy"]))
+            if "comic" in d:
+                self.comic_chk.setChecked(bool(d["comic"]))
+            if "crossbar_i" in d:
+                self.crossbar_chk.setChecked(bool(d["crossbar_i"]))
+            self.crossbar_chk.setEnabled(self.comic_chk.isChecked())
             if d.get("align") in ("left", "center", "right"):
                 idx = {"left": 0, "center": 1, "right": 2}[d["align"]]
                 self.align_combo.setCurrentIndex(idx)
@@ -5467,6 +6410,138 @@ class TyperDocker(DockWidget):
 
     def _cur_chars(self):
         return self._groups.get(self._group, {})
+
+    # ---- Text types ----
+    def _tt_overrides(self):
+        """The user's font per text type, if they picked one."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "ttFonts", "")
+            d = json.loads(raw) if raw else {}
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_tt_overrides(self, d):
+        try:
+            Krita.instance().writeSetting("typer_kr", "ttFonts",
+                                          json.dumps(d or {}))
+        except Exception:
+            pass
+
+    # --- user-defined text types (persist in kritarc, survive updates) -----
+    def _load_custom_types(self):
+        """The user's own text types: [{id, label, font}, ...]. Empty on error."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "ttCustom", "")
+            d = json.loads(raw) if raw else []
+            return d if isinstance(d, list) else []
+        except Exception:
+            return []
+
+    def _save_custom_types(self, types):
+        try:
+            Krita.instance().writeSetting("typer_kr", "ttCustom",
+                                          json.dumps(types or []))
+        except Exception:
+            pass
+
+    def _tt_label(self, tid):
+        """Display name for a text type: the stored label for a custom type,
+        else the built-in's translated name."""
+        return TT.label(tid) or self._tr("tt_" + tid)
+
+    def _rebuild_text_type_combo(self):
+        """Repopulate the Style-tab text-type combo from the current catalogue
+        (built-ins + custom), keeping the current selection if it still exists."""
+        combo = self.text_type_combo
+        prev = combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(self._tr("tt_none"), "")
+        for tid in TT.ids():
+            combo.addItem(self._tt_label(tid), tid)
+        idx = combo.findData(prev)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+        combo.blockSignals(False)
+
+    def _add_custom_type(self, label, font, style=None):
+        """Create a user text type, persist it, and make it appear everywhere at
+        once. Returns its new id (or None if the name was empty).
+
+        `style` is optional: pass a captured style dict (from _collect_preset,
+        minus its font) to snapshot the current look; omit it for the neutral
+        default look."""
+        label = (label or "").strip()
+        if not label:
+            return None
+        types = self._load_custom_types()
+        entry = {"label": label, "font": (font or "").strip()}
+        if isinstance(style, dict) and style:
+            entry["style"] = style
+        types.append(entry)
+        # register_custom assigns the final (unique) ids; store those back so the
+        # id stays stable across restarts and the font override can key on it.
+        registered = TT.register_custom(types)
+        self._save_custom_types(registered)
+        self._rebuild_text_type_combo()
+        return registered[-1]["id"] if registered else None
+
+    def _remove_custom_type(self, tid):
+        """Delete a user text type (and any font override keyed on it)."""
+        types = [e for e in self._load_custom_types() if e.get("id") != tid]
+        registered = TT.register_custom(types)
+        self._save_custom_types(registered)
+        ov = self._tt_overrides()
+        if tid in ov:
+            ov.pop(tid, None)
+            self._save_tt_overrides(ov)
+        self._rebuild_text_type_combo()
+
+    def on_tt_fonts(self):
+        dlg = TextTypeFontsDialog(self.widget(), self._tr,
+                                  self._installed_families(),
+                                  self._tt_overrides(), self)
+        dlg.exec_()
+        self._save_tt_overrides(dlg.overrides())
+        self._on_text_type_changed()          # the stand-in hint may be stale now
+
+    def _installed_families(self):
+        try:
+            return list(QFontDatabase().families())
+        except Exception:
+            return []
+
+    def _on_text_type_changed(self):
+        """Show which face the chosen kind of text really wants."""
+        tid = self.text_type_combo.currentData() or ""
+        if not tid:
+            self.text_type_hint.setText("")
+            return
+        want = TT.missing_font(tid, self._installed_families(),
+                               self._tt_overrides())
+        self.text_type_hint.setText(
+            self._tr("tt_missing_font").format(font=want) if want else "")
+
+    def on_text_type_apply(self):
+        """Apply a whole kind of text (font + style) in one step."""
+        tid = self.text_type_combo.currentData() or ""
+        if not tid:
+            self._set_status(self._tr("st_tt_pick"), error=True)
+            return
+        style = TT.style_for(tid, self._installed_families(),
+                             self._tt_overrides())
+        if not style:
+            return
+        self._apply_preset(style)
+        self._set_status(self._tr("st_tt_applied").format(
+            name=self._tt_label(tid)))
+
+    def _on_g_client_edited(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "gClientId", self.g_client_edit.text().strip())
+        except Exception:
+            pass
 
     def _cur_presets(self):
         return self._cur_chars().get(self._char, {})
@@ -5737,6 +6812,7 @@ class TyperDocker(DockWidget):
         s["index"] = self._index
         s["done"] = self._done
         s["path"] = self._script_path
+        s["comments"] = self._script_comments
 
     def _restore_by_sid(self, sid):
         """Load the session with id `sid` into the live view (no re-parsing)."""
@@ -5748,6 +6824,7 @@ class TyperDocker(DockWidget):
         self._script_path = s["path"]
         self._pairs = s["pairs"]
         self._pair_pages = s["pair_pages"]
+        self._script_comments = s.get("comments") or []
         self._pages = s["pages"]
         self._index = s["index"]
         self._done = s["done"]
@@ -5767,6 +6844,7 @@ class TyperDocker(DockWidget):
         self._sessions.append({
             "id": sid, "name": name, "path": path, "text": text,
             "pairs": [], "pair_pages": [], "pages": [], "index": 0, "done": set(),
+            "comments": [],
         })
         self._active_sid = sid
         self._script_path = path
@@ -5865,6 +6943,9 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_already_open").format(
                 name=os.path.basename(path)))
             return
+        if GD.is_gdoc(path):
+            self._load_gdoc(path)
+            return
         try:
             text = read_script(path)
         except FileNotFoundError:
@@ -5884,9 +6965,265 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)
             return
 
+        self._script_comments = CM.from_docx(path)
         self._add_session(LP.default_tab_label(path), path, text, do_analyze=True)
-        self._set_status(self._tr("st_loaded").format(
-            name=os.path.basename(path), n=len(self._pairs)))
+        if self._script_comments:
+            self._set_status(self._tr("st_loaded_c").format(
+                name=os.path.basename(path), n=len(self._pairs),
+                c=len(self._script_comments)))
+        else:
+            self._set_status(self._tr("st_loaded").format(
+                name=os.path.basename(path), n=len(self._pairs)))
+
+    # ---- Google Docs ----
+    def _g_client_id(self):
+        try:
+            return Krita.instance().readSetting("typer_kr", "gClientId", "").strip()
+        except Exception:
+            return ""
+
+    def _g_token(self):
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "gToken", "")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    def _g_store_token(self, tok):
+        try:
+            Krita.instance().writeSetting("typer_kr", "gToken",
+                                          json.dumps(tok or {}))
+        except Exception:
+            pass
+
+    def on_g_sign_in(self):
+        """Run the browser sign-in. The client ID stays the user's own."""
+        cid = self._g_client_id()
+        if not cid:
+            self._set_status(self._tr("st_g_no_client"), error=True)
+            return
+        self._set_status(self._tr("st_g_wait"))
+        try:
+            tok = GA.sign_in(cid)
+        except GA.AuthError as e:
+            self._set_status(str(e), error=True)
+            return
+        self._g_store_token(tok)
+        self._refresh_g_status()
+        self._set_status(self._tr("st_g_ok"))
+
+    def on_g_sign_out(self):
+        self._g_store_token({})
+        self._refresh_g_status()
+        self._set_status(self._tr("st_g_out"))
+
+    def _refresh_g_status(self):
+        tok = self._g_token()
+        self.g_status.setText(self._tr("g_state_in") if tok.get("refresh_token")
+                              else self._tr("g_state_out"))
+
+    def _g_ready_token(self):
+        """A usable access token, or None (with the reason already shown)."""
+        cid = self._g_client_id()
+        if not cid:
+            self._set_status(self._tr("st_g_no_client"), error=True)
+            return None
+        tok = self._g_token()
+        if not tok.get("refresh_token"):
+            self._set_status(self._tr("st_g_not_signed_in"), error=True)
+            return None
+        try:
+            tok = GA.ensure(tok, cid)
+        except GA.AuthError as e:
+            self._set_status(str(e), error=True)
+            return None
+        self._g_store_token(tok)
+        return tok
+
+    def _download_dirs(self):
+        """Where a browser is likely to drop the export.
+
+        ~/Downloads is only the default: Windows lets the folder be moved
+        (onto another drive, into a cloud folder), and then the registry is
+        the only place that knows where it went.
+        """
+        home = os.path.expanduser("~")
+        dirs = [os.path.join(home, "Downloads"), os.path.join(home, "Download")]
+        try:
+            import winreg
+            key = (r"Software\Microsoft\Windows\CurrentVersion\Explorer"
+                   r"\Shell Folders")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as k:
+                # FOLDERID_Downloads
+                val, _ = winreg.QueryValueEx(
+                    k, "{374DE290-123F-4565-9164-39C4925E467B}")
+                if val:
+                    dirs.insert(0, os.path.expandvars(val))
+        except Exception:
+            pass                       # not Windows, or the value is absent
+        seen = []
+        for d in dirs:
+            if os.path.isdir(d) and d not in seen:
+                seen.append(d)
+        return seen
+
+    def _docx_snapshot(self):
+        seen = {}
+        for d in self._download_dirs():
+            try:
+                for n in os.listdir(d):
+                    if n.lower().endswith((".docx", ".odt")):
+                        p = os.path.join(d, n)
+                        try:
+                            seen[p] = os.path.getmtime(p)
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+        return seen
+
+    def _offer_export(self, doc_id):
+        """No sign-in needed: let the browser export it, then pick it up.
+
+        The browser is already signed in to Google, so this needs no
+        credentials, no consent screen and no API quota — and the .docx export
+        carries the comments along, which is the whole point.
+        """
+        box = QMessageBox(self.widget())
+        box.setWindowTitle(self._tr("g_export_title"))
+        box.setText(self._tr("g_export_msg"))
+        openb = box.addButton(self._tr("g_export_open"), QMessageBox.AcceptRole)
+        box.addButton(self._tr("g_export_cancel"), QMessageBox.RejectRole)
+        box.exec_()
+        if box.clickedButton() is not openb:
+            return
+        import webbrowser
+        self._exp_before = self._docx_snapshot()
+        self._exp_deadline = time.time() + 120
+        webbrowser.open(GD.export_url(doc_id))
+        self._set_status(self._tr("st_g_waiting_dl"))
+        self._exp_timer = QTimer(self.widget())
+        self._exp_timer.setInterval(700)
+        self._exp_timer.timeout.connect(self._check_export)
+        self._exp_timer.start()
+
+    def _stop_export_watch(self):
+        t = getattr(self, "_exp_timer", None)
+        if t is not None:
+            t.stop()
+            self._exp_timer = None
+
+    def _check_export(self):
+        """Poll for a freshly downloaded export; give up politely."""
+        now = self._docx_snapshot()
+        before = getattr(self, "_exp_before", {})
+        fresh = [p for p, m in now.items()
+                 if p not in before or m > before.get(p, 0)]
+        if fresh:
+            newest = max(fresh, key=lambda p: now[p])
+            # a browser writes the file in chunks; wait until it stops growing
+            try:
+                size = os.path.getsize(newest)
+            except OSError:
+                return
+            if getattr(self, "_exp_last_size", None) != size:
+                self._exp_last_size = size
+                return                          # still downloading
+            self._stop_export_watch()
+            self._exp_last_size = None
+            self._load_exported(newest)
+            return
+        if time.time() > getattr(self, "_exp_deadline", 0):
+            self._stop_export_watch()
+            self._set_status(self._tr("st_g_dl_timeout"), error=True)
+
+    def _load_exported(self, path):
+        """Load a downloaded export exactly like any other script."""
+        try:
+            text = read_script(path)
+        except Exception as exc:
+            self._set_status(self._tr("st_read_fail").format(exc=exc),
+                             error=True)
+            return
+        cs = CM.from_docx(path)
+        self._script_comments = cs
+        self._add_session(LP.default_tab_label(path), path, text,
+                          do_analyze=True)
+        self._script_comments = cs
+        self._set_status(self._tr("st_g_loaded").format(
+            name=os.path.basename(path), n=len(self._pairs), c=len(cs)))
+
+    def _load_gdoc(self, path):
+        """Fetch a Google Doc script (and its comments) into a new tab."""
+        try:
+            doc_id = GD.read_stub(path)
+        except ValueError as e:
+            self._set_status(str(e), error=True)
+            return
+        tok = self._g_ready_token()
+        if tok is None:
+            self._offer_export(doc_id)
+            return
+        self._set_status(self._tr("st_g_loading"))
+        try:
+            lines, cs = GD.load(doc_id, tok)
+        except GA.AuthError as e:
+            self._set_status(str(e), error=True)
+            return
+        except Exception as e:
+            self._set_status(self._tr("st_read_fail").format(exc=e), error=True)
+            return
+        self._script_comments = cs
+        self._add_session(LP.default_tab_label(path), path, "\n".join(lines),
+                          do_analyze=True)
+        self._script_comments = cs
+        self._set_status(self._tr("st_g_loaded").format(
+            name=os.path.basename(path), n=len(self._pairs), c=len(cs)))
+
+    def on_load_image_comments(self):
+        """#21: load a Drive image's comments as a new script.
+
+        The comment threads on a raw image are, for this group, a way the
+        translation arrives — so turn them into a session where each comment is
+        a line to place. No image format carries its comments in a download, so
+        this is OAuth-only by nature; the export fallback that the Doc path has
+        does not exist here.
+        """
+        raw = self.g_image_edit.text().strip()
+        file_id = LP.drive_file_id(raw)
+        if not file_id:
+            self._set_status(self._tr("st_img_no_id"), error=True)
+            return
+        tok = self._g_ready_token()
+        if tok is None:
+            # _g_ready_token already said why (no client id / not signed in).
+            return
+        self._set_status(self._tr("st_g_loading"))
+        try:
+            cs = GD.fetch_comments(file_id, tok)
+        except GA.AuthError as e:
+            self._set_status(str(e), error=True)
+            return
+        except Exception as e:                      # noqa: BLE001
+            self._set_status(self._tr("st_read_fail").format(exc=e), error=True)
+            return
+        if not cs:
+            self._set_status(self._tr("st_img_none"), error=True)
+            return
+        # createdTime order ≈ reading order on a page; the typesetter re-steps
+        # if not.
+        cs.sort(key=lambda c: (c.date, c.id))
+        text = LP.image_comments_to_script(cs)
+        label = self._tr("img_tab_label")
+        self._add_session(label, None, text, do_analyze=True)
+        # Note: the comments are the SCRIPT now (each text became a line), not
+        # notes-on-lines — so they are deliberately NOT set as _script_comments.
+        # analyze() anchors notes by quoted text, which an image comment lacks,
+        # so keeping them would just be a dead assignment. Showing author/reply
+        # threads beside each derived line would be a separate follow-up (it
+        # needs the comment→unit mapping, which the empty-skip breaks 1:1).
+        n_placed = len([c for c in cs if (c.text or "").strip()])
+        self._set_status(self._tr("st_img_loaded").format(c=n_placed))
 
     def analyze(self):
         lines = split_lines(self.editor.toPlainText(), self.skip_empty.isChecked())
@@ -5898,6 +7235,10 @@ class TyperDocker(DockWidget):
         # auto-switch the manga before the first line is shown (auto-character
         # then runs against the right character set)
         self._maybe_auto_manga(self.editor.toPlainText(), self._script_path)
+        if self._script_comments:
+            CM.anchor_to_units(self._script_comments,
+                               [LP.unit_text(p) + " " + (p[0] or "")
+                                for p in self._pairs])
         self._populate_table()
         self._refresh_pages_combo()
         self._refresh_view()
@@ -6121,7 +7462,8 @@ class TyperDocker(DockWidget):
         except Exception:
             pass
         for chk in (self.bold_chk, self.italic_chk, self.underline_chk,
-                    self.tidy_chk, self.outline_chk,
+                    self.tidy_chk, self.comic_chk, self.crossbar_chk,
+                    self.outline_chk, self.vertical_chk,
                     self.shadow_chk):
             chk.toggled.connect(lambda *a: self._update_text_preview())
         for combo in (self.align_combo, self.valign_combo, self.case_combo):
@@ -6212,6 +7554,9 @@ class TyperDocker(DockWidget):
             hyph_lang=self._hyph_lang_for(text),
             replace_existing=self.replace_chk.isChecked(),
             box=box,
+            comic=self.comic_chk.isChecked(),
+            crossbar_i=self.crossbar_chk.isChecked(),
+            vertical=self.vertical_chk.isChecked(),
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
@@ -6228,6 +7573,58 @@ class TyperDocker(DockWidget):
                 self._bp_placed.add(self._bp_current)
                 nxt = self._bp_next_bubble(self._bp_current + 1)
                 self._bp_set_current(nxt if nxt is not None else -1)
+
+    def _on_balloon_changed(self, *_args):
+        """Name the text type the selected shape carries, so the shape list
+        reads as what it means (cloud = thought) and not just how it looks."""
+        sid = self.balloon_combo.currentData() or ""
+        tid = BAL.SHAPE_FOR_TYPE.get(sid)
+        self.balloon_hint.setText(
+            self._tr("balloon_hint").format(kind=self._tr("tt_" + tid))
+            if tid else "")
+
+    def on_insert_balloon(self):
+        """Draw the balloon itself as its own vector layer.
+
+        Uses the same box as Insert does — the armed BubblR bubble if there is
+        one, otherwise the selection — so a detected bubble can be redrawn in
+        place. The balloon is a separate layer from the text on purpose: it has
+        to sit under it, and the typesetter still has to move the tail to the
+        speaker's mouth.
+        """
+        app = Krita.instance()
+        doc = app.activeDocument()
+        if doc is None:
+            self._set_status(self._tr("st_no_doc"), error=True)
+            return
+        if self._bp_link_active():
+            b = self._bp_boxes[self._bp_current]
+            box = (b["x"], b["y"], b["w"], b["h"])
+        else:
+            sel = doc.selection()
+            if sel is None:
+                self._set_status(self._tr("st_balloon_no_box"), error=True)
+                return
+            box = (sel.x(), sel.y(), sel.width(), sel.height())
+        shape = self.balloon_combo.currentData() or "oval"
+        svg = BAL.balloon_svg(shape, box[0], box[1], box[2], box[3],
+                              doc.width(), doc.height(),
+                              tail=self.balloon_tail_chk.isChecked())
+        if svg is None:
+            self._set_status(self._tr("st_balloon_no_box"), error=True)
+            return
+        try:
+            vlayer = doc.createVectorLayer(
+                "TypeR — balloon ({})".format(shape))
+            doc.rootNode().addChildNode(vlayer, None)
+            vlayer.addShapesFromSvg(svg)
+            doc.refreshProjection()
+        except Exception as exc:   # pragma: no cover - depends on the Krita version
+            self._set_status(
+                self._tr("st_balloon_fail").format(exc=exc), error=True)
+            return
+        self._set_status(self._tr("st_balloon_inserted").format(
+            shape=self._tr("balloon_" + shape)))
 
     def _insert_msg(self, key, fmt):
         """Status message for an insert result; notes when old layer(s) of the
@@ -6319,7 +7716,35 @@ class TyperDocker(DockWidget):
         # refresh the live preview (textChanged is blocked here)
         self._update_text_preview()
 
+    def _refresh_comments(self):
+        """Show the notes for the line/page in front of you, or get out of the way."""
+        panel = getattr(self, "_comments_panel", None)
+        if panel is None:
+            return
+        cs = CM.for_unit(getattr(self, "_script_comments", []) or [],
+                         self._index, self._pair_pages)
+        if not cs:
+            panel.setVisible(False)          # nothing to say -> take no room
+            return
+        parts = []
+        for c in cs:
+            where = (self._tr("cm_page") if c.scope == CM.SCOPE_PAGE
+                     else self._tr("cm_line"))
+            head = " \u00b7 ".join(x for x in (c.author, c.date, where) if x)
+            body = _html.escape(c.text).replace("\n", "<br>")
+            body = _LINKIFY.sub(r'<a href="\g<0>">\g<0></a>', body)
+            for r in c.replies:
+                body += ("<br><span style='color:#888'>\u21b3 %s</span>"
+                         % _html.escape(r))
+            parts.append(
+                "<div style='margin-bottom:9px'>"
+                "<span style='color:#888;font-size:11px'>%s</span><br>%s</div>"
+                % (_html.escape(head), body))
+        self.comments_view.setHtml("".join(parts))
+        panel.setVisible(True)
+
     def _refresh_view(self):
+        self._refresh_comments()
         self._show_current()
         # sync the table selection without feedback
         if self._pairs and 0 <= self._index < self.table.rowCount():
@@ -6421,6 +7846,10 @@ class TyperDocker(DockWidget):
                 "typer_kr", "bpModel",
                 self.bp_model_combo.currentData() or "auto"))
         mrow.addWidget(self.bp_model_combo)
+        # "where are my models?" — lists what is installed and opens the folder
+        self.bp_models_btn = QPushButton()
+        self.bp_models_btn.clicked.connect(self.on_bp_show_models)
+        mrow.addWidget(self.bp_models_btn)
         self.bp_conf_lbl = QLabel()
         mrow.addWidget(self.bp_conf_lbl)
         self.bp_conf_spin = NoScrollSpinBox()
@@ -6656,6 +8085,73 @@ class TyperDocker(DockWidget):
         return None
 
     # -- detection -----------------------------------------------------------
+
+    def _on_style_changed(self, *_args):
+        """A style control changed — re-fit TextShapR and its live preview.
+
+        Debounced: dragging a spin box fires per tick, and each re-fit runs the
+        full candidate search (plus a canvas insert when live is on), so doing
+        it on every tick would stutter."""
+        if getattr(self, "shapr_widget", None) is None:
+            return
+        t = getattr(self, "_style_timer", None)
+        if t is None:
+            t = QTimer(self.widget())
+            t.setSingleShot(True)
+            t.setInterval(250)
+            t.timeout.connect(self._apply_style_changed)
+            self._style_timer = t
+        t.start()
+
+    def _apply_style_changed(self):
+        w = getattr(self, "shapr_widget", None)
+        if w is None:
+            return
+        try:
+            w.restyle()
+        except Exception:      # noqa: BLE001 — a re-fit must never kill the UI
+            pass
+
+    def on_bp_show_models(self):
+        """Answer "which models do I have and where are they?": list the
+        weights the detector can load, mark which ones exist, and open the
+        folder. Also points at where the trainer leaves a freshly trained
+        model, since that is the file you copy in as the fine-tuned one."""
+        app = Krita.instance()
+        ai_dir = AB.find_ai_dir(app.readSetting("typer_kr", "aidir", ""))
+        if not ai_dir:
+            QMessageBox.information(self.widget(),
+                                    self._tr("bp_models_title"),
+                                    self._tr("bp_models_none"))
+            return
+        models_dir = os.path.join(ai_dir, "models")
+        rows = []
+        for choice, fname in (("baseline", "comic-text-bubble-detector.onnx"),
+                              ("finetuned", "bubblr-finetuned.onnx")):
+            path = os.path.join(models_dir, fname)
+            if os.path.exists(path):
+                state = "%.0f MB" % (os.path.getsize(path) / 1048576.0)
+                if os.path.exists(path + ".promoted"):
+                    state += " + promoted"
+            else:
+                state = "—"
+            rows.append("  %-10s %-34s %s" % (choice, fname, state))
+        msg = (self._tr("bp_models_dir") + "\n" + models_dir + "\n\n"
+               + "\n".join(rows) + "\n\n" + self._tr("bp_models_trainer"))
+        box = QMessageBox(self.widget())
+        box.setWindowTitle(self._tr("bp_models_title"))
+        box.setText(msg)
+        box.setIcon(QMessageBox.Information)
+        open_btn = box.addButton(self._tr("bp_models_open"),
+                                 QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Close)
+        box.exec_()
+        if box.clickedButton() is open_btn:
+            try:
+                os.startfile(models_dir if os.path.isdir(models_dir)
+                             else ai_dir)
+            except (OSError, AttributeError):      # non-Windows / missing dir
+                pass
 
     def _bp_ai_dir(self):
         app = Krita.instance()
