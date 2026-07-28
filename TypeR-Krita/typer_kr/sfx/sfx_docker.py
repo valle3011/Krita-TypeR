@@ -34,6 +34,7 @@ from .config import (
     SFX_MODES, SFX_MODE_NAMES,
 )
 from .svg_builder import build_sfx_svg, _xml_escape
+from .. import imgfx as IMG
 from .rule_search import normalize_sfx, keyword_matches, rule_matches_query
 from . import modes as MODES
 from .presets_store import (
@@ -380,6 +381,31 @@ class SFXPreview(QWidget):
         size_ref = max(1, int(o.get("size_ref", fs)))
         scale = fs / float(size_ref)
 
+        # weiche (geblurte) Outline zuerst (unterste Ebene). Auf einem eigenen
+        # Bild gerendert + geblurt; p (schon rotiert) zeichnet es passend.
+        if o.get("soft_on"):
+            soft = QImage(self.size(), QImage.Format_ARGB32)
+            soft.fill(0)
+            spn = QPainter(soft)
+            spn.setRenderHint(QPainter.Antialiasing, True)
+            tex = o.get("soft_tex")
+            if o.get("soft_pattern") and tex is not None:
+                tw, th = o.get("soft_tile", (0, 0))
+                sbrush = QBrush(QPixmap.fromImage(tex).scaled(
+                    max(1, int(tw * scale)), max(1, int(th * scale)),
+                    Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+            else:
+                sbrush = QBrush(o["soft_color"])
+            sw = o.get("soft_width", 0.0) * scale
+            if sw > 0:
+                spen = QPen(sbrush, sw * 2.0)
+                spen.setJoinStyle(Qt.RoundJoin)
+                spen.setCapStyle(Qt.RoundCap)
+                spn.strokePath(path, spen)
+            spn.fillPath(path, sbrush)
+            spn.end()
+            p.drawImage(0, 0, IMG.blur_argb(soft, o.get("soft_blur", 0.0) * scale))
+
         if o.get("shadow") and (o.get("shadow_dx") or o.get("shadow_dy")):
             sp = QPainterPath(path)
             sp.translate(o["shadow_dx"] * scale, o["shadow_dy"] * scale)
@@ -455,6 +481,7 @@ class MangaSFXDocker(DockWidget):
         "suggest_show": True,
         "font_show": True,
         "style_show": True,
+        "outline_show": True,
         "shadow_show": True,
         "presets_show": True,
         "rules_show": True,
@@ -462,6 +489,7 @@ class MangaSFXDocker(DockWidget):
         # eingeklappt (Body verborgen) pro Abschnitt
         "collapse_preview": False, "collapse_suggest": False,
         "collapse_font": False, "collapse_style": False,
+        "collapse_outline": False,
         "collapse_shadow": False, "collapse_presets": False,
         "collapse_rules": False,
     }
@@ -472,6 +500,7 @@ class MangaSFXDocker(DockWidget):
         ("suggest", "sec_suggest", "v_suggest_chk"),
         ("font", "sec_font", "v_font_chk"),
         ("style", "sec_style", "v_style_chk"),
+        ("outline", "sec_outline", "v_outline_chk"),
         ("shadow", "sec_shadow", "v_shadow_chk"),
         ("presets", "sec_presets", "v_presets_chk"),
         ("rules", "sec_rules", "v_rules_chk"),
@@ -485,6 +514,7 @@ class MangaSFXDocker(DockWidget):
         self._pattern_path = ""                   # Textur-/Muster-Bild (Datei) für die Füllung
         self._pattern_krita_name = ""             # ODER ein in Krita gespeichertes Muster
         self._pattern_img = None                  # geladenes QImage (Cache)
+        self._soft_color = QColor(0, 0, 0)        # weiche (geblurte) Outline: Farbe
         self._pending_state = load_settings()     # zuletzt genutzter Stil
         self._view = self._load_view_merged()     # Layout-/Anzeige-Einstellungen
         self._families_cache = None               # System-Fonts nur einmal laden
@@ -622,6 +652,8 @@ class MangaSFXDocker(DockWidget):
         self.v_font_chk.setChecked(bool(self._view["font_show"]))
         self.v_style_chk = QCheckBox(self.t("view_style"))
         self.v_style_chk.setChecked(bool(self._view["style_show"]))
+        self.v_outline_chk = QCheckBox(self.t("view_outline"))
+        self.v_outline_chk.setChecked(bool(self._view["outline_show"]))
         self.v_shadow_chk = QCheckBox(self.t("view_shadow"))
         self.v_shadow_chk.setChecked(bool(self._view["shadow_show"]))
         self.v_presets_chk = QCheckBox(self.t("view_presets"))
@@ -634,9 +666,10 @@ class MangaSFXDocker(DockWidget):
         vgrid.addWidget(self.v_suggest_chk, 1, 0)
         vgrid.addWidget(self.v_font_chk, 1, 1)
         vgrid.addWidget(self.v_style_chk, 2, 0)
-        vgrid.addWidget(self.v_shadow_chk, 2, 1)
-        vgrid.addWidget(self.v_presets_chk, 3, 0)
-        vgrid.addWidget(self.v_rules_chk, 3, 1)
+        vgrid.addWidget(self.v_outline_chk, 2, 1)
+        vgrid.addWidget(self.v_shadow_chk, 3, 0)
+        vgrid.addWidget(self.v_presets_chk, 3, 1)
+        vgrid.addWidget(self.v_rules_chk, 4, 0)
         vgrid.setColumnStretch(0, 1)
         vgrid.setColumnStretch(1, 1)
         vlay.addLayout(vgrid)
@@ -660,8 +693,8 @@ class MangaSFXDocker(DockWidget):
 
         # nach dem Setzen der Startwerte verbinden (sonst feuert es beim Aufbau)
         for _w in (self.v_preview_chk, self.v_suggest_chk, self.v_font_chk,
-                   self.v_style_chk, self.v_shadow_chk, self.v_presets_chk,
-                   self.v_rules_chk, self.v_clear_after_chk):
+                   self.v_style_chk, self.v_outline_chk, self.v_shadow_chk,
+                   self.v_presets_chk, self.v_rules_chk, self.v_clear_after_chk):
             _w.toggled.connect(self._on_view_changed)
         self.v_preview_h.valueChanged.connect(self._on_view_changed)
 
@@ -826,32 +859,72 @@ class MangaSFXDocker(DockWidget):
         self.pattern_scale_spin.valueChanged.connect(
             lambda _v: self._update_preview())
         self._update_pattern_enabled()
-        sb.addWidget(self._heading(self.t("outline_color")))
+        # Rotation (Grad): dreht die ganze SFX um ihren Mittelpunkt – bleibt im
+        # Stil-Abschnitt.
+        self.rot_slider, self.rot_spin = self._slider_spin_row(
+            sb, self.t("rotation"), -180, 180, 0)
+        self.rot_spin.valueChanged.connect(lambda _v: self._update_preview())
+        layout.addWidget(self.sec_style)
+
+        # --- Outline (eigenes Menü) -----------------------------------
+        # Alle Rand-Regler (innere + zweite/äußere + weiche Outline) leben in
+        # einem eigenen, aufklappbaren Abschnitt, damit der Stil-Abschnitt nicht
+        # überläuft. Verhalten der einzelnen Regler ist unverändert.
+        self.sec_outline = CollapsibleSection(self.t("section_outline"),
+                                              "outline",
+                                              self._on_section_collapsed)
+        ob = self.sec_outline.body_layout()
+        ob.addWidget(self._heading(self.t("outline_color")))
         self.outline_btn = QPushButton()
         self.outline_btn.setFixedHeight(26)
         self._set_btn_color(self.outline_btn, QColor(DEFAULTS["outline"]))
         self.outline_btn.clicked.connect(lambda: self._pick_color(self.outline_btn))
-        sb.addWidget(self.outline_btn)
+        ob.addWidget(self.outline_btn)
         self.out_slider, self.out_spin = self._slider_spin_row(
-            sb, self.t("outline_width"), 0, 60, DEFAULTS["outline_px"])
+            ob, self.t("outline_width"), 0, 60, DEFAULTS["outline_px"])
         self.out_spin.valueChanged.connect(lambda _v: self._update_preview())
         # zweite (äußere) Outline für den doppelten Rand (z. B. außen weiß,
         # innen schwarz, dann Text). Breite 0 = aus.
-        sb.addWidget(self._heading(self.t("outline2_color")))
+        ob.addWidget(self._heading(self.t("outline2_color")))
         self.outline2_btn = QPushButton()
         self.outline2_btn.setFixedHeight(26)
         self._set_btn_color(self.outline2_btn, QColor(DEFAULTS["outline2"]))
         self.outline2_btn.clicked.connect(
             lambda: self._pick_color(self.outline2_btn))
-        sb.addWidget(self.outline2_btn)
+        ob.addWidget(self.outline2_btn)
         self.out2_slider, self.out2_spin = self._slider_spin_row(
-            sb, self.t("outline2_width"), 0, 80, DEFAULTS["outline2_px"])
+            ob, self.t("outline2_width"), 0, 80, DEFAULTS["outline2_px"])
         self.out2_spin.valueChanged.connect(lambda _v: self._update_preview())
-        # Rotation (Grad): dreht die ganze SFX um ihren Mittelpunkt.
-        self.rot_slider, self.rot_spin = self._slider_spin_row(
-            sb, self.t("rotation"), -180, 180, 0)
-        self.rot_spin.valueChanged.connect(lambda _v: self._update_preview())
-        layout.addWidget(self.sec_style)
+        # weiche (geblurte) Outline / Aura: der Rand als weicher Schein, wahlweise
+        # einfarbig ODER mit der Textur gefüllt. Nur im Raster-Insert möglich.
+        soft_row = QHBoxLayout()
+        self.soft_chk = QCheckBox(self.t("soft_outline"))
+        self.soft_chk.setToolTip(self.t("soft_outline_tip"))
+        self.soft_chk.toggled.connect(
+            lambda _v: (self._update_soft_enabled(), self._update_preview()))
+        soft_row.addWidget(self.soft_chk)
+        self.soft_pattern_chk = QCheckBox(self.t("soft_pattern"))
+        self.soft_pattern_chk.setToolTip(self.t("soft_pattern_tip"))
+        self.soft_pattern_chk.toggled.connect(
+            lambda _v: (self._update_soft_enabled(), self._update_preview()))
+        soft_row.addWidget(self.soft_pattern_chk)
+        self.soft_color_btn = QPushButton()
+        self.soft_color_btn.setFixedHeight(26)
+        self._set_btn_color(self.soft_color_btn, QColor(self._soft_color))
+        self.soft_color_btn.clicked.connect(
+            lambda: self._pick_color(self.soft_color_btn))
+        soft_row.addWidget(self.soft_color_btn, 1)
+        ob.addLayout(soft_row)
+        self.soft_width_slider, self.soft_width_spin = self._slider_spin_row(
+            ob, self.t("soft_width"), 0, 40, 3)
+        self.soft_width_spin.valueChanged.connect(
+            lambda _v: self._update_preview())
+        self.soft_blur_slider, self.soft_blur_spin = self._slider_spin_row(
+            ob, self.t("soft_blur"), 1, 60, 8)
+        self.soft_blur_spin.valueChanged.connect(
+            lambda _v: self._update_preview())
+        self._update_soft_enabled()
+        layout.addWidget(self.sec_outline)
 
         # --- Schatten ---
         self.sec_shadow = CollapsibleSection(self.t("shadow"), "shadow",
@@ -1064,6 +1137,7 @@ class MangaSFXDocker(DockWidget):
             "suggest_show": self.v_suggest_chk.isChecked(),
             "font_show": self.v_font_chk.isChecked(),
             "style_show": self.v_style_chk.isChecked(),
+            "outline_show": self.v_outline_chk.isChecked(),
             "shadow_show": self.v_shadow_chk.isChecked(),
             "presets_show": self.v_presets_chk.isChecked(),
             "rules_show": self.v_rules_chk.isChecked(),
@@ -1106,8 +1180,9 @@ class MangaSFXDocker(DockWidget):
         self._view["open"] = self.view_toggle.isChecked()  # Panel offen lassen
         save_view(self._view)
         widgets = (self.v_preview_chk, self.v_suggest_chk, self.v_font_chk,
-                   self.v_style_chk, self.v_shadow_chk, self.v_presets_chk,
-                   self.v_rules_chk, self.v_clear_after_chk, self.v_preview_h)
+                   self.v_style_chk, self.v_outline_chk, self.v_shadow_chk,
+                   self.v_presets_chk, self.v_rules_chk, self.v_clear_after_chk,
+                   self.v_preview_h)
         for w in widgets:
             w.blockSignals(True)
         self.v_preview_chk.setChecked(self._view["preview_show"])
@@ -1115,6 +1190,7 @@ class MangaSFXDocker(DockWidget):
         self.v_suggest_chk.setChecked(self._view["suggest_show"])
         self.v_font_chk.setChecked(self._view["font_show"])
         self.v_style_chk.setChecked(self._view["style_show"])
+        self.v_outline_chk.setChecked(self._view["outline_show"])
         self.v_shadow_chk.setChecked(self._view["shadow_show"])
         self.v_presets_chk.setChecked(self._view["presets_show"])
         self.v_rules_chk.setChecked(self._view["rules_show"])
@@ -1309,6 +1385,19 @@ class MangaSFXDocker(DockWidget):
             name = self.t("pattern_choose")
         self.pattern_btn.setText(self._elide(name, 20))
 
+    # --- weiche (geblurte) Outline -------------------------------------
+    def _update_soft_enabled(self):
+        on = self.soft_chk.isChecked()
+        for w in (self.soft_pattern_chk, self.soft_width_slider,
+                  self.soft_width_spin, self.soft_blur_slider,
+                  self.soft_blur_spin):
+            w.setEnabled(on)
+        # the colour only matters when NOT filling the soft outline with a texture
+        self.soft_color_btn.setEnabled(on and not self.soft_pattern_chk.isChecked())
+
+    def _soft_outline_active(self):
+        return bool(getattr(self, "soft_chk", None) and self.soft_chk.isChecked())
+
     def _pick_pattern(self):
         """Bilddatei (Screentone/Textur) für die Musterfüllung wählen."""
         path, _ = QFileDialog.getOpenFileName(
@@ -1499,6 +1588,14 @@ class MangaSFXDocker(DockWidget):
             "pattern_img": (self._ensure_pattern_img()
                             if self._pattern_active() else None),
             "pattern_tile": self._pattern_tile(),
+            "soft_on": self.soft_chk.isChecked(),
+            "soft_pattern": self.soft_pattern_chk.isChecked(),
+            "soft_color": QColor(self.soft_color_btn._color),
+            "soft_width": float(self.soft_width_spin.value()),
+            "soft_blur": float(self.soft_blur_spin.value()),
+            "soft_tex": (self._ensure_pattern_img()
+                         if self.soft_pattern_chk.isChecked() else None),
+            "soft_tile": self._pattern_tile(),
         })
 
     # --- Stand sichern / wiederherstellen -----------------------------
@@ -1516,6 +1613,11 @@ class MangaSFXDocker(DockWidget):
             "pattern_krita": self._pattern_krita_name,
             "pattern_on": self.pattern_chk.isChecked(),
             "pattern_scale": self.pattern_scale_spin.value(),
+            "soft_on": self.soft_chk.isChecked(),
+            "soft_pattern": self.soft_pattern_chk.isChecked(),
+            "soft_color": self.soft_color_btn._color.name(),
+            "soft_width": self.soft_width_spin.value(),
+            "soft_blur": self.soft_blur_spin.value(),
             "uppercase": self.upper_chk.isChecked(),
             "bold": self.bold_chk.isChecked(),
             "italic": self.italic_chk.isChecked(),
@@ -1558,6 +1660,7 @@ class MangaSFXDocker(DockWidget):
         if "shadow" in st:
             self.shadow_chk.setChecked(bool(st["shadow"]))
         self._restore_pattern(st)
+        self._restore_soft(st)
         self._update_shadow_enabled()
 
     def _restore_pattern(self, st):
@@ -1579,6 +1682,27 @@ class MangaSFXDocker(DockWidget):
         self.pattern_chk.setChecked(want)
         self.pattern_chk.blockSignals(False)
         self._update_pattern_enabled()
+
+    def _restore_soft(self, st):
+        """Weiche (geblurte) Outline aus Zustand oder Preset setzen."""
+        if not hasattr(self, "soft_chk"):
+            return
+        if st.get("soft_color"):
+            self._set_btn_color(self.soft_color_btn, QColor(st["soft_color"]))
+        for key, spin in (("soft_width", self.soft_width_spin),
+                          ("soft_blur", self.soft_blur_spin)):
+            if key in st:
+                try:
+                    spin.setValue(int(st[key]))
+                except (TypeError, ValueError):
+                    pass
+        self.soft_pattern_chk.blockSignals(True)
+        self.soft_pattern_chk.setChecked(bool(st.get("soft_pattern", False)))
+        self.soft_pattern_chk.blockSignals(False)
+        self.soft_chk.blockSignals(True)
+        self.soft_chk.setChecked(bool(st.get("soft_on", False)))
+        self.soft_chk.blockSignals(False)
+        self._update_soft_enabled()
 
     def _preset_tooltip(self, p):
         lines = [
@@ -1619,6 +1743,7 @@ class MangaSFXDocker(DockWidget):
         self.shadow_dy.setValue(int(preset.get("shadow_dy",
                                                DEFAULTS.get("shadow_dy", 6))))
         self._restore_pattern(preset)
+        self._restore_soft(preset)
         self._update_shadow_enabled()
         self._update_preview()
         self.status_label.setText(self.t("st_preset_loaded", name=preset["name"]))
@@ -1672,6 +1797,11 @@ class MangaSFXDocker(DockWidget):
             "pattern_krita": self._pattern_krita_name,
             "pattern_on": self.pattern_chk.isChecked(),
             "pattern_scale": self.pattern_scale_spin.value(),
+            "soft_on": self.soft_chk.isChecked(),
+            "soft_pattern": self.soft_pattern_chk.isChecked(),
+            "soft_color": self.soft_color_btn._color.name(),
+            "soft_width": self.soft_width_spin.value(),
+            "soft_blur": self.soft_blur_spin.value(),
             "bold": self.bold_chk.isChecked(),
             "italic": self.italic_chk.isChecked(),
             "shadow": self.shadow_chk.isChecked(),
@@ -1780,6 +1910,11 @@ class MangaSFXDocker(DockWidget):
         preset["pattern_krita"] = self._pattern_krita_name
         preset["pattern_on"] = self.pattern_chk.isChecked()
         preset["pattern_scale"] = self.pattern_scale_spin.value()
+        preset["soft_on"] = self.soft_chk.isChecked()
+        preset["soft_pattern"] = self.soft_pattern_chk.isChecked()
+        preset["soft_color"] = self.soft_color_btn._color.name()
+        preset["soft_width"] = self.soft_width_spin.value()
+        preset["soft_blur"] = self.soft_blur_spin.value()
         preset["bold"] = self.bold_chk.isChecked()
         preset["italic"] = self.italic_chk.isChecked()
         preset["shadow"] = self.shadow_chk.isChecked()
@@ -2551,7 +2686,7 @@ class MangaSFXDocker(DockWidget):
             self._warn(self.t("st_no_sfx_layer"))
             return
         is_vector = node.type() == "vectorlayer"
-        pattern_mode = self._pattern_active()
+        pattern_mode = self._pattern_active() or self._soft_outline_active()
         # only a vector SFX can be restyled in place; a texture render can start
         # from any SFX layer (word from the input, position from its bounds)
         if not is_vector and not pattern_mode:
@@ -2623,7 +2758,11 @@ class MangaSFXDocker(DockWidget):
 
         o1 = float(outline_px if outline_px is not None else self.out_spin.value())
         o2 = float(self.out2_spin.value())
-        margin = int(max(o1, o2) * 2 + 6)
+        soft_on = self._soft_outline_active()
+        soft_w = float(self.soft_width_spin.value()) if soft_on else 0.0
+        soft_blur = float(self.soft_blur_spin.value()) if soft_on else 0.0
+        soft_ext = (soft_w + 2.0 * soft_blur) if soft_on else 0.0
+        margin = int(max(o1, o2) * 2 + 6 + soft_ext)
         shadow_on = self.shadow_chk.isChecked()
         sdx = float(self.shadow_dx.value()) if shadow_on else 0.0
         sdy = float(self.shadow_dy.value()) if shadow_on else 0.0
@@ -2652,11 +2791,39 @@ class MangaSFXDocker(DockWidget):
         p = QPainter(img)
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setRenderHint(QPainter.TextAntialiasing, True)
+        path = QPainterPath()
+        path.addText(-adv / 2.0, 0.0, fn, text)   # h-centred, baseline at 0
+
+        # weiche (geblurte) Outline: eigenes, isoliert geblurtes Bild ganz unten,
+        # sodass der scharfe Text darüber unverwischt bleibt.
+        if soft_on:
+            soft = QImage(w, h, QImage.Format_ARGB32)
+            soft.fill(0)
+            spn = QPainter(soft)
+            spn.setRenderHint(QPainter.Antialiasing, True)
+            spn.translate(ax, ay)
+            if angle:
+                spn.rotate(angle)
+            spimg = self._ensure_pattern_img()
+            if self.soft_pattern_chk.isChecked() and spimg is not None:
+                tw, th = self._pattern_tile()
+                sbrush = QBrush(QPixmap.fromImage(spimg).scaled(
+                    max(1, tw), max(1, th), Qt.IgnoreAspectRatio,
+                    Qt.SmoothTransformation))
+            else:
+                sbrush = QBrush(QColor(self.soft_color_btn._color))
+            if soft_w > 0:
+                spen = QPen(sbrush, soft_w * 2.0)
+                spen.setJoinStyle(Qt.RoundJoin)
+                spen.setCapStyle(Qt.RoundCap)
+                spn.strokePath(path, spen)
+            spn.fillPath(path, sbrush)
+            spn.end()
+            p.drawImage(0, 0, IMG.blur_argb(soft, soft_blur))
+
         p.translate(ax, ay)
         if angle:
             p.rotate(angle)
-        path = QPainterPath()
-        path.addText(-adv / 2.0, 0.0, fn, text)   # h-centred, baseline at 0
 
         if shadow_on and (sdx or sdy):
             sp = QPainterPath(path)
@@ -2755,9 +2922,9 @@ class MangaSFXDocker(DockWidget):
                 self._warn(self.t("st_no_text"))
                 return
 
-        # Eine Textur-/Musterfüllung kann Kritas Vektor-Text nicht darstellen
-        # (füllt einfarbig) -> dann rendern wir die SFX als Pixel-Ebene.
-        pattern_mode = self._pattern_active()
+        # Eine Textur-/Musterfüllung ODER eine weiche (geblurte) Outline kann
+        # Kritas Vektor-Text nicht -> dann rendern wir die SFX als Pixel-Ebene.
+        pattern_mode = self._pattern_active() or self._soft_outline_active()
 
         # Aktive Ebene prüfen – für Vektor: ist es keine Vektor-Ebene, neue anlegen.
         node = doc.activeNode()
@@ -2903,6 +3070,12 @@ class MangaSFXDocker(DockWidget):
         self.pattern_scale_spin.setValue(100)
         self._clear_pattern()
         self.pattern_chk.setChecked(False)
+        self.soft_chk.setChecked(False)
+        self.soft_pattern_chk.setChecked(False)
+        self.soft_width_spin.setValue(3)
+        self.soft_blur_spin.setValue(8)
+        self._set_btn_color(self.soft_color_btn, QColor(0, 0, 0))
+        self._update_soft_enabled()
         self.shadow_chk.setChecked(bool(DEFAULTS.get("shadow", False)))
         self._set_btn_color(self.shadow_btn,
                             QColor(DEFAULTS.get("shadow_color", "#000000")))
@@ -3035,6 +3208,11 @@ class MangaSFXDocker(DockWidget):
                 "pattern_krita": str(p.get("pattern_krita", "")),
                 "pattern_on": bool(p.get("pattern_on", False)),
                 "pattern_scale": self._as_int(p.get("pattern_scale"), 100),
+                "soft_on": bool(p.get("soft_on", False)),
+                "soft_pattern": bool(p.get("soft_pattern", False)),
+                "soft_color": str(p.get("soft_color", "#000000")),
+                "soft_width": self._as_int(p.get("soft_width"), 3),
+                "soft_blur": self._as_int(p.get("soft_blur"), 8),
                 "bold": bool(p.get("bold", False)),
                 "italic": bool(p.get("italic", False)),
                 "shadow": bool(p.get("shadow", False)),

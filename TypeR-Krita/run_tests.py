@@ -18,10 +18,12 @@ SUITES = [
     "test_metamorphic.py",     # #2 regression #3 metamorphic #4 fuzz #5 boundary #9 round-trip
     "test_svg_i18n.py",        # #6 SVG structure #10 i18n integrity
     "test_integration.py",     # #12 Krita-stub integration #13 font picker
+    "test_fontfav.py",         # font-favourites core (categories, 1..n links)
 ]
 
 MODULES = [
     "typer_kr/typer_kr.py", "typer_kr/layout.py", "typer_kr/langpair.py",
+    "typer_kr/fontfav.py", "typer_kr/fontfav_ui.py",
     "typer_kr/bubbles.py", "typer_kr/balloons.py", "typer_kr/comments.py",
     "typer_kr/texttypes.py", "typer_kr/sfx/sfx_docker.py",
     "typer_kr/sfx/svg_builder.py", "typer_kr/sfx/i18n.py",

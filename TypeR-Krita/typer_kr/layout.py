@@ -941,12 +941,14 @@ _MAX_LINE_CHARS = 30
 # gentler `last_term`, since a slightly short final line is normal).
 _MIN_LINE_RATIO = 0.4
 
-# Preferred line count per mode, and how hard to nudge toward it. The weight is
-# small on purpose: this only breaks near-ties — fill and aspect still dominate,
-# so short text is never forced up to the target. (Adapted from the PSD
-# TextShapeR's lineTarget / lineTargetWeight.)
-_LINE_TARGETS = {"balanced": 4, "round": 4, "tall": 5, "wide": 3}
+# Balanced/round: a symmetric pull toward this many lines (small, tie-breaker
+# only — fill and aspect still dominate, so short text is never forced up to it).
+_LINE_TARGET = 4
 _LINE_TARGET_WEIGHT = 0.25
+# Tall/wide: a mild, DIMINISHING (sqrt) preference for more / fewer lines, added
+# to the score. A bias, not a hard sort key — 'tall' leans tall, but a bad
+# (over-hyphenated, tiny) extra-line block never wins over a clean shorter one.
+_TALL_WIDE_BIAS = 0.35
 
 
 def _arr_metrics(cand, measurer):
@@ -1063,6 +1065,11 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
     # soft pull toward the mode's preferred line count
     target_pen = abs(k - line_target) ** 1.5 if line_target else 0.0
 
+    # hyphenation is a last resort: a line broken mid-word (ending in '-') reads
+    # worse than the same shape without the split, so each such line is penalised
+    # — a clean N-line block beats a hyphenated N-line block.
+    hyph_pen = sum(1 for t in texts[:-1] if t.endswith("-"))
+
     quality = (1.3 * size_term          # give the chosen size real pull
                + 1.4 * fill_term
                + 1.1 * aspect_term
@@ -1072,6 +1079,7 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
             - 0.6 * over
             - 0.5 * punct_only
             - 0.6 * short
+            - 0.5 * hyph_pen
             - _LINE_TARGET_WEIGHT * target_pen)
 
 
@@ -1166,23 +1174,25 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
 
     if not cands:
         return []
-    # Rank by a real typographic quality score (fill, aspect, balance, size)
-    # instead of "biggest font first". The mode only biases the PRIMARY key
-    # (line count for tall/wide, size for round); the score breaks ties, and
-    # for 'balanced' it drives the whole order -> the recommended (first) card
-    # is the best-looking shape, not merely the largest that fits.
+    # Rank by the typographic quality score for EVERY mode, so the recommended
+    # (first) card is always the best-looking shape. The mode only *biases* the
+    # score: 'balanced'/'round' pull toward a middling line count, 'tall'/'wide'
+    # add a mild, DIMINISHING preference for more / fewer lines. Crucially this
+    # is a bias, not a hard sort key — so 'tall' leans tall but a degenerate,
+    # over-hyphenated, tiny 7-line block never beats a clean 6-line one.
     px_ref = max(c["px"] for c in cands) or 1
-    line_target = _LINE_TARGETS.get(mode)
+    line_target = 4 if mode in ("balanced", "round") else None
     for c in cands:
-        c["score"] = score_arrangement(c, measurer, usable_w, usable_h, px_ref,
-                                       line_target=line_target)
-    if mode == "tall":
-        cands.sort(key=lambda c: (-c["k"], -c["score"]))
-    elif mode == "wide":
-        cands.sort(key=lambda c: (c["k"], -c["score"]))
-    elif mode == "round":
+        s = score_arrangement(c, measurer, usable_w, usable_h, px_ref,
+                              line_target=line_target)
+        if mode == "tall":
+            s += _TALL_WIDE_BIAS * min(c["k"], 8)             # more lines better
+        elif mode == "wide":
+            s += _TALL_WIDE_BIAS * max(0, 8 - c["k"])         # fewer better
+        c["score"] = s
+    if mode == "round":
         cands.sort(key=lambda c: (-c["px"], -c["score"]))
-    else:                                    # balanced (incl. hyphenated)
+    else:
         cands.sort(key=lambda c: -c["score"])
     return _dedup_similar(cands, measurer)[:limit]
 

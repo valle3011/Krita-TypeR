@@ -34,7 +34,7 @@ def check(name, cond):
 
 # --- offscreen Qt + a fake `krita` module -----------------------------------
 try:
-    from PyQt5.QtWidgets import QApplication, QWidget
+    from PyQt5.QtWidgets import QApplication, QWidget, QDockWidget
     from PyQt5.QtGui import QColor
     _app = QApplication.instance() or QApplication([])
 except Exception as e:                          # pragma: no cover
@@ -103,6 +103,23 @@ class _App:
     def addDockWidgetFactory(self, factory):     # called by register()
         return None
 
+    def activeWindow(self):                      # used while building the docker
+        return None
+
+    def action(self, *a):
+        return None
+
+    def notifier(self):
+        return _Notifier()
+
+
+class _Notifier:
+    def imageCreated(self):
+        return self
+
+    def connect(self, *a):
+        return None
+
 
 _krita = types.ModuleType("krita")
 _KR_APP = _App()
@@ -116,7 +133,9 @@ class _Krita:
 
 _DockPosition = type("DockPosition", (object,), {"DockRight": 1, "DockLeft": 0})
 _krita.Krita = _Krita
-_krita.DockWidget = type("DockWidget", (QWidget,), {})
+# Real Krita DockWidget extends QDockWidget (setWidget/widget), so the stub must
+# too — otherwise building the full TyperDocker fails on self.setWidget(...).
+_krita.DockWidget = type("DockWidget", (QDockWidget,), {})
 _krita.DockWidgetFactory = type(
     "DockWidgetFactory", (object,),
     {"__init__": lambda self, *a, **k: None})
@@ -330,6 +349,82 @@ check("the previously active tab is reactivated",
 _KR_APP._settings.pop(("typer_kr", "sessions"), None)
 check("no saved sessions -> restore returns False",
       _FakeDocker()._restore_sessions() is False)
+
+
+# --- Font-favourites panel (Qt widget, headless) ---------------------------
+try:
+    from typer_kr.fontfav_ui import FontFavoritesPanel
+    _ff_blob = {"v": ""}
+    _ff_applied = {"fam": None}
+    _ff_panel = FontFavoritesPanel(
+        families_fn=lambda: ["Arial", "CC Wild Words", "Anime Ace 2"],
+        apply_fn=lambda f: _ff_applied.__setitem__("fam", f),
+        load_fn=lambda: _ff_blob["v"],
+        save_fn=lambda t: _ff_blob.__setitem__("v", t),
+        tr=lambda k: k,
+        current_font_fn=lambda: "CC Wild Words")
+    check("favourites panel builds headless", _ff_panel is not None)
+    _ff_panel.add_favorite("CC Wild Words", ["Dialog", "SFX"])
+    _ff_panel.add_favorite("Anime Ace 2", ["Dialog"])
+    check("adding favourites persists via save_fn", "CC Wild Words" in _ff_blob["v"])
+    check("both favourites show in the list", _ff_panel.list.count() == 2)
+    # category filter narrows to the SFX-tagged font
+    _sfx_i = next((i for i in range(_ff_panel.cat_combo.count())
+                   if _ff_panel.cat_combo.itemData(i) == "SFX"), None)
+    check("SFX category is offered in the filter", _sfx_i is not None)
+    _ff_panel.cat_combo.setCurrentIndex(_sfx_i)
+    check("category filter narrows the list to 1", _ff_panel.list.count() == 1)
+    # applying routes the family out through apply_fn
+    _ff_panel.list.setCurrentRow(0)
+    _ff_panel._apply_current()
+    check("applying a favourite calls apply_fn with the family",
+          _ff_applied["fam"] == "CC Wild Words")
+    # a fresh panel reads the same persisted blob back AND restores the last
+    # filter the user left on (SFX category → 1 match)
+    _ff_panel2 = FontFavoritesPanel(
+        families_fn=lambda: [], apply_fn=lambda f: None,
+        load_fn=lambda: _ff_blob["v"], save_fn=lambda t: None, tr=lambda k: k)
+    check("a new panel restores the last category filter (SFX → 1 match)",
+          _ff_panel2.cat_combo.currentData() == "SFX"
+          and _ff_panel2.list.count() == 1)
+    # clearing the filter reveals both favourites again
+    _ff_panel2.cat_combo.setCurrentIndex(0)
+    check("clearing the filter shows both favourites again",
+          _ff_panel2.list.count() == 2)
+except Exception as _ff_e:                          # pragma: no cover
+    check("font-favourites panel smoke test ran", False)
+    import traceback
+    traceback.print_exc()
+
+# --- Main-tab order/label integrity (regression) ---------------------------
+# A custom, persisted tab order must reorder the *pages* together with the tab
+# labels. The old _apply_tab_order blocked the tab bar's signals, so QTabWidget
+# never moved its page stack — every tab then showed another tab's content
+# (labels 'scrambled', the real Setup page hiding under a wrong label).
+if imported:
+    try:
+        def _build_docker(tab_order):
+            _KR_APP._settings[("typer_kr", "tabOrder")] = tab_order
+            return TK.TyperDocker()
+
+        for _order in ("sfx,type,style,setup,bubblr,shapr",
+                       "shapr,sfx,fonts,type,style,setup,bubblr", ""):
+            _d = _build_docker(_order)
+            _bar = _d.main_tabs.tabBar()
+            _synced = all(
+                _d.main_tabs.widget(i) is _d._tab_pages.get(_bar.tabData(i))
+                for i in range(_d.main_tabs.count()))
+            check("tab labels match their page content (order=%r)"
+                  % (_order or "default"), _synced)
+            # the Setup tab is never toggleable, so it must always be present
+            check("Setup tab present (order=%r)" % (_order or "default"),
+                  _d._tab_index_of("setup") is not None)
+            _d.deleteLater()
+        _KR_APP._settings.pop(("typer_kr", "tabOrder"), None)
+    except Exception as _to_e:                      # pragma: no cover
+        check("main-tab order regression ran", False)
+        import traceback
+        traceback.print_exc()
 
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

@@ -249,5 +249,21 @@ check("regression: dehyphenate flows through shape_candidates",
       _cdh and any("hyphenation" in " ".join(line_texts(c)).lower()
                    for c in _cdh))
 
+# a mid-word hyphen break is penalised: the clean block beats the hyphenated one
+# of the SAME shape (5-char lines either way, one ends in '-').
+check("regression: a mid-word hyphen break scores lower than a clean break",
+      L.score_arrangement(arr(20, "ABCDE", "FGHIJ"), measurer, 100, 100)
+      > L.score_arrangement(arr(20, "ABCD-", "FGHIJ"), measurer, 100, 100))
+
+# 'tall' must not recommend a degenerate over-hyphenated tiny block: the picked
+# card for the reported case has no mid-word hyphen (was "A / SU- / PER / ...").
+_tall = L.shape_candidates("A SUPER CUTE GIRL LIKE ME", measurer, 180, 360,
+                           200, 6, 0.1, mode="tall", hyphenate=True, lang="en")
+check("regression: tall doesn't recommend an over-hyphenated block",
+      _tall and not any(t.endswith("-") for t in line_texts(_tall[0])))
+# and it still leans tall (more than one line for this text)
+check("regression: tall still leans tall (multi-line pick)",
+      _tall and _tall[0]["k"] >= 4)
+
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

@@ -460,9 +460,17 @@ _ct = LO.shape_candidates("aa bb cc dd", _measurer, 100, 100, 200, 1, 0.0,
                           mode="tall")
 _cw = LO.shape_candidates("aa bb cc dd", _measurer, 100, 100, 200, 1, 0.0,
                           mode="wide")
-check("tall mode puts the most lines first",
-      _ct and _ct[0]["k"] == max(c["k"] for c in _ct))
-check("wide mode puts the fewest lines first", _cw and _cw[0]["k"] == 1)
+# tall/wide *bias* the score toward more / fewer lines (a diminishing pull),
+# they no longer HARD-sort by line count — so a degenerate extreme can't win,
+# but tall still leans taller than wide. Every mode ranks by score.
+check("tall leans to at least as many lines as wide",
+      _ct and _cw and _ct[0]["k"] >= _cw[0]["k"])
+check("tall candidates ranked by score (best first)",
+      [c["score"] for c in _ct] == sorted((c["score"] for c in _ct),
+                                          reverse=True))
+check("wide candidates ranked by score (best first)",
+      [c["score"] for c in _cw] == sorted((c["score"] for c in _cw),
+                                          reverse=True))
 
 _cr = LO.shape_candidates("aa bb cc dd ee ff", _measurer, 120, 120, 200, 1, 0.0,
                           mode="round")

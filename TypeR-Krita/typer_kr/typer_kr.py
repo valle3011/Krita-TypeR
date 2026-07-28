@@ -465,6 +465,12 @@ LANG = {
         "tab_setup": "Setup",
         "tab_shapr": "TextShapR",
         "tab_sfx": "SFX",
+        "tab_fonts": "Fonts",
+        "st_font_applied": "Font applied: {name}",
+        "st_font_starred": "★ Added to favourites: {name}",
+        "fav_star_current": "☆ Favourite",
+        "fav_star_current_tip": "Add the selected font to the Fonts tab's "
+                                "favourites.",
         # Setup-tab section headings (group the flat settings list)
         "setup_h_general": "General",
         "setup_h_fonts": "Fonts",
@@ -639,6 +645,7 @@ LANG = {
         "enable_bubblr": "Enable BubblR (automatic bubble detection)",
         "enable_shapr": "Enable TextShapR",
         "enable_sfx": "Enable SFX tab",
+        "enable_fonts": "Enable Fonts tab",
         "enable_balloon": "Enable balloon tools (shape + Insert balloon)",
         "enable_balloon_tip": "Shows the Balloon panel on the Type tab: the "
                               "shape dropdown, the tail checkbox and “Insert "
@@ -1048,6 +1055,37 @@ LANG = {
         "tab_setup": "Einstellungen",
         "tab_shapr": "TextShapR",
         "tab_sfx": "SFX",
+        "tab_fonts": "Schriften",
+        "st_font_applied": "Schrift übernommen: {name}",
+        "st_font_starred": "★ Zu Favoriten hinzugefügt: {name}",
+        "fav_star_current": "☆ Favorit",
+        "fav_star_current_tip": "Die gewählte Schrift zu den Favoriten im "
+                                "Schriften-Tab hinzufügen.",
+        # Font-Favoriten (Fonts-Tab)
+        "fav_intro": "Schriften mit ★ merken und in Kategorien einsortieren "
+                     "(Dialog, SFX, …). Eine Schrift kann in mehreren Kategorien "
+                     "liegen. Nach Kategorie filtern oder nach Namen suchen, dann "
+                     "doppelklicken zum Übernehmen.",
+        "fav_all": "Alle Favoriten",
+        "fav_uncat": "(ohne Kategorie)",
+        "fav_search_ph": "Schrift suchen…",
+        "fav_add_current": "★ Aktuelle Schrift merken",
+        "fav_add": "Schrift hinzufügen…",
+        "fav_edit_cats": "Kategorien…",
+        "fav_remove": "Entfernen",
+        "fav_manage": "Kategorien verwalten…",
+        "fav_apply": "Schrift übernehmen",
+        "fav_none": "Noch keine Favoriten. Mit „★ Aktuelle Schrift merken“ "
+                    "anlegen.",
+        "fav_pick_font": "Favoriten-Schrift hinzufügen",
+        "fav_choose_cats": "Kategorien für diese Schrift:",
+        "fav_new_cat_ph": "Neue Kategorie…",
+        "fav_new_cat_add": "Hinzufügen",
+        "fav_manage_title": "Kategorien verwalten",
+        "fav_rename": "Umbenennen",
+        "fav_delete": "Löschen",
+        "fav_delete_font_q": "„{name}“ aus den Favoriten entfernen?",
+        "fav_count": "{n} Schriften",
         # Überschriften im Einstellungen-Tab (gruppieren die flache Liste)
         "setup_h_general": "Allgemein",
         "setup_h_fonts": "Schriften",
@@ -1233,6 +1271,7 @@ LANG = {
         "enable_bubblr": "BubblR aktivieren (automatische Bubble-Erkennung)",
         "enable_shapr": "TextShapR aktivieren",
         "enable_sfx": "SFX-Tab aktivieren",
+        "enable_fonts": "Schriften-Tab aktivieren",
         "enable_balloon": "Blasen-Werkzeuge aktivieren (Form + Blase einfügen)",
         "enable_balloon_tip": "Zeigt das Panel „Sprechblase“ im Type-Tab: das "
                               "Formen-Dropdown, den Schwanz-Haken und „Blase "
@@ -2348,8 +2387,22 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
             label = "TypeR — " + snippet
         vlayer = doc.createVectorLayer(label)
         root.addChildNode(vlayer, None)
+        # Let Krita finish registering the new vector layer BEFORE we push SVG
+        # shapes into it. Adding shapes to a just-created layer while Krita's
+        # shape/vector subsystem is still spinning up is what crashes the very
+        # first insert of a session; setting it active + waiting for the pending
+        # work settles it first.
+        try:
+            doc.setActiveNode(vlayer)
+            doc.waitForDone()
+        except Exception:      # noqa: BLE001 — older Krita may lack waitForDone
+            pass
         vlayer.addShapesFromSvg(svg)
         doc.refreshProjection()
+        try:
+            doc.waitForDone()
+        except Exception:      # noqa: BLE001
+            pass
     except Exception as exc:  # pragma: no cover - depends on the Krita version
         return False, "st_create_fail", {"exc": exc}
 
@@ -4393,6 +4446,7 @@ class TyperDocker(DockWidget):
         lay_bubblr = _page()     # auto-detect bubbles + per-bubble styles
         lay_shapr = _page()      # TextShapR: pick a shape arrangement
         lay_sfx = _page()        # SFX Helper (embedded MangaSFX docker)
+        lay_fonts = _page()      # Font favourites (starred fonts + categories)
 
         # Presets are no longer their own tab: they live inside the Type
         # tab as a self-contained panel container. Building them into this
@@ -4407,7 +4461,8 @@ class TyperDocker(DockWidget):
         # movable-panel registry (customizable layout, step 2a)
         self._tab_layouts = {"type": lay_type, "style": lay_style,
                              "setup": lay_setup, "bubblr": lay_bubblr,
-                             "shapr": lay_shapr, "sfx": lay_sfx}
+                             "shapr": lay_shapr, "sfx": lay_sfx,
+                             "fonts": lay_fonts}
         self._panels = {}          # panel id -> PanelBox
         self._panel_tab = {}       # panel id -> current tab id
         self._panel_home = {}      # panel id -> default (home) tab id
@@ -4631,6 +4686,11 @@ class TyperDocker(DockWidget):
             app.readSetting("typer_kr", "enableSfx", "true") == "true")
         self.enable_sfx_chk.toggled.connect(self._on_enable_sfx)
         exp_lay.addWidget(self.enable_sfx_chk)
+        self.enable_fonts_chk = QCheckBox()
+        self.enable_fonts_chk.setChecked(
+            app.readSetting("typer_kr", "enableFonts", "true") == "true")
+        self.enable_fonts_chk.toggled.connect(self._on_enable_fonts)
+        exp_lay.addWidget(self.enable_fonts_chk)
         # balloon tools are off by default: most pages come with their balloons
         self.enable_balloon_chk = QCheckBox()
         self.enable_balloon_chk.setChecked(
@@ -4920,6 +4980,20 @@ class TyperDocker(DockWidget):
         self.font_picker = FontPicker(self._load_recents(),
                                       self._tr("font_search_ph"))
         _fontl.addWidget(self.font_picker)
+        # Right-click a font row: star it / drop it straight into a category,
+        # without switching to the Fonts tab.
+        self.font_picker.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.font_picker.list.customContextMenuRequested.connect(
+            self._font_context_menu)
+        # One-click star: drop the picked font into the Fonts tab's favourites
+        # without leaving the insert loop.
+        fav_row = QHBoxLayout()
+        self.fav_add_btn = QPushButton(self._tr("fav_star_current"))
+        self.fav_add_btn.setToolTip(self._tr("fav_star_current_tip"))
+        self.fav_add_btn.clicked.connect(self._star_current_font)
+        fav_row.addWidget(self.fav_add_btn)
+        fav_row.addStretch(1)
+        _fontl.addLayout(fav_row)
         color_row = QHBoxLayout()
         self.color_btn = QPushButton()
         self.color_btn.clicked.connect(self.on_pick_color)
@@ -5254,6 +5328,26 @@ class TyperDocker(DockWidget):
         # scroll handles any overflow — no second scroll area here).
         lay_sfx.addWidget(_sfx_pb, 1)
 
+        # --- Fonts tab (starred fonts sorted into categories) ---------
+        # Decoupled panel: it only talks to us through callbacks, so a failure
+        # to build it must never take TypeR down.
+        self.fonts_panel = None
+        try:
+            from .fontfav_ui import FontFavoritesPanel
+            self.fonts_panel = FontFavoritesPanel(
+                families_fn=lambda: sorted(QFontDatabase().families()),
+                apply_fn=self._apply_favorite_font,
+                load_fn=self._load_font_favorites,
+                save_fn=self._save_font_favorites,
+                tr=self._tr,
+                current_font_fn=lambda: (self.font_picker.currentFamily() or ""))
+            lay_fonts.addWidget(self.fonts_panel, 1)
+        except Exception as _ff_exc:      # noqa: BLE001
+            _lbl = QLabel("Font favourites could not load:\n%s" % _ff_exc)
+            _lbl.setWordWrap(True)
+            _lbl.setStyleSheet("color: gray;")
+            lay_fonts.addWidget(_lbl)
+
         # status line below the tabs, always visible
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -5274,7 +5368,8 @@ class TyperDocker(DockWidget):
         # phase and builds on layoutmodel.py.
         self._tab_defaults = [("type", "tab_type"), ("style", "tab_style"),
                               ("setup", "tab_setup"), ("bubblr", "tab_bubblr"),
-                              ("shapr", "tab_shapr"), ("sfx", "tab_sfx")]
+                              ("shapr", "tab_shapr"), ("sfx", "tab_sfx"),
+                              ("fonts", "tab_fonts")]
         self._tab_pages = {}          # id -> tab page widget (kept when hidden)
         for i, (tid, _nk) in enumerate(self._tab_defaults):
             self.main_tabs.tabBar().setTabData(i, tid)
@@ -5285,6 +5380,7 @@ class TyperDocker(DockWidget):
         self._on_enable_bubblr(self.enable_bubblr_chk.isChecked(), save=False)
         self._on_enable_shapr(self.enable_shapr_chk.isChecked(), save=False)
         self._on_enable_sfx(self.enable_sfx_chk.isChecked(), save=False)
+        self._on_enable_fonts(self.enable_fonts_chk.isChecked(), save=False)
         self._on_enable_balloon(self.enable_balloon_chk.isChecked(), save=False)
         self._apply_tab_order(self._load_tab_order())
         self._retranslate_tabs()
@@ -5335,6 +5431,86 @@ class TyperDocker(DockWidget):
     def _save_lang(self):
         try:
             Krita.instance().writeSetting("typer_kr", "uiLang", self._lang)
+        except Exception:
+            pass
+
+    # -- font favourites (fonts tab) ---------------------------------------
+    def _apply_favorite_font(self, family):
+        """Route a font picked in the Fonts tab into the live picker so the next
+        insert (and the preview) use it, then jump to the Type tab so the user
+        can type/insert right away."""
+        if not family:
+            return
+        try:
+            self.font_picker.setCurrentFamily(family)
+        except Exception:
+            pass
+        try:
+            idx = self._tab_index_of("type")
+            if idx is not None:
+                self.main_tabs.setCurrentIndex(idx)
+        except Exception:
+            pass
+        try:
+            self.status.setText(self._tr("st_font_applied").format(name=family))
+        except Exception:
+            pass
+
+    def _star_current_font(self):
+        """★ button next to the picker: add the current font to the Fonts tab's
+        favourites (idempotent), then confirm in the status line."""
+        self._star_font(self.font_picker.currentFamily())
+
+    def _star_font(self, family, category=None):
+        """Add *family* to favourites (optionally tagged with *category*) and
+        confirm in the status line."""
+        if not family:
+            return
+        panel = getattr(self, "fonts_panel", None)
+        if panel is None:
+            return
+        panel.add_favorite(family, [category] if category else None)
+        try:
+            self.status.setText(self._tr("st_font_starred").format(name=family))
+        except Exception:
+            pass
+
+    def _font_context_menu(self, pos):
+        """Right-click menu on the font picker: star the font under the cursor,
+        or add it directly to one of the existing categories."""
+        lst = self.font_picker.list
+        it = lst.itemAt(pos)
+        fam = (it.data(Qt.UserRole) if it is not None
+               else self.font_picker.currentFamily())
+        if not fam:
+            return
+        panel = getattr(self, "fonts_panel", None)
+        menu = QMenu(lst)
+        act_fav = menu.addAction(self._tr("fav_star_current"))
+        cat_actions = {}
+        if panel is not None:
+            cats = panel.category_names()
+            if cats:
+                menu.addSeparator()
+                for c in cats:
+                    cat_actions[menu.addAction("→ " + c)] = c
+        chosen = menu.exec_(lst.mapToGlobal(pos))
+        if chosen is None or panel is None:
+            return
+        if chosen is act_fav:
+            self._star_font(fam)
+        elif chosen in cat_actions:
+            self._star_font(fam, cat_actions[chosen])
+
+    def _load_font_favorites(self):
+        try:
+            return Krita.instance().readSetting("typer_kr", "fontFavorites", "")
+        except Exception:
+            return ""
+
+    def _save_font_favorites(self, text):
+        try:
+            Krita.instance().writeSetting("typer_kr", "fontFavorites", text)
         except Exception:
             pass
 
@@ -5570,6 +5746,9 @@ class TyperDocker(DockWidget):
         self.analyze_btn.setText(t("analyze_btn"))
         self.add_line_btn.setText(t("add_line_btn"))
         self.save_script_btn.setText(t("save_script_btn"))
+        if hasattr(self, "fav_add_btn"):
+            self.fav_add_btn.setText(t("fav_star_current"))
+            self.fav_add_btn.setToolTip(t("fav_star_current_tip"))
         self.lbl_align.setText(t("align_label"))
         self.table.setHorizontalHeaderLabels([t("col_source"), t("col_translation")])
         self.prev_btn.setText(t("prev"))
@@ -5701,6 +5880,7 @@ class TyperDocker(DockWidget):
         self.enable_bubblr_chk.setText(t("enable_bubblr"))
         self.enable_shapr_chk.setText(t("enable_shapr"))
         self.enable_sfx_chk.setText(t("enable_sfx"))
+        self.enable_fonts_chk.setText(t("enable_fonts"))
         self.enable_balloon_chk.setText(t("enable_balloon"))
         self.enable_balloon_chk.setToolTip(t("enable_balloon_tip"))
         self.customize_chk.setText(t("customize_layout"))
@@ -5866,11 +6046,19 @@ class TyperDocker(DockWidget):
 
     def _apply_tab_order(self, order):
         """Reorder the tab bar so its tab ids follow `order` (unknown/missing
-        ids are ignored / left in place). Done by moving tabs into position."""
+        ids are ignored / left in place). Done by moving tabs into position.
+
+        IMPORTANT: we must NOT block the tab bar's signals here. QTabWidget keeps
+        its page stack in sync with the tab bar *through* the tabMoved signal;
+        blocking it moves only the labels+data while the pages stay put, so every
+        tab ends up showing another tab's content (labels look 'scrambled' and
+        e.g. the real Setup page hides under a different label). Instead we guard
+        our own save handler with a flag so a programmatic reorder does not
+        churn the setting."""
         if not order:
             return
         bar = self.main_tabs.tabBar()
-        bar.blockSignals(True)
+        self._reordering = True
         try:
             for target, tid in enumerate(order):
                 cur = next((i for i in range(self.main_tabs.count())
@@ -5880,9 +6068,11 @@ class TyperDocker(DockWidget):
         except Exception:
             pass
         finally:
-            bar.blockSignals(False)
+            self._reordering = False
 
     def _on_tab_moved(self, *_a):
+        if getattr(self, "_reordering", False):
+            return
         Krita.instance().writeSetting(
             "typer_kr", "tabOrder", ",".join(self._current_tab_order()))
 
@@ -6460,6 +6650,20 @@ class TyperDocker(DockWidget):
         if save:
             Krita.instance().writeSetting(
                 "typer_kr", "enableSfx", "true" if on else "false")
+
+    def _on_enable_fonts(self, on, save=True):
+        """Show or hide the Fonts (favourites) tab (kept alive when hidden)."""
+        idx = self._tab_index_of("fonts")
+        if on and idx is None:
+            page = self._tab_pages.get("fonts")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("fonts"))
+                self.main_tabs.tabBar().setTabData(i, "fonts")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableFonts", "true" if on else "false")
 
     def _sync_gated_panels(self):
         """Re-apply the switches that hide a whole panel. Every layout move
