@@ -49,25 +49,37 @@ See [`TypeR-Krita/README.md`](TypeR-Krita/README.md) for the full manual.
 
 ---
 
-## The docker: four tabs
+## The docker: tabs
 
-The docker is organized into four top-level tabs so the everyday workflow stays
-uncluttered — nothing was removed, everything is one click away:
+The docker is organized into tabs so the everyday workflow stays uncluttered —
+nothing was removed, everything is one click away. The three core tabs are
+always present; the extra tabs can be shown or hidden on the **Setup** tab.
+
+**Core**
 
 - **Type** – the everyday loop: load script, pick a line in the JP/EN table,
-  navigate, edit the active line, pick font + color, live preview, **Insert**
-  and **TextShapR**.
+  navigate, edit the active line, pick font + color, live preview, the preset
+  picker (**Manga → Character → style**), **Insert** and **TextShapR**.
 - **Style** – bold/italic/underline, alignment, letter case, smart punctuation,
-  size / padding / line spacing, outline and shadow (each with a small
-  settings popup), auto-fit, round bubble, hyphenation.
-- **Presets** – Manga → Character → style preset; save/delete/import/export
-  live in the **⋯** menu next to the preset list.
-- **Setup** – interface language, the "Layout & sizes" panel, and behavior
-  toggles like **"Replace previously inserted line"** (re-inserting a line
-  replaces its earlier layer instead of stacking a copy; default on) and
-  **"Organize presets by character"** (see *Presets* below; default on).
+  size / padding / line spacing, **outline** (inner + a second/outer outline)
+  and **shadow** (each with a small settings popup), auto-fit, round bubble,
+  hyphenation.
+- **Setup** – interface language, the "Layout & sizes" panel, behavior toggles
+  like **"Replace previously inserted line"** (re-inserting a line replaces its
+  earlier layer instead of stacking a copy; default on) and **"Organize presets
+  by character"** (default on), plus the switches that show/hide the extra tabs.
 
-The last-used tab is remembered across restarts.
+**Extra (toggle on the Setup tab)**
+
+- **TextShapR** – pick from several auto-fitted shape candidates for the current
+  line (see *TextShapR* below).
+- **SFX** – a dedicated helper for sound-effect lettering: textures, double and
+  soft/blurred outlines, rotation, its own presets (see *SFX helper* below).
+- **Fonts** – star fonts and sort them into your own categories (see *Font
+  favourites* below).
+
+The last-used tab is remembered across restarts, and tabs can be **renamed and
+reordered** (enable *customize* on the Setup tab, then drag / double-click).
 
 ## Quick start (auto mode – recommended)
 
@@ -124,9 +136,12 @@ You can keep several scripts open at once. Each loaded script gets its own
   last one leaves an empty *Untitled* tab.
 - Tabs show the **file name**; **double-click** a tab to give it your own name.
   The full path is shown as a tooltip. Tabs can be dragged to reorder.
+- **Remembered across restarts:** the open script tabs — their order, text,
+  parsed JP/EN units, current line and green "done" marks — are restored when
+  Krita starts again, so you pick up exactly where you left off.
 
-Not (yet) done: open tabs are **not** remembered across a Krita restart, and
-re-running *Analyze* on a tab re-parses it and resets that tab's "done" marks.
+Note: re-running *Analyze* on a tab re-parses it and resets that tab's "done"
+marks.
 
 ## Pages ("Page N" markers)
 
@@ -240,7 +255,10 @@ stray markup inside a bubble:
 - **Styling:** bold / italic / underline, per-word bold via `**…**`, horizontal
   and vertical alignment, letter case (Normal / UPPERCASE / lowercase), smart
   punctuation, line spacing and inner padding.
-- **Outline** and **drop shadow** for readability on busy backgrounds.
+- **Outline** and **drop shadow** for readability on busy backgrounds, including
+  a **second (outer) outline** for the classic white/black/white double edge —
+  turning the outline off switches its second outline off too. Widths are exact
+  (a width of 10 is 10 px, not doubled) and line spacing is fully unclamped.
 - **Presets** in three levels – **Manga → Character → style preset** – that can
   be saved, switched, imported and exported as `.json`. Not every manga needs
   per-character fonts: turning **"Organize presets by character"** off (Setup
@@ -253,6 +271,22 @@ stray markup inside a bubble:
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
   read and edit.
+- **Font favourites (Fonts tab)** – star the fonts you actually use and sort
+  them into your own categories (Dialog, SFX, Titel, …). A font can live in
+  several categories at once; filter by category *or* search by name, then
+  double-click to use it (and jump straight back to the Type tab). Star the
+  current font with one click, or right-click any font in the picker to add it
+  to a category. Your favourites and the last filter are remembered.
+- **SFX helper (SFX tab)** – a separate workflow for sound-effect lettering:
+  pick how each Japanese sound word is handled, get font suggestions, and style
+  the effect with **texture/pattern fills** (an image or a Krita pattern),
+  **double outlines**, a **soft/blurred outline** (solid or texture-filled) and
+  free rotation — with a live preview, its own editable presets and a raster
+  insert path for effects Krita's vector text can't render.
+- **Sessions remembered** – the scripts you had open (order, text, parsed units,
+  current line and "done" progress) come back after a Krita restart.
+- **Customizable tabs** – rename and reorder the tabs, and show/hide the extra
+  ones, all from the Setup tab; the last-used tab is restored on start.
 - **Adjustable layout** (see below) – resize or hide the bigger parts of the
   docker to taste.
 
