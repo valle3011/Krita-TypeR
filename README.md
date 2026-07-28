@@ -15,14 +15,37 @@ The user interface is bilingual (**English / Deutsch**) and switchable on the
 
 ## Installation
 
-1. Copy the `typer_kr` folder **and** `typer_kr.desktop` into Krita's
-   `pykrita` resource folder:
-   - Windows: `%APPDATA%\krita\pykrita\`
-   - Linux: `~/.local/share/krita/pykrita/`
-   - macOS: `~/Library/Application Support/krita/pykrita/`
-2. Start Krita and enable the plugin under
+The plugin lives in the [`TypeR-Krita/`](TypeR-Krita) folder of this repo, with
+ready-made installers.
+
+**Windows** — double-click **`TypeR-Krita\INSTALL.bat`**. It copies the plugin
+into Krita's plugin folder (`%APPDATA%\krita\pykrita`). `UPDATE.bat` re-copies it
+after a new version; `UNINSTALL.bat` removes it again.
+
+**Linux / macOS** — from the `TypeR-Krita` folder run:
+
+```
+./install.sh
+```
+
+The pykrita path is detected automatically (`~/.local/share/krita/pykrita` on
+Linux, `~/Library/Application Support/krita/pykrita` on macOS). There are
+matching `update.sh` and `uninstall.sh` scripts (`chmod +x *.sh` first if
+needed).
+
+**Manual (any OS)** — copy the `TypeR-Krita/typer_kr` folder **and**
+`TypeR-Krita/typer_kr.desktop` into Krita's `pykrita` resource folder yourself:
+- Windows: `%APPDATA%\krita\pykrita\`
+- Linux: `~/.local/share/krita/pykrita/`
+- macOS: `~/Library/Application Support/krita/pykrita/`
+
+Then, however you installed:
+
+1. Start Krita and enable the plugin under
    **Settings → Configure Krita → Python Plugin Manager → "TypeR for Krita"**.
-3. Restart Krita and open the docker via **Settings → Dockers → TypeR for Krita**.
+2. Restart Krita and open the docker via **Settings → Dockers → TypeR for Krita**.
+
+See [`TypeR-Krita/README.md`](TypeR-Krita/README.md) for the full manual.
 
 ---
 
