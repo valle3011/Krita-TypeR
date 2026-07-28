@@ -44,7 +44,7 @@ from PyQt5.QtWidgets import (
     QTextBrowser, QFontDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
     QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
-    QDialog, QButtonGroup, QSplitter, QDialogButtonBox, QApplication,
+    QDialog, QButtonGroup, QDialogButtonBox, QApplication,
     QShortcut, QLayout,
 )
 
@@ -83,7 +83,7 @@ VERSION = "1.7"
 # hidden and its enable toggle is not shown. Set this to False to bring it back
 # once the AI is ready (all the BubblR code stays in place, just dormant).
 # Local/dev build: unlocked so the AI tab is available.
-BUBBLR_LOCKED = True
+BUBBLR_LOCKED = False
 
 # Build stamp = last-modified time of THIS installed file. copy/xcopy keep the
 # source's timestamp, so this shows which code version Krita actually loaded -
@@ -163,6 +163,15 @@ LANG = {
         "editor_ph": "Paste the script here, or load a file above …",
         "skip_empty": "Skip empty lines",
         "analyze_btn": "Analyze · pair JP↔EN",
+        "add_line_btn": "+ Add line",
+        "add_line_dlg": "Add line",
+        "add_line_prompt": "New line (translation text):",
+        "save_script_btn": "Save to file",
+        "save_script_dlg": "Save script",
+        "save_script_confirm": "Overwrite the script file \"{name}\" with the current text?",
+        "st_line_added": "Line added to the script.",
+        "st_script_saved": "Script saved to {name}.",
+        "st_save_script_fail": "Could not save the script: {err}",
         "align_label": "Japanese  ↔  Translation   (click to select a line)",
         "col_source": "Japanese (source)",
         "col_translation": "Translation",
@@ -306,6 +315,10 @@ LANG = {
         "bold": "Bold",
         "italic": "Italic",
         "underline": "Underline",
+        "ligatures": "Ligatures",
+        "ligatures_tip": ("Keep OpenType ligatures. Turn OFF so pairs like "
+                          "“fi”/“fl” don’t fuse in "
+                          "hand-lettered fonts."),
         "align": "Alignment:",
         "align_left": "Left",
         "align_center": "Center",
@@ -355,6 +368,12 @@ LANG = {
         "st_preset_exported": "Exported {n} preset(s).",
         "st_preset_imported": "Imported {n} preset(s).",
         "st_preset_import_fail": "Could not read the preset file.",
+        "preset_import_excel": "Import fonts from Excel …",
+        "preset_excel_open": "Open a font guide (.xlsx)",
+        "preset_excel_filter": "Excel font guide (*.xlsx *.xlsm);;All files (*.*)",
+        "st_preset_excel_no_header": "No 'Character' column found in the sheet.",
+        "st_preset_excel_empty": "No fonts found in the sheet.",
+        "st_preset_excel_imported": "Imported {n} font preset(s) for {c} character(s) into ‘{manga}’.",
         "group": "Manga:",
         "group_new": "New manga …",
         "group_del": "Delete manga",
@@ -401,6 +420,9 @@ LANG = {
         "outline_tip": "Outlines the text – e.g. a white outline so black text stays readable on a dark background.",
         "outline_color_btn": "Outline color …",
         "outline_width": "Width (px):",
+        "outline2_color_btn": "2nd outline …",
+        "outline2_width": "2nd width (0=off):",
+        "outline2_color_dlg": "Choose 2nd outline color",
         "auto": "Auto-fit to selection (size + wrap)",
         "auto_tip": "On: select a speech bubble, pick a font – the text wraps and scales to the largest size that fits.\nOff: fixed size, centered in the image/selection.",
         "hyphenate": "Hyphenate long words",
@@ -434,10 +456,8 @@ LANG = {
         "st_already_open": "‘{name}’ is already open – switched to its tab.",
         "tab_untitled": "Untitled",
         "tab_rename_dlg": "Rename tab",
-        "tab_rename_prompt": "Tab name:",
         "st_nothing": "Nothing loaded. Paste a script and click ‘Analyze’.",
         "st_no_font": "No font selected.",
-        "preview_empty": "(empty)",
         # main tabs
         "tab_type": "Type",
         "tab_style": "Style",
@@ -464,6 +484,8 @@ LANG = {
         "shaper_tall": "Tall",
         "shaper_wide": "Wide",
         "shaper_hyph": "Hyphenation",
+        "shaper_dehyph": "De-hyphenate",
+        "shaper_dehyph_tip": "Rejoin words the source split across a line (e.g. \"embar- rassing\") before reshaping",
         "shaper_hint": "Click a shape to test it. Shift+number applies and advances.",
         "shaper_break_label": "Edit line breaks:",
         "shaper_break_tip": "One line per line. Edit the breaks (or a word); the preview follows.",
@@ -472,7 +494,7 @@ LANG = {
         "shaper_live": "Live on canvas",
         "shaper_live_tip": "Insert the picked shape onto the page as you select (replacing)",
         "shaper_best": "\u2605 Best",
-        "shaper_best_tip": "Jump to the recommended arrangement (biggest that fits)",
+        "shaper_best_tip": "Jump to the recommended arrangement (best-scoring shape)",
         "shaper_match": "Match size",
         "shaper_match_tip": "Cap the size at the last inserted bubble, for a uniform page",
         "shaper_apply": "Apply",
@@ -617,6 +639,11 @@ LANG = {
         "enable_bubblr": "Enable BubblR (automatic bubble detection)",
         "enable_shapr": "Enable TextShapR",
         "enable_sfx": "Enable SFX tab",
+        "enable_balloon": "Enable balloon tools (shape + Insert balloon)",
+        "enable_balloon_tip": "Shows the Balloon panel on the Type tab: the "
+                              "shape dropdown, the tail checkbox and “Insert "
+                              "balloon”. Off by default — most pages already "
+                              "have their balloons drawn.",
         "bp_hint": ("BubblR only marks the bubbles. Type the text on the "
                     "Type tab — Insert fills the current bubble and steps "
                     "to the next; ◀/▶ there redo a bubble."),
@@ -715,6 +742,15 @@ LANG = {
         "editor_ph": "Hier das Skript einfügen oder oben eine Datei laden …",
         "skip_empty": "Leere Zeilen überspringen",
         "analyze_btn": "Analysieren · JP↔EN paaren",
+        "add_line_btn": "+ Zeile",
+        "add_line_dlg": "Zeile hinzufügen",
+        "add_line_prompt": "Neue Zeile (Übersetzungstext):",
+        "save_script_btn": "In Datei speichern",
+        "save_script_dlg": "Skript speichern",
+        "save_script_confirm": "Skriptdatei \"{name}\" mit dem aktuellen Text überschreiben?",
+        "st_line_added": "Zeile zum Skript hinzugefügt.",
+        "st_script_saved": "Skript gespeichert unter {name}.",
+        "st_save_script_fail": "Skript konnte nicht gespeichert werden: {err}",
         "align_label": "Japanisch  ↔  Übersetzung   (Klick wählt die Zeile)",
         "col_source": "Japanisch (Quelle)",
         "col_translation": "Übersetzung",
@@ -861,6 +897,10 @@ LANG = {
         "bold": "Fett",
         "italic": "Kursiv",
         "underline": "Unterstrichen",
+        "ligatures": "Ligaturen",
+        "ligatures_tip": ("OpenType-Ligaturen behalten. AUS, damit Paare wie "
+                          "„fi“/„fl“ in handgeletterten Schriften nicht "
+                          "verschmelzen."),
         "align": "Ausrichtung:",
         "align_left": "Links",
         "align_center": "Zentriert",
@@ -910,6 +950,12 @@ LANG = {
         "st_preset_exported": "{n} Preset(s) exportiert.",
         "st_preset_imported": "{n} Preset(s) importiert.",
         "st_preset_import_fail": "Preset-Datei konnte nicht gelesen werden.",
+        "preset_import_excel": "Fonts aus Excel importieren …",
+        "preset_excel_open": "Font-Guide öffnen (.xlsx)",
+        "preset_excel_filter": "Excel-Font-Guide (*.xlsx *.xlsm);;Alle Dateien (*.*)",
+        "st_preset_excel_no_header": "Keine ‚Character‘-Spalte in der Tabelle gefunden.",
+        "st_preset_excel_empty": "Keine Fonts in der Tabelle gefunden.",
+        "st_preset_excel_imported": "{n} Font-Preset(s) für {c} Charakter(e) in ‚{manga}‘ importiert.",
         "group": "Manga:",
         "group_new": "Neues Manga …",
         "group_del": "Manga löschen",
@@ -957,6 +1003,9 @@ LANG = {
         "outline_tip": "Umrandet den Text – z. B. weiße Kontur, damit schwarzer Text auf dunklem Hintergrund lesbar bleibt.",
         "outline_color_btn": "Konturfarbe …",
         "outline_width": "Breite (px):",
+        "outline2_color_btn": "2. Kontur …",
+        "outline2_width": "2. Breite (0=aus):",
+        "outline2_color_dlg": "2. Konturfarbe wählen",
         "auto": "Automatisch in Auswahl einpassen (Größe + Umbruch)",
         "auto_tip": "An: Auswahl als Sprechblase markieren, Font wählen – der Text bricht um und wird auf die größte passende Größe skaliert.\nAus: feste Größe, in der Bild-/Auswahlmitte.",
         "hyphenate": "Lange Wörter trennen",
@@ -990,10 +1039,8 @@ LANG = {
         "st_already_open": "‚{name}‘ ist schon offen – zum Tab gewechselt.",
         "tab_untitled": "Unbenannt",
         "tab_rename_dlg": "Tab umbenennen",
-        "tab_rename_prompt": "Tab-Name:",
         "st_nothing": "Nichts geladen. Erst Skript einfügen und ‚Analysieren‘ klicken.",
         "st_no_font": "Keine Schrift gewählt.",
-        "preview_empty": "(leer)",
         # main tabs
         "tab_type": "Setzen",
         "tab_style": "Stil",
@@ -1021,6 +1068,8 @@ LANG = {
         "shaper_tall": "Hoch",
         "shaper_wide": "Breit",
         "shaper_hyph": "Silbentrennung",
+        "shaper_dehyph": "Ent-Trennen",
+        "shaper_dehyph_tip": "Vom Quelltext getrennte Wörter (z. B. \"embar- rassing\") vor dem Umbrechen wieder zusammenfügen",
         "shaper_hint": "Klick testet eine Form. Umschalt+Zahl fügt ein und geht weiter.",
         "shaper_break_label": "Umbrüche bearbeiten:",
         "shaper_break_tip": "Eine Zeile pro Zeile. Umbrüche (oder ein Wort) ändern; Vorschau folgt.",
@@ -1029,7 +1078,7 @@ LANG = {
         "shaper_live": "Live auf Leinwand",
         "shaper_live_tip": "Gewählte Form beim Auswählen direkt auf die Seite einfügen (ersetzend)",
         "shaper_best": "\u2605 Bester",
-        "shaper_best_tip": "Zur empfohlenen Anordnung springen (größte, die passt)",
+        "shaper_best_tip": "Zur empfohlenen Anordnung springen (am besten bewertete Form)",
         "shaper_match": "Größe angleichen",
         "shaper_match_tip": "Größe auf die zuletzt eingefügte Blase deckeln (einheitliche Seite)",
         "shaper_apply": "Einfügen",
@@ -1184,6 +1233,11 @@ LANG = {
         "enable_bubblr": "BubblR aktivieren (automatische Bubble-Erkennung)",
         "enable_shapr": "TextShapR aktivieren",
         "enable_sfx": "SFX-Tab aktivieren",
+        "enable_balloon": "Blasen-Werkzeuge aktivieren (Form + Blase einfügen)",
+        "enable_balloon_tip": "Zeigt das Panel „Sprechblase“ im Type-Tab: das "
+                              "Formen-Dropdown, den Schwanz-Haken und „Blase "
+                              "einfügen“. Standardmäßig aus — meist sind die "
+                              "Blasen auf der Seite ja schon gezeichnet.",
         "bp_hint": ("BubblR markiert nur die Bubbles. Den Text schreibst du "
                     "im Type-Tab — Insert füllt die aktuelle Bubble und geht "
                     "weiter; ◀/▶ dort machen eine Bubble neu."),
@@ -1680,6 +1734,60 @@ def _read_xlsx(path):
         return "\n".join(lines)
 
 
+def _read_xlsx_grid(path):
+    """Read an .xlsx as a list of rows, each a list of cell strings (missing
+    cells filled with ""). Unlike `_read_xlsx` (which flattens to text for the
+    script parser) this keeps the row/column layout, so a character/style
+    font-guide sheet can be turned into presets."""
+    with zipfile.ZipFile(path) as zf:
+        names = zf.namelist()
+        shared = []
+        if "xl/sharedStrings.xml" in names:
+            sroot = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for si in sroot:
+                if _local(si.tag) != "si":
+                    continue
+                parts = [t.text for t in si.iter()
+                         if _local(t.tag) == "t" and t.text]
+                shared.append("".join(parts))
+        sheets = sorted(n for n in names
+                        if n.startswith("xl/worksheets/") and n.endswith(".xml"))
+        if not sheets:
+            return []
+        wroot = ET.fromstring(zf.read(sheets[0]))
+        grid = []
+        for row in wroot.iter():
+            if _local(row.tag) != "row":
+                continue
+            cells, maxcol = {}, -1
+            for c in row:
+                if _local(c.tag) != "c":
+                    continue
+                col = _col_index(c.attrib.get("r", ""))
+                ctype = c.attrib.get("t", "")
+                val = ""
+                if ctype == "s":
+                    for ch in c:
+                        if _local(ch.tag) == "v" and ch.text is not None:
+                            try:
+                                val = shared[int(ch.text)]
+                            except (ValueError, IndexError):
+                                val = ""
+                            break
+                elif ctype == "inlineStr":
+                    val = "".join(t.text for t in c.iter()
+                                  if _local(t.tag) == "t" and t.text)
+                else:
+                    for ch in c:
+                        if _local(ch.tag) in ("v", "t") and ch.text is not None:
+                            val = ch.text
+                            break
+                cells[col] = "" if val is None else str(val)
+                maxcol = max(maxcol, col)
+            grid.append([cells.get(i, "") for i in range(maxcol + 1)])
+        return grid
+
+
 def read_script(path):
     """Read a script file and return it as plain text (newline separated).
 
@@ -1773,7 +1881,7 @@ def _hex(color):
 def _text_element(text_lines, line_pos, block_start, line_h, font_px, family,
                   fill_hex, stroke_hex=None, stroke_w=0.0,
                   bold=False, italic=False, underline=False, dx=0.0, dy=0.0,
-                  vertical=False):
+                  vertical=False, ligatures=True):
     """text_lines: list of run lists ([(subtext, bold), ...] per line).
 
     Horizontal: `line_pos` is the absolute LEFT x of each line and `block_start`
@@ -1823,6 +1931,11 @@ def _text_element(text_lines, line_pos, block_start, line_h, font_px, family,
         attrs += ' font-style="italic"'
     if underline:
         attrs += ' text-decoration="underline"'
+    if not ligatures:
+        # Manga lettering usually wants ligatures OFF: "fi"/"fl" fusing looks
+        # wrong in hand-lettered fonts. Krita's SVG text parses this
+        # (KoSvgText::parseFontFeatureLigatures) and "none" disables all.
+        attrs += ' font-variant-ligatures="none"'
     if stroke_hex is not None and stroke_w > 0:
         attrs += (
             ' stroke="{s}" stroke-width="{w:.2f}" '
@@ -1836,39 +1949,54 @@ def _build_svg(text_lines, line_pos, block_start, font_px, family, color, line_h
                outline=False, outline_color=None, outline_px=0.0,
                bold=False, italic=False, underline=False,
                shadow=False, shadow_color=None, shadow_dx=0.0, shadow_dy=0.0,
-               vertical=False):
-    """SVG with optional shadow, optional outline and style (bold/italic/
-    underline). Alignment is baked into `line_pos` (per-line absolute position
-    along the line axis) and the text uses the default 'start' anchor, so the
-    inserted shape keeps its position when edited with Krita's text tool.
+               vertical=False, ligatures=True,
+               outline2_color=None, outline2_px=0.0):
+    """SVG with optional shadow, optional (double) outline and style (bold/
+    italic/underline). Alignment is baked into `line_pos` (per-line absolute
+    position along the line axis) and the text uses the default 'start' anchor,
+    so the inserted shape keeps its position when edited with Krita's text tool.
     See _text_element for what line_pos/block_start mean per writing direction.
 
-    Bottom-to-top order: shadow (offset copy), outline (thick line), fill.
+    Bottom-to-top order: shadow, 2nd (outer) outline, outline, fill.
     Everything is drawn as extra text copies so it works independently of the
     renderer (no filter/paint-order needed).
     """
     fill_hex = _hex(color)
+    has_outline = bool(outline) and outline_color is not None and outline_px > 0
+    # the 2nd outline is part of the outline feature: turning the outline off
+    # turns it off too (it is not an independent effect).
+    has_outline2 = (bool(outline) and outline2_color is not None
+                    and outline2_px > 0)
     body = ""
     if shadow and shadow_color is not None and (shadow_dx or shadow_dy):
         sh = _hex(shadow_color)
-        # the shadow takes the outline width so it keeps the full silhouette
-        sw = 2.0 * outline_px if (outline and outline_px > 0) else 0.0
+        # the shadow takes the WIDEST outline so it keeps the full silhouette
+        sw = max(outline_px if has_outline else 0.0,
+                 outline2_px if has_outline2 else 0.0)
         body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
                               family, fill_hex=sh,
                               stroke_hex=(sh if sw > 0 else None), stroke_w=sw,
                               bold=bold, italic=italic, underline=underline,
-                              dx=shadow_dx, dy=shadow_dy, vertical=vertical)
-    if outline and outline_color is not None and outline_px > 0:
+                              dx=shadow_dx, dy=shadow_dy, vertical=vertical,
+                              ligatures=ligatures)
+    if has_outline2:                       # outer outline, under the inner one
+        o2 = _hex(outline2_color)
+        body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
+                              family, fill_hex=o2, stroke_hex=o2,
+                              stroke_w=outline2_px,
+                              bold=bold, italic=italic, underline=underline,
+                              vertical=vertical, ligatures=ligatures)
+    if has_outline:
         ol = _hex(outline_color)
         body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
                               family, fill_hex=ol, stroke_hex=ol,
-                              stroke_w=2.0 * outline_px,
+                              stroke_w=outline_px,
                               bold=bold, italic=italic, underline=underline,
-                              vertical=vertical)
+                              vertical=vertical, ligatures=ligatures)
     body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
                           family, fill_hex=fill_hex,
                           bold=bold, italic=italic, underline=underline,
-                          vertical=vertical)
+                          vertical=vertical, ligatures=ligatures)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" '
         'xmlns:xlink="http://www.w3.org/1999/xlink" '
@@ -2027,19 +2155,40 @@ def prepare_text(line, case, tidy, comic=False, crossbar_i=False):
 ALIGN_ANCHOR = {"left": "start", "center": "middle", "right": "end"}
 
 
-def _remove_existing_layers(doc, layer_index):
-    """Remove the top-level layers that TypeR inserted earlier for the 1-based
-    unit `layer_index` (matched by the exact 'TypeR NN — ' name prefix, so
-    hand-made layers are never touched). Returns the number removed; never
-    raises – a failed removal must not block the insert."""
+def _rects_overlap(a, b):
+    """True if two (x, y, w, h) rectangles share any area."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
+def _remove_existing_layers(doc, layer_index, box=None):
+    """Remove earlier TypeR layers for the 1-based unit `layer_index` (matched
+    by the exact 'TypeR NN — ' name prefix, so hand-made layers are never
+    touched). Returns the number removed; never raises – a failed removal must
+    not block the insert.
+
+    With `box` (x, y, w, h) given, only a prior insert that OVERLAPS that box is
+    dropped. That is what makes "Replace previously inserted line" behave when
+    one script line is split across two bubbles: re-inserting into the same
+    bubble replaces it, but placing the rest into a different bubble leaves the
+    first piece alone. A layer whose bounds can't be read is treated as
+    overlapping, so the old "replace all" behaviour is the safe fallback.
+    Without `box`, every layer of the unit is removed (unchanged behaviour)."""
     removed = 0
     try:
         root = doc.rootNode()
         for node in list(root.childNodes()):
             try:
-                if L.is_typer_layer_name(node.name(), layer_index):
-                    node.remove()
-                    removed += 1
+                if not L.is_typer_layer_name(node.name(), layer_index):
+                    continue
+                if box is not None:
+                    b = node.bounds()
+                    rect = (b.x(), b.y(), b.width(), b.height())
+                    if rect[2] > 0 and rect[3] > 0 and not _rects_overlap(rect, box):
+                        continue
+                node.remove()
+                removed += 1
             except Exception:
                 pass
     except Exception:
@@ -2055,7 +2204,8 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       shadow=False, shadow_color=None, shadow_dx=0.0,
                       shadow_dy=0.0, valign="middle", layer_index=None,
                       hyphenate=False, hyph_lang="en", replace_existing=False,
-                      box=None, comic=False, crossbar_i=False, vertical=False):
+                      box=None, comic=False, crossbar_i=False, vertical=False,
+                      ligatures=True, outline2_color=None, outline2_px=0.0):
     """Insert a single line of text as a text layer.
 
     auto_fit=True: the line is wrapped automatically, balanced and scaled to the
@@ -2159,8 +2309,20 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
         pad_x = box_w * padding_frac / 2.0
         line_pos = L.line_x_positions(
             line_widths, align, box_x + pad_x, cx, box_x + box_w - pad_x)
+        # optical vertical centring: use the cap height (not the em ascent, which
+        # carries empty ascender space) so all-caps lettering sits on the centre
+        cap = None
+        try:
+            _capf = QFont(font_family)
+            _capf.setPixelSize(int(font_px))
+            _capf.setBold(bold)
+            _capf.setItalic(italic)
+            cap = QFontMetricsF(_capf).capHeight()
+        except Exception:                       # noqa: BLE001
+            cap = None
         block_start = L.vertical_start(valign, box_y, box_h, padding_frac,
-                                       len(text_lines), line_h, ascent, descent)
+                                       len(text_lines), line_h, ascent, descent,
+                                       cap=cap)
     svg = _build_svg(text_lines, line_pos, block_start, font_px, font_family,
                      color, line_h,
                      img_w, img_h, outline=outline, outline_color=outline_color,
@@ -2168,12 +2330,14 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                      bold=bold, italic=italic, underline=underline,
                      shadow=shadow, shadow_color=shadow_color,
                      shadow_dx=shadow_dx, shadow_dy=shadow_dy,
-                     vertical=vertical)
+                     vertical=vertical, ligatures=ligatures,
+                     outline2_color=outline2_color, outline2_px=outline2_px)
 
     # replace mode: drop the layer(s) of an earlier insert of this unit first
     replaced = 0
     if replace_existing and layer_index is not None:
-        replaced = _remove_existing_layers(doc, int(layer_index))
+        replaced = _remove_existing_layers(doc, int(layer_index),
+                                           (box_x, box_y, box_w, box_h))
 
     try:
         root = doc.rootNode()
@@ -2535,19 +2699,41 @@ class FontPicker(QWidget):
         return self._current
 
     def setCurrentFamily(self, family):
-        """Select a font programmatically (for presets). Make it visible if a
-        filter is active."""
-        if not family or family not in self._all:
+        """Select a font programmatically (for presets). Matches
+        case-insensitively (so a preset's 'Anime ace 2' still finds the installed
+        'Anime Ace 2'); if the font is genuinely not installed, the NAME is
+        adopted anyway so the preset's font is honoured instead of silently
+        keeping the previous one (Krita substitutes a fallback but keeps the
+        name, so it renders correctly once the font is installed)."""
+        if not family:
             return
+        family = family.strip()
+        target = family
+        if family not in self._all:
+            low = family.lower()
+            match = next((f for f in self._all if f.lower() == low), None)
+            if match:
+                target = match
+        # clear any active filter so the row is reachable
         self.search.blockSignals(True)
         self.search.setText("")
         self.search.blockSignals(False)
         self._apply_filter("")
         for i in range(self.list.count()):
-            if self.list.item(i).data(Qt.UserRole) == family:
+            if self.list.item(i).data(Qt.UserRole) == target:
                 self.list.setCurrentRow(i)
                 self.list.scrollToItem(self.list.item(i))
-                break
+                return
+        # not installed: adopt the name so inserts use the preset's font
+        self._current = family
+        self.preview.setText(family + "  –  (?)")
+        f = QFont(family)
+        f.setPixelSize(20)
+        self.preview.setFont(f)
+        self.list.blockSignals(True)
+        self.list.setCurrentRow(-1)
+        self.list.blockSignals(False)
+        self.familyChanged.emit(family)
 
     def setRecents(self, recents):
         self._recents = [r for r in recents if r in self._all]
@@ -2664,6 +2850,8 @@ class TextPreview(QWidget):
             "outline": d.outline_chk.isChecked(),
             "outline_color": QColor(d._outline_color),
             "outline_px": float(d.outline_spin.value()),
+            "outline2_color": QColor(d._outline2_color),
+            "outline2_px": float(d.outline2_spin.value()),
             "shadow": d.shadow_chk.isChecked(),
             "shadow_color": QColor(d._shadow_color),
             "shadow_dx": float(d.shadow_x_spin.value()),
@@ -2719,7 +2907,8 @@ class TextPreview(QWidget):
     def _wrap_words(self, paras, fmn, fmb, gbold, space_w, avail_w, hyph=None):
         """Greedily wrap words (with bold runs) to width, per paragraph. With
         `hyph` (a language code) an over-wide word is split at a syllable break,
-        so the preview matches the inserted result."""
+        so the preview matches the inserted result — including the same
+        typographic limits as L.wrap_greedy (hyphen ladder, splits per word)."""
         lines = []
         for words in paras:
             if not words:
@@ -2728,39 +2917,68 @@ class TextPreview(QWidget):
             cur, cur_w = [], 0.0
             queue = list(words)
             guard = 0
+            ladder = 0                # lines in a row ending with a hyphen
+            splits = 0                # splits of the word in hand
+            pending = None            # its tail, to keep the split count
+
+            def may_split():
+                return (bool(hyph)
+                        and ladder < L.HYPH_MAX_LADDER
+                        and splits < L.HYPH_MAX_WORD_SPLITS)
+
             while queue and guard < 100000:
                 guard += 1
                 wd = queue.pop(0)
+                if wd is not pending:
+                    splits = 0
+                pending = None
                 ww = self._word_w(wd, fmn, fmb, gbold)
                 if not cur:
                     if ww <= avail_w:
                         cur, cur_w = [wd], ww
+                        ladder = 0
                     else:
                         res = (self._hyph_split(wd, avail_w, fmn, fmb, gbold, hyph)
-                               if hyph else None)
+                               if may_split() else None)
                         if res:
                             left, right = res
                             lines.append([left])
                             queue.insert(0, right)
                             cur, cur_w = [], 0.0
+                            ladder += 1
+                            splits += 1
+                            pending = right
                         else:
                             cur, cur_w = [wd], ww
+                            ladder = 0
                 elif cur_w + space_w + ww <= avail_w:
                     cur.append(wd)
                     cur_w += space_w + ww
                 else:
                     avail = avail_w - cur_w - space_w
                     res = (self._hyph_split(wd, avail, fmn, fmb, gbold, hyph)
-                           if hyph else None)
+                           if may_split() else None)
                     if res:
                         left, right = res
                         cur.append(left)
                         lines.append(cur)
                         queue.insert(0, right)
                         cur, cur_w = [], 0.0
+                        ladder += 1
+                        splits += 1
+                        pending = right
+                    elif ww > avail_w and may_split():
+                        # too wide for the rest AND for a whole line: close this
+                        # line and retry the word against the full width
+                        lines.append(cur)
+                        cur, cur_w = [], 0.0
+                        ladder = 0
+                        queue.insert(0, wd)
+                        pending = wd
                     else:
                         lines.append(cur)
                         cur, cur_w = [wd], ww
+                        ladder = 0
             if cur:
                 lines.append(cur)
         return lines
@@ -2935,9 +3153,15 @@ class TextPreview(QWidget):
             sp = QPainterPath(path)
             sp.translate(o["shadow_dx"] * scale, o["shadow_dy"] * scale)
             p.fillPath(sp, QBrush(o["shadow_color"]))
+        if o["outline"] and o.get("outline2_px", 0) > 0:   # outer, drawn first
+            pen2 = QPen(o["outline2_color"])
+            pen2.setWidthF(max(0.5, o["outline2_px"] * scale))
+            pen2.setJoinStyle(Qt.RoundJoin)
+            pen2.setCapStyle(Qt.RoundCap)
+            p.strokePath(path, pen2)
         if o["outline"] and o["outline_px"] > 0:
             pen = QPen(o["outline_color"])
-            pen.setWidthF(max(0.5, 2.0 * o["outline_px"] * scale))
+            pen.setWidthF(max(0.5, o["outline_px"] * scale))
             pen.setJoinStyle(Qt.RoundJoin)
             pen.setCapStyle(Qt.RoundCap)
             p.strokePath(path, pen)
@@ -2969,6 +3193,12 @@ def _paint_checker(p, w, h):
 # TextShapR: visual picker for text-shape arrangements
 # ---------------------------------------------------------------------------
 
+# Auto-fit floor for the TextShapR candidate search: the smallest size a shape
+# may shrink to before it is rejected. Not the docker's target size (size_spin),
+# which is the *maximum*; there is no separate minimum-size setting to route to.
+SHAPER_MIN_PX = 6
+
+
 class ShapeCard(QFrame):
     """One numbered thumbnail in the TextShapR grid: a fixed arrangement of the
     text (run lists per line) painted with the docker's current font/color/
@@ -2977,7 +3207,8 @@ class ShapeCard(QFrame):
     clicked = pyqtSignal(int)
     W, H = 200, 120
 
-    def __init__(self, index, cand, opts, scale, best=False, w=None, h=None):
+    def __init__(self, index, cand, opts, scale, best=False, w=None, h=None,
+                 custom=False):
         super().__init__()
         self._index = index
         self._cand = cand
@@ -2985,6 +3216,7 @@ class ShapeCard(QFrame):
         self._scale = scale
         self._selected = False
         self._best = best
+        self._custom = custom
         self.setFixedSize(int(w or self.W), int(h or self.H))
         self.setCursor(Qt.PointingHandCursor)
 
@@ -2996,6 +3228,12 @@ class ShapeCard(QFrame):
     def set_selected(self, on):
         if self._selected != bool(on):
             self._selected = bool(on)
+            self.update()
+
+    def set_custom(self, on):
+        """Mark this card as a hand-edited arrangement (✎ instead of ★)."""
+        if self._custom != bool(on):
+            self._custom = bool(on)
             self.update()
 
     def mousePressEvent(self, event):
@@ -3031,14 +3269,12 @@ class ShapeCard(QFrame):
         y0 = (h - block_h) / 2.0 + fmn.ascent()
         path = QPainterPath()
         underline_th = max(1.0, fpx * 0.06)
+        # place each line with the SAME helper the insert path uses, so the
+        # thumbnail's alignment matches the layer that Apply will produce.
+        xs = L.line_x_positions([run_w(r) for r in lines],
+                                o["align"], 6.0, w / 2.0, w - 6.0)
         for i, runs in enumerate(lines):
-            lw = run_w(runs)
-            if o["align"] == "left":
-                x = 6.0
-            elif o["align"] == "right":
-                x = w - 6.0 - lw
-            else:
-                x = (w - lw) / 2.0
+            x = xs[i]
             baseline = y0 + i * line_h
             x_start = x
             for (txt, b) in runs:
@@ -3050,14 +3286,21 @@ class ShapeCard(QFrame):
                 path.addRect(x_start, baseline + max(1.0, fpx * 0.12),
                              x - x_start, underline_th)
 
-        # same bottom-to-top order as the inserted layer: shadow, outline, fill
+        # same bottom-to-top order as the inserted layer: shadow, 2nd outline,
+        # outline, fill
         if o["shadow"]:
             sp = QPainterPath(path)
             sp.translate(o["shadow_dx"] * s, o["shadow_dy"] * s)
             p.fillPath(sp, QBrush(o["shadow_color"]))
+        if o["outline"] and o.get("outline2_px", 0) > 0:   # outer, drawn first
+            pen2 = QPen(o["outline2_color"])
+            pen2.setWidthF(max(0.5, o["outline2_px"] * s))
+            pen2.setJoinStyle(Qt.RoundJoin)
+            pen2.setCapStyle(Qt.RoundCap)
+            p.strokePath(path, pen2)
         if o["outline"] and o["outline_px"] > 0:
             pen = QPen(o["outline_color"])
-            pen.setWidthF(max(0.5, 2.0 * o["outline_px"] * s))
+            pen.setWidthF(max(0.5, o["outline_px"] * s))
             pen.setJoinStyle(Qt.RoundJoin)
             pen.setCapStyle(Qt.RoundCap)
             p.strokePath(path, pen)
@@ -3070,7 +3313,11 @@ class ShapeCard(QFrame):
         p.setFont(bf)
         p.drawText(self.rect().adjusted(0, 3, -6, 0),
                    Qt.AlignRight | Qt.AlignTop, str(self._index + 1))
-        if self._best:
+        if self._custom:                     # hand-edited arrangement
+            p.setPen(QColor(0x2D, 0x8C, 0xEB))
+            p.drawText(self.rect().adjusted(6, 3, 0, 0),
+                       Qt.AlignLeft | Qt.AlignTop, "\u270e")
+        elif self._best:
             p.setPen(QColor(0x2E, 0x8B, 0x57))
             p.drawText(self.rect().adjusted(6, 3, 0, 0),
                        Qt.AlignLeft | Qt.AlignTop, "\u2605")
@@ -3138,6 +3385,13 @@ class TextShapRWidget(QWidget):
         self.hyph_btn.setChecked(docker.hyph_chk.isChecked())
         self.hyph_btn.toggled.connect(lambda *_a: self.refresh())
         bar.addWidget(self.hyph_btn)
+        # de-hyphenation: rejoin words the source split across a line before
+        # reshaping (the inverse of hyphenation; off by default).
+        self.dehyph_btn = QPushButton(t("shaper_dehyph"))
+        self.dehyph_btn.setCheckable(True)
+        self.dehyph_btn.setToolTip(t("shaper_dehyph_tip"))
+        self.dehyph_btn.toggled.connect(lambda *_a: self.refresh())
+        bar.addWidget(self.dehyph_btn)
         lay.addLayout(bar)
 
         self._empty = QLabel(t("shaper_empty"))
@@ -3202,6 +3456,11 @@ class TextShapRWidget(QWidget):
         self._cards = []
         self._cands = []
         self._sel = -1
+        # What the cards were built from, so a re-fit (size/style/mode change)
+        # can put the selection back instead of jumping to card 1.
+        self._text_key = None
+        self._custom = None            # hand-edited arrangement (markup lines)
+        self._custom_index = 0         # the slot it was edited in
         self._last_box = (1.0, 1.0)
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
@@ -3274,6 +3533,8 @@ class TextShapRWidget(QWidget):
             "outline": d.outline_chk.isChecked(),
             "outline_color": QColor(d._outline_color),
             "outline_px": float(d.outline_spin.value()),
+            "outline2_color": QColor(d._outline2_color),
+            "outline2_px": float(d.outline2_spin.value()),
             "shadow": d.shadow_chk.isChecked(),
             "shadow_color": QColor(d._shadow_color),
             "shadow_dx": float(d.shadow_x_spin.value()),
@@ -3306,12 +3567,29 @@ class TextShapRWidget(QWidget):
         for card in self._cards:
             card.set_size(cw, ch, scale)
 
+    @staticmethod
+    def _cand_key(cand):
+        """Identity of an arrangement: its lines as markup. Only 'px' changes
+        when the same arrangement is re-fitted at another size, so this key
+        survives a size/style change and can restore the selection."""
+        try:
+            return tuple(L.runs_markup(r) for r in (cand.get("lines") or []))
+        except Exception:
+            return ()
+
     def refresh(self):
         """Regenerate the candidates for the current line and rebuild the
-        cards. Never raises; with no font/text it shows a hint instead."""
+        cards. Never raises; with no font/text it shows a hint instead.
+
+        As long as the text stays the same, the chosen card stays chosen: the
+        arrangement is looked up again after the re-fit (and a hand-edited one
+        is re-fitted and kept). Only new text starts over at the best card."""
         if not hasattr(self._docker, "font_picker"):
             return
         d = self._docker
+        prev_key = self._cand_key(self._cands[self._sel]) \
+            if 0 <= self._sel < len(self._cands) else None
+        prev_index = self._sel
         for card in self._cards:
             self._flow.removeWidget(card)
             card.setParent(None)
@@ -3329,6 +3607,12 @@ class TextShapRWidget(QWidget):
         prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
         clean, mask = parse_bold(prepared)
         box_w, box_h, has_doc, sel_shape = self._box()
+        same_text = (self._text_key == clean)
+        self._text_key = clean
+        if not same_text:                  # a new line starts over
+            prev_key = None
+            prev_index = -1
+            self._custom = None
 
         if family and clean.strip():
             measurer = _make_measurer(family,
@@ -3345,11 +3629,16 @@ class TextShapRWidget(QWidget):
             try:
                 self._cands = L.shape_candidates(
                     clean, measurer, box_w, box_h,
-                    max_px, 6, d.pad_spin.value() / 100.0,
+                    max_px, SHAPER_MIN_PX, d.pad_spin.value() / 100.0,
                     mode=mode, hyphenate=self.hyph_btn.isChecked(),
-                    lang=d._hyph_lang_for(clean), mask=mask, limit=10)
+                    lang=d._hyph_lang_for(clean), mask=mask, limit=10,
+                    dehyphenate=self.dehyph_btn.isChecked())
             except Exception:
                 self._cands = []
+            # a hand-edited arrangement survives the re-fit as its own card
+            if self._custom:
+                self._readd_custom(measurer, box_w, box_h,
+                                   d.pad_spin.value() / 100.0, max_px)
 
         have = bool(self._cands)
         self._empty.setVisible(not have)
@@ -3367,11 +3656,57 @@ class TextShapRWidget(QWidget):
         # one shared scale so the size differences between shapes stay visible
         scale = min((cw - 12) / box_w, (ch - 12) / box_h)
         for i, cand in enumerate(self._cands):
-            card = ShapeCard(i, cand, o, scale, best=(i == 0), w=cw, h=ch)
+            custom = bool(cand.get("custom"))
+            card = ShapeCard(i, cand, o, scale, best=(i == 0 and not custom),
+                             w=cw, h=ch, custom=custom)
             card.clicked.connect(lambda i: self._select(i, user=True))
             self._flow.addWidget(card)
             self._cards.append(card)
-        self._select(0)
+        self._select(self._restore_index(prev_key, prev_index))
+
+    def _readd_custom(self, measurer, box_w, box_h, pad_frac, max_px):
+        """Re-fit the hand-edited arrangement to the current style/box and put
+        it back into the candidate list (at the slot it was picked from), so
+        changing the size does not throw the manual line breaks away."""
+        word_lines = []
+        for ln in self._custom:
+            c, m = parse_bold(ln)
+            ws = L.make_words(c, list(m))
+            if ws:
+                word_lines.append(ws)
+        if not word_lines:
+            return
+        try:
+            res = L.fit_fixed_lines(word_lines, measurer,
+                                    box_w * (1.0 - pad_frac),
+                                    box_h * (1.0 - pad_frac), max_px, 6)
+        except Exception:
+            res = None
+        if not res:
+            self._custom = None
+            return
+        px, wl = res
+        runs = [L.line_runs(ws) for ws in wl]
+        cand = {"px": px, "k": len(runs), "lines": runs,
+                "words": [list(ws) for ws in wl], "custom": True}
+        key = self._cand_key(cand)
+        if any(self._cand_key(c) == key for c in self._cands):
+            return                       # the edit matches a generated shape
+        i = self._custom_index
+        if not 0 <= i <= len(self._cands):
+            i = len(self._cands)
+        self._cands.insert(i, cand)      # back into the slot it was edited in
+
+    def _restore_index(self, key, index):
+        """Card to select after a rebuild: the same arrangement if it is still
+        there, else the same slot, else the recommended first card."""
+        if key:
+            for i, cand in enumerate(self._cands):
+                if self._cand_key(cand) == key:
+                    return i
+        if 0 <= index < len(self._cands):
+            return index
+        return 0
 
     # -- interaction --
 
@@ -3441,7 +3776,12 @@ class TextShapRWidget(QWidget):
         cand = self._cands[self._sel]
         cand["lines"] = runs
         cand["k"] = len(runs)
+        cand["custom"] = True
         cand.pop("words", None)
+        # remember the edit so a later re-fit (size, style, mode) keeps it
+        self._custom = tuple(L.runs_markup(r) for r in runs)
+        self._custom_index = self._sel
+        self._cards[self._sel].set_custom(True)
         self._cards[self._sel].update()
         self._break_timer.start()
 
@@ -3988,11 +4328,15 @@ class TyperDocker(DockWidget):
         self._done = set()
         self._color = QColor(0, 0, 0)
         self._outline_color = QColor(255, 255, 255)
+        self._outline2_color = QColor(0, 0, 0)   # 2nd (outer) outline colour
         self._shadow_color = QColor(0, 0, 0)
         self._lang = self._load_lang()
         self._groups = self._load_groups()
-        self._group = ""
-        self._char = ""
+        # Reopen on the manga (and character) worked on last time; _ensure_levels
+        # falls back to the first one if it was since renamed or deleted.
+        _last = self._load_last_manga()
+        self._group = _last.get("group", "")
+        self._char = _last.get("char", "")
         self._script_path = ""             # file name of the active script
         # The active script's comments. Must exist from the start: the docker
         # opens an empty "Untitled" session before anything is ever loaded, and
@@ -4287,6 +4631,12 @@ class TyperDocker(DockWidget):
             app.readSetting("typer_kr", "enableSfx", "true") == "true")
         self.enable_sfx_chk.toggled.connect(self._on_enable_sfx)
         exp_lay.addWidget(self.enable_sfx_chk)
+        # balloon tools are off by default: most pages come with their balloons
+        self.enable_balloon_chk = QCheckBox()
+        self.enable_balloon_chk.setChecked(
+            app.readSetting("typer_kr", "enableBalloon", "false") == "true")
+        self.enable_balloon_chk.toggled.connect(self._on_enable_balloon)
+        exp_lay.addWidget(self.enable_balloon_chk)
 
         exp_lay.addWidget(self._hline())
         self.customize_chk = QCheckBox()
@@ -4358,7 +4708,10 @@ class TyperDocker(DockWidget):
         lay_presets.addWidget(self.auto_manga_chk)
         preset_row = QHBoxLayout()
         self.preset_combo = NoScrollComboBox()
-        self.preset_combo.currentIndexChanged.connect(self._on_preset_selected)
+        # `activated` (not currentIndexChanged) so re-picking the SAME preset
+        # re-applies it: after tweaking the font/size you can click the preset
+        # again to get its values back, without hopping to another one and back.
+        self.preset_combo.activated.connect(self._on_preset_selected)
         preset_row.addWidget(self.preset_combo, 1)
         # the rarely-used preset actions live in one compact "⋯" menu instead
         # of two full button rows
@@ -4373,6 +4726,8 @@ class TyperDocker(DockWidget):
         preset_menu.addSeparator()
         self.preset_import_act = preset_menu.addAction("")
         self.preset_import_act.triggered.connect(self.on_preset_import)
+        self.preset_import_excel_act = preset_menu.addAction("")
+        self.preset_import_excel_act.triggered.connect(self.on_preset_import_excel)
         self.preset_export_act = preset_menu.addAction("")
         self.preset_export_act.triggered.connect(self.on_preset_export)
         self.preset_menu_btn.setMenu(preset_menu)
@@ -4405,10 +4760,15 @@ class TyperDocker(DockWidget):
         self.script_tabs.currentChanged.connect(self._on_tab_changed)
         self.script_tabs.tabCloseRequested.connect(self._close_tab)
         self.script_tabs.tabBarDoubleClicked.connect(self._rename_tab)
+        # remember the tab ORDER when the user drags tabs around
+        self.script_tabs.tabMoved.connect(
+            lambda *_a: self._schedule_session_save())
         _slay.addWidget(self.script_tabs)
         self.editor = QPlainTextEdit()
         self.editor.setMinimumHeight(170)
         self.editor.setMaximumHeight(320)
+        # remember edits to the script text too (debounced)
+        self.editor.textChanged.connect(self._schedule_session_save)
         _slay.addWidget(self.editor)
 
         opt_row = QHBoxLayout()
@@ -4420,6 +4780,16 @@ class TyperDocker(DockWidget):
         self.analyze_btn.clicked.connect(self.analyze)
         opt_row.addWidget(self.analyze_btn)
         _slay.addLayout(opt_row)
+
+        # Add a line to the script and write the script back to its file.
+        edit_row = QHBoxLayout()
+        self.add_line_btn = QPushButton()
+        self.add_line_btn.clicked.connect(self.on_add_line)
+        edit_row.addWidget(self.add_line_btn)
+        self.save_script_btn = QPushButton()
+        self.save_script_btn.clicked.connect(self.on_save_script)
+        edit_row.addWidget(self.save_script_btn)
+        _slay.addLayout(edit_row)
         lay_type.addWidget(_script_pb)
 
         lay_type.addWidget(self._hline())
@@ -4621,9 +4991,15 @@ class TyperDocker(DockWidget):
         self.bold_chk = QCheckBox()
         self.italic_chk = QCheckBox()
         self.underline_chk = QCheckBox()
+        # Ligatures on/off (like sakushi's TypeR). Default ON = unchanged
+        # behaviour; a letterer usually turns it OFF so "fi"/"fl" don't fuse in
+        # hand-lettered fonts. Persisted with the other style toggles.
+        self.liga_chk = QCheckBox()
+        self.liga_chk.setChecked(True)
         style_row.addWidget(self.bold_chk)
         style_row.addWidget(self.italic_chk)
         style_row.addWidget(self.underline_chk)
+        style_row.addWidget(self.liga_chk)
         style_row.addStretch(1)
         _sbl.addLayout(style_row)
 
@@ -4694,7 +5070,10 @@ class TyperDocker(DockWidget):
         self.lbl_spacing = QLabel()
         grid.addWidget(self.lbl_spacing, 2, 0)
         self.spacing_spin = NoScrollSpinBox()
-        self.spacing_spin.setRange(80, 250)
+        # Line spacing as a percentage of the font's line height. Unclamped on
+        # purpose: 0 collapses the lines onto one baseline, and values well past
+        # 100 spread them as far apart as wanted.
+        self.spacing_spin.setRange(0, 1000)
         self.spacing_spin.setValue(105)
         grid.addWidget(self.spacing_spin, 2, 1)
         _ssl.addLayout(grid)
@@ -4727,6 +5106,19 @@ class TyperDocker(DockWidget):
         self.outline_spin.setValue(4)
         out_opts.addWidget(self.outline_spin)
         out_dlg_lay.addLayout(out_opts)
+        # second (outer) outline for a double rim (width 0 = off), e.g. white
+        # outer + black inner + white text.
+        out2_opts = QHBoxLayout()
+        self.outline2_color_btn = QPushButton()
+        self.outline2_color_btn.clicked.connect(self.on_pick_outline2_color)
+        out2_opts.addWidget(self.outline2_color_btn)
+        self.lbl_outline2_width = QLabel()
+        out2_opts.addWidget(self.lbl_outline2_width)
+        self.outline2_spin = NoScrollSpinBox()
+        self.outline2_spin.setRange(0, 200)
+        self.outline2_spin.setValue(0)
+        out2_opts.addWidget(self.outline2_spin)
+        out_dlg_lay.addLayout(out2_opts)
         self.outline_close_btn = QPushButton()
         self.outline_close_btn.clicked.connect(self.outline_dlg.accept)
         out_dlg_lay.addWidget(self.outline_close_btn)
@@ -4743,6 +5135,7 @@ class TyperDocker(DockWidget):
         _out_pb.body_layout().addLayout(out_row)
         lay_style.addWidget(_out_pb)
         self._update_outline_btn()
+        self._update_outline2_btn()
 
         # --- shadow panel: checkbox on the tab, color + offset in a popup ---
         self.shadow_dlg = QDialog(main)
@@ -4811,10 +5204,15 @@ class TyperDocker(DockWidget):
 
         # TextShapR reads the style from these controls, so a change to any of
         # them has to re-fit the arrangements (and the live preview) right away
-        # — otherwise the cards keep showing the previous size/font.
-        for _w in (self.size_spin, self.pad_spin, self.spacing_spin):
+        # — otherwise the cards keep showing the previous size/font/effects.
+        # Outline and shadow (enable + size) are included so the cards repaint
+        # with the effect as soon as it is switched on or resized.
+        for _w in (self.size_spin, self.pad_spin, self.spacing_spin,
+                   self.outline_spin, self.outline2_spin,
+                   self.shadow_x_spin, self.shadow_y_spin):
             _w.valueChanged.connect(self._on_style_changed)
-        for _w in (self.bold_chk, self.italic_chk, self.vertical_chk):
+        for _w in (self.bold_chk, self.italic_chk, self.vertical_chk,
+                   self.liga_chk, self.outline_chk, self.shadow_chk):
             _w.toggled.connect(self._on_style_changed)
         for _w in (self.align_combo, self.valign_combo):
             _w.currentIndexChanged.connect(self._on_style_changed)
@@ -4887,6 +5285,7 @@ class TyperDocker(DockWidget):
         self._on_enable_bubblr(self.enable_bubblr_chk.isChecked(), save=False)
         self._on_enable_shapr(self.enable_shapr_chk.isChecked(), save=False)
         self._on_enable_sfx(self.enable_sfx_chk.isChecked(), save=False)
+        self._on_enable_balloon(self.enable_balloon_chk.isChecked(), save=False)
         self._apply_tab_order(self._load_tab_order())
         self._retranslate_tabs()
         self.main_tabs.tabBar().setMovable(self.customize_chk.isChecked())
@@ -5054,6 +5453,7 @@ class TyperDocker(DockWidget):
         self._refresh_chars_combo()
         self._refresh_presets_combo()
         self._apply_default_preset()      # default style for the new character
+        self._save_last_manga()
         self._set_status(self._tr("st_auto_manga").format(name=match))
 
     def _maybe_auto_character(self, text):
@@ -5168,6 +5568,8 @@ class TyperDocker(DockWidget):
         self.editor.setPlaceholderText(t("editor_ph"))
         self.skip_empty.setText(t("skip_empty"))
         self.analyze_btn.setText(t("analyze_btn"))
+        self.add_line_btn.setText(t("add_line_btn"))
+        self.save_script_btn.setText(t("save_script_btn"))
         self.lbl_align.setText(t("align_label"))
         self.table.setHorizontalHeaderLabels([t("col_source"), t("col_translation")])
         self.prev_btn.setText(t("prev"))
@@ -5209,6 +5611,8 @@ class TyperDocker(DockWidget):
         self.bold_chk.setText(t("bold"))
         self.italic_chk.setText(t("italic"))
         self.underline_chk.setText(t("underline"))
+        self.liga_chk.setText(t("ligatures"))
+        self.liga_chk.setToolTip(t("ligatures_tip"))
         self.lbl_alignment.setText(t("align"))
         self.align_combo.setItemText(0, t("align_left"))
         self.align_combo.setItemText(1, t("align_center"))
@@ -5252,6 +5656,7 @@ class TyperDocker(DockWidget):
         self.preset_save_act.setText(t("preset_save"))
         self.preset_del_act.setText(t("preset_del"))
         self.preset_import_act.setText(t("preset_import"))
+        self.preset_import_excel_act.setText(t("preset_import_excel"))
         self.preset_export_act.setText(t("preset_export"))
         # relabel the first combo entry (no preset)
         if self.preset_combo.count() > 0:
@@ -5269,6 +5674,8 @@ class TyperDocker(DockWidget):
         self.outline_chk.setToolTip(t("outline_tip"))
         self.outline_color_btn.setText(t("outline_color_btn"))
         self.lbl_outline_width.setText(t("outline_width"))
+        self.outline2_color_btn.setText(t("outline2_color_btn"))
+        self.lbl_outline2_width.setText(t("outline2_width"))
         self.outline_more_btn.setText(t("outline_more"))
         self.outline_dlg.setWindowTitle(t("outline"))
         self.outline_close_btn.setText(t("close"))
@@ -5294,6 +5701,8 @@ class TyperDocker(DockWidget):
         self.enable_bubblr_chk.setText(t("enable_bubblr"))
         self.enable_shapr_chk.setText(t("enable_shapr"))
         self.enable_sfx_chk.setText(t("enable_sfx"))
+        self.enable_balloon_chk.setText(t("enable_balloon"))
+        self.enable_balloon_chk.setToolTip(t("enable_balloon_tip"))
         self.customize_chk.setText(t("customize_layout"))
         self.customize_hint.setText(t("customize_hint"))
         self.layout_reset_btn.setText(t("layout_reset"))
@@ -5372,10 +5781,21 @@ class TyperDocker(DockWidget):
         )
         self._update_text_preview()
 
+    def _update_outline2_btn(self):
+        self.outline2_color_btn.setStyleSheet(
+            "QPushButton {{ background-color: {}; }}".format(
+                self._outline2_color.name())
+        )
+        self._update_text_preview()
+
     def _on_outline_toggle(self):
         on = self.outline_chk.isChecked()
         self.outline_color_btn.setEnabled(on)
         self.outline_spin.setEnabled(on)
+        # the 2nd outline is coupled to the outline switch
+        if hasattr(self, "outline2_spin"):
+            self.outline2_color_btn.setEnabled(on)
+            self.outline2_spin.setEnabled(on)
         if hasattr(self, "outline_more_btn"):
             self.outline_more_btn.setEnabled(on)
 
@@ -5395,11 +5815,22 @@ class TyperDocker(DockWidget):
             self.shadow_more_btn.setEnabled(on)
 
     def on_pick_shadow_color(self):
-        col = QColorDialog.getColor(self._shadow_color, self.widget(),
-                                    self._tr("shadow_color_btn"))
-        if col.isValid():
-            self._shadow_color = col
-            self._update_shadow_btn()
+        # Live shadow-colour picking (see on_pick_color): applies while dragging.
+        prev = QColor(self._shadow_color)
+
+        def _apply(col):
+            if col.isValid():
+                self._shadow_color = QColor(col)
+                self._update_shadow_btn()
+                self._on_style_changed()
+
+        dlg = QColorDialog(self._shadow_color, self.widget())
+        dlg.setWindowTitle(self._tr("shadow_color_btn"))
+        dlg.currentColorChanged.connect(_apply)
+        if dlg.exec_():
+            _apply(dlg.selectedColor())
+        else:
+            _apply(prev)                  # cancelled -> restore the old colour
 
     def _set_status(self, msg, error=False):
         self.status.setStyleSheet("color: #c0392b;" if error else "color: gray;")
@@ -5587,6 +6018,7 @@ class TyperDocker(DockWidget):
         target = max(0, min(target, maxpos))
         lay.insertWidget(target, box)
         box.show()
+        self._sync_gated_panels()
         self._save_panel_order()
 
     def _save_panel_order(self):
@@ -5678,6 +6110,7 @@ class TyperDocker(DockWidget):
                         break
                 if not swapped:
                     break
+        self._sync_gated_panels()
 
     def _move_panel_to_tab(self, pid, tab_id, save=True):
         box = self._panels.get(pid)
@@ -5693,6 +6126,7 @@ class TyperDocker(DockWidget):
             pos -= 1
         lay.insertWidget(pos, box)
         box.show()
+        self._sync_gated_panels()
         self._panel_tab[pid] = tab_id
         if save:
             self._save_panel_tabs()
@@ -5725,6 +6159,7 @@ class TyperDocker(DockWidget):
         else:
             lay.insertWidget(ti + (1 if after else 0), box)
         box.show()
+        self._sync_gated_panels()
         self._panel_tab[dragged] = tab_id
         self._save_panel_tabs()
         self._save_panel_order()
@@ -5886,6 +6321,7 @@ class TyperDocker(DockWidget):
             self._detached[pid] = "float"
             dlg.show()
         box.show()
+        self._sync_gated_panels()
         box.set_edit(True)   # keep the header (⋮ Reattach) reachable
         self._save_detached()
 
@@ -5933,6 +6369,8 @@ class TyperDocker(DockWidget):
         the pre-registered host dockers are already constructed."""
         saved = self._load_detached()
         for pid, slot in saved.items():
+            if pid == "balloon" and not self.enable_balloon_chk.isChecked():
+                continue          # switched off: no empty window for it
             if pid in self._panels and pid not in self._detached:
                 self._detach_panel(
                     pid, prefer=slot if isinstance(slot, int) else "float")
@@ -6022,6 +6460,26 @@ class TyperDocker(DockWidget):
         if save:
             Krita.instance().writeSetting(
                 "typer_kr", "enableSfx", "true" if on else "false")
+
+    def _sync_gated_panels(self):
+        """Re-apply the switches that hide a whole panel. Every layout move
+        ends in box.show(), so this has to run after those, too."""
+        chk = getattr(self, "enable_balloon_chk", None)
+        box = getattr(self, "_panels", {}).get("balloon")
+        if chk is not None and box is not None:
+            box.setVisible(chk.isChecked())
+
+    def _on_enable_balloon(self, on, save=True):
+        """Show or hide the Balloon panel (shape dropdown + tail + Insert
+        balloon). The panel is only hidden, never destroyed, so its settings
+        survive. A detached panel comes home first, so switching it off cannot
+        leave an empty window behind."""
+        if not on and "balloon" in getattr(self, "_detached", {}):
+            self._reattach_panel("balloon")
+        self._sync_gated_panels()
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableBalloon", "true" if on else "false")
 
     def on_layout_reset(self):
         """Back to the built-in tab names/order AND panel homes (unpin
@@ -6243,9 +6701,11 @@ class TyperDocker(DockWidget):
             "vertical": self.vertical_chk.isChecked(),
             "outline": self.outline_chk.isChecked(),
             "outline_w": self.outline_spin.value(),
+            "outline2_w": self.outline2_spin.value(),
             "bold": self.bold_chk.isChecked(),
             "italic": self.italic_chk.isChecked(),
             "underline": self.underline_chk.isChecked(),
+            "ligatures": self.liga_chk.isChecked(),
             "align": self.align_combo.currentData() or "center",
             "valign": self.valign_combo.currentData() or "middle",
             "case": self.case_combo.currentData() or "none",
@@ -6254,6 +6714,7 @@ class TyperDocker(DockWidget):
             "crossbar_i": self.crossbar_chk.isChecked(),
             "color": self._color.name(),
             "outline_color": self._outline_color.name(),
+            "outline2_color": self._outline2_color.name(),
             "shadow": self.shadow_chk.isChecked(),
             "shadow_x": self.shadow_x_spin.value(),
             "shadow_y": self.shadow_y_spin.value(),
@@ -6289,12 +6750,16 @@ class TyperDocker(DockWidget):
                 self.outline_chk.setChecked(bool(d["outline"]))
             if "outline_w" in d:
                 self.outline_spin.setValue(int(d["outline_w"]))
+            if "outline2_w" in d:
+                self.outline2_spin.setValue(int(d["outline2_w"]))
             if "bold" in d:
                 self.bold_chk.setChecked(bool(d["bold"]))
             if "italic" in d:
                 self.italic_chk.setChecked(bool(d["italic"]))
             if "underline" in d:
                 self.underline_chk.setChecked(bool(d["underline"]))
+            if "ligatures" in d:
+                self.liga_chk.setChecked(bool(d["ligatures"]))
             if d.get("case") in ("none", "upper", "lower"):
                 self.case_combo.setCurrentIndex(
                     {"none": 0, "upper": 1, "lower": 2}[d["case"]])
@@ -6319,6 +6784,9 @@ class TyperDocker(DockWidget):
             if "outline_color" in d:
                 self._outline_color = QColor(d["outline_color"])
                 self._update_outline_btn()
+            if "outline2_color" in d:
+                self._outline2_color = QColor(d["outline2_color"])
+                self._update_outline2_btn()
             if "shadow" in d:
                 self.shadow_chk.setChecked(bool(d["shadow"]))
             if "shadow_x" in d:
@@ -6393,6 +6861,24 @@ class TyperDocker(DockWidget):
         try:
             Krita.instance().writeSetting(
                 "typer_kr", "presets", json.dumps(self._groups))
+        except Exception:
+            pass
+
+    def _load_last_manga(self):
+        """The manga/character worked on last session, so we reopen on it."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "lastManga", "")
+            d = json.loads(raw) if raw else {}
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_last_manga(self):
+        """Remember the current manga/character as the one worked on last."""
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "lastManga",
+                json.dumps({"group": self._group, "char": self._char}))
         except Exception:
             pass
 
@@ -6583,6 +7069,7 @@ class TyperDocker(DockWidget):
             self._char = ""
             self._refresh_chars_combo()
             self._refresh_presets_combo()
+            self._save_last_manga()
 
     def on_group_new(self):
         name, ok = QInputDialog.getText(
@@ -6599,6 +7086,7 @@ class TyperDocker(DockWidget):
         self._group = name
         self._char = ""
         self._save_groups()
+        self._save_last_manga()
         self._refresh_groups_combo(select=name)
         self._refresh_chars_combo()
         self._refresh_presets_combo()
@@ -6637,6 +7125,7 @@ class TyperDocker(DockWidget):
         if ch is not None and ch in self._cur_chars():
             self._char = ch
             self._apply_default_preset()   # auto-select the default style
+            self._save_last_manga()
 
     def on_char_new(self):
         name, ok = QInputDialog.getText(
@@ -6653,6 +7142,7 @@ class TyperDocker(DockWidget):
             self._groups[self._group][name] = {}
         self._char = name
         self._save_groups()
+        self._save_last_manga()
         self._refresh_chars_combo(select=name)
         self._refresh_presets_combo()
         self._set_status(self._tr("st_char_saved").format(name=name))
@@ -6701,6 +7191,7 @@ class TyperDocker(DockWidget):
         if name and name in presets:
             self._apply_preset(presets[name])
             self._record_preset_usage(self._group, ch, name)
+            self._save_last_manga()
             self._set_status(self._tr("st_preset_applied").format(name=name))
 
     def on_preset_save(self):
@@ -6781,6 +7272,73 @@ class TyperDocker(DockWidget):
         self._refresh_chars_combo()
         self._refresh_presets_combo()
         self._set_status(self._tr("st_preset_imported").format(n=count))
+
+    def on_preset_import_excel(self):
+        """Import a character/style font-guide sheet (.xlsx) as presets: a row
+        per character, a column per style (a cell = the font for that style).
+        Each non-empty cell becomes a preset named after the style column, under
+        the character, in a manga named after the sheet's folder."""
+        path, _ = QFileDialog.getOpenFileName(
+            self.widget(), self._tr("preset_excel_open"), "",
+            self._tr("preset_excel_filter"))
+        if not path:
+            return
+        try:
+            rows = _read_xlsx_grid(path)
+        except Exception:
+            self._set_status(self._tr("st_preset_import_fail"), error=True)
+            return
+        # find the header row: the one carrying a "Character" column
+        hdr_i = char_col = -1
+        for i, row in enumerate(rows):
+            for j, cell in enumerate(row):
+                if cell.strip().lower() == "character":
+                    hdr_i, char_col = i, j
+                    break
+            if hdr_i >= 0:
+                break
+        if hdr_i < 0:
+            self._set_status(self._tr("st_preset_excel_no_header"), error=True)
+            return
+        header = rows[hdr_i]
+        style_cols = [(j, header[j].strip())
+                      for j in range(char_col + 1, len(header))
+                      if header[j].strip()]
+        # the manga is named after the sheet's folder ("…/<Manga>/Fonts.xlsx"),
+        # else the file itself
+        manga = (os.path.basename(os.path.dirname(path))
+                 or os.path.splitext(os.path.basename(path))[0])
+        dst_m = self._groups.setdefault(manga, {})
+        n_presets = n_chars = 0
+        for row in rows[hdr_i + 1:]:
+            if char_col >= len(row):
+                continue
+            ch = row[char_col].strip()
+            if not ch:
+                continue
+            dst_c = dst_m.setdefault(ch, {})
+            made = 0
+            for j, style in style_cols:
+                font = row[j].strip() if j < len(row) else ""
+                if font:
+                    dst_c[style] = {"font": font}
+                    made += 1
+            if made:
+                n_chars += 1
+                n_presets += made
+            elif not dst_c:
+                dst_m.pop(ch, None)          # character with no fonts: drop it
+        if n_presets == 0:
+            self._set_status(self._tr("st_preset_excel_empty"), error=True)
+            return
+        self._group, self._char = manga, ""
+        self._save_groups()
+        self._save_last_manga()
+        self._refresh_groups_combo(select=manga)
+        self._refresh_chars_combo()
+        self._refresh_presets_combo()
+        self._set_status(self._tr("st_preset_excel_imported").format(
+            n=n_presets, c=n_chars, manga=manga))
 
     # ==================================================================
     #  Script tabs (several loaded scripts at once)
@@ -6867,6 +7425,7 @@ class TyperDocker(DockWidget):
         self.script_tabs.setTabToolTip(idx, path or name)
         self.script_tabs.setCurrentIndex(idx)
         self.script_tabs.blockSignals(False)
+        self._schedule_session_save()
 
     def _new_untitled(self):
         """Add an empty, unnamed script tab."""
@@ -6875,9 +7434,102 @@ class TyperDocker(DockWidget):
         self._add_session(name, "", "", do_analyze=False)
 
     def _init_first_session(self):
-        """Ensure exactly one tab exists at startup."""
-        if not self._sessions:
-            self._new_untitled()
+        """At startup: reopen the scripts that were open last time (with their
+        progress); if there were none, start with one empty tab."""
+        if self._sessions:
+            return
+        if self._restore_sessions():
+            return
+        self._new_untitled()
+
+    # --- persist the open script tabs (order + text + progress) --------------
+    def _schedule_session_save(self):
+        """Debounced save so rapid edits/navigation coalesce into one write."""
+        t = getattr(self, "_sessions_save_timer", None)
+        if t is None:
+            t = QTimer(self.widget())
+            t.setSingleShot(True)
+            t.setInterval(800)
+            t.timeout.connect(self._save_sessions)
+            self._sessions_save_timer = t
+        t.start()
+
+    def _save_sessions(self):
+        """Write every open tab (in tab-bar order) — its text, parsed units,
+        current line and green 'done' marks — so a restart reopens them exactly.
+        Empty untitled tabs are skipped. Never raises."""
+        try:
+            self._snapshot_active()
+            out = {"active": self._active_sid, "sessions": []}
+            for i in range(self.script_tabs.count()):
+                sid = self.script_tabs.tabData(i)
+                j = self._session_index(sid) if sid is not None else -1
+                if j < 0:
+                    continue
+                s = self._sessions[j]
+                if not (s.get("text") or "").strip() and not s.get("pairs"):
+                    continue                       # nothing worth remembering
+                out["sessions"].append({
+                    "sid": sid,
+                    "name": s.get("name") or "",
+                    "path": s.get("path") or "",
+                    "text": s.get("text") or "",
+                    "pairs": [list(p) for p in s.get("pairs", [])],
+                    "pair_pages": list(s.get("pair_pages", [])),
+                    "pages": list(s.get("pages", [])),
+                    "index": int(s.get("index", 0)),
+                    "done": sorted(int(x) for x in s.get("done", set())),
+                })
+            blob = json.dumps(out)
+            if len(blob) > 4_000_000:              # keep kritarc sane
+                return
+            Krita.instance().writeSetting("typer_kr", "sessions", blob)
+        except Exception:
+            pass
+
+    def _restore_sessions(self):
+        """Rebuild the saved script tabs (no file re-read, so progress is kept).
+        Returns True if at least one tab was restored."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "sessions", "")
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            return False
+        saved = data.get("sessions") if isinstance(data, dict) else None
+        if not saved:
+            return False
+        want_active = data.get("active")
+        active_tab = 0
+        self.script_tabs.blockSignals(True)
+        for sd in saved:
+            sid = self._next_sid
+            self._next_sid += 1
+            sess = {
+                "id": sid,
+                "name": sd.get("name") or self._tr("tab_untitled"),
+                "path": sd.get("path") or "",
+                "text": sd.get("text") or "",
+                "pairs": [tuple(p) if isinstance(p, list) else p
+                          for p in sd.get("pairs", [])],
+                "pair_pages": list(sd.get("pair_pages", [])),
+                "pages": list(sd.get("pages", [])),
+                "index": int(sd.get("index", 0)),
+                "done": set(int(x) for x in sd.get("done", [])),
+                "comments": [],
+            }
+            self._sessions.append(sess)
+            idx = self.script_tabs.addTab(sess["name"])
+            self.script_tabs.setTabData(idx, sid)
+            self.script_tabs.setTabToolTip(idx, sess["path"] or sess["name"])
+            if sd.get("sid") == want_active:
+                active_tab = idx
+        self.script_tabs.setCurrentIndex(active_tab)
+        self.script_tabs.blockSignals(False)
+        self._active_sid = None                    # force a full restore
+        cur = self.script_tabs.tabData(active_tab)
+        if cur is not None:
+            self._restore_by_sid(cur)
+        return True
 
     def _on_tab_changed(self, tab_i):
         if tab_i < 0:
@@ -6887,6 +7539,7 @@ class TyperDocker(DockWidget):
             return
         self._snapshot_active()
         self._restore_by_sid(sid)
+        self._schedule_session_save()
 
     def _close_tab(self, tab_i):
         sid = self.script_tabs.tabData(tab_i)
@@ -6902,11 +7555,13 @@ class TyperDocker(DockWidget):
         if not self._sessions:
             self._active_sid = None
             self._new_untitled()           # never leave zero tabs
+            self._schedule_session_save()
             return
         # activate whatever tab Qt now shows as current
         cur = self.script_tabs.currentIndex()
         self._active_sid = None            # force a full restore
         self._restore_by_sid(self.script_tabs.tabData(cur))
+        self._schedule_session_save()
 
     def _rename_tab(self, tab_i):
         if tab_i < 0:
@@ -6925,6 +7580,7 @@ class TyperDocker(DockWidget):
             return
         self._sessions[i]["name"] = name
         self.script_tabs.setTabText(tab_i, name)
+        self._schedule_session_save()
 
     def on_load(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -7242,6 +7898,7 @@ class TyperDocker(DockWidget):
         self._populate_table()
         self._refresh_pages_combo()
         self._refresh_view()
+        self._schedule_session_save()
 
     def _populate_table(self):
         self.table.blockSignals(True)
@@ -7251,6 +7908,77 @@ class TyperDocker(DockWidget):
             self.table.setItem(r, 1, QTableWidgetItem(en))
         self.table.blockSignals(False)
         self.table.resizeRowsToContents()
+
+    def on_add_line(self):
+        """Add a line to the script: append it to the editor (the script's own
+        text, so it is kept and can be written back to the file) AND to the
+        parsed units, then select it. Existing done-marks/indices are untouched
+        because the new unit goes at the end."""
+        text, ok = QInputDialog.getMultiLineText(
+            self.widget(), self._tr("add_line_dlg"), self._tr("add_line_prompt"))
+        if not ok:
+            return
+        text = text.strip()
+        if not text:
+            return
+        cur = self.editor.toPlainText()
+        if cur and not cur.endswith("\n"):
+            cur += "\n"
+        self.editor.blockSignals(True)
+        self.editor.setPlainText(cur + text + "\n")
+        self.editor.blockSignals(False)
+        self._pairs.append(("", text))                 # a new EN-only unit
+        pp = getattr(self, "_pair_pages", None)
+        if pp is not None:
+            pp.append(pp[-1] if pp else 0)             # same page as the last unit
+        self._index = len(self._pairs) - 1
+        self._populate_table()
+        self._refresh_pages_combo()
+        self._refresh_view()
+        self._snapshot_active()
+        self._set_status(self._tr("st_line_added"))
+
+    def on_save_script(self):
+        """Write the current script text back to a file: overwrite the loaded
+        .txt/.md in place, or (for a pasted script or a binary format like
+        .docx/.xlsx that can't be rewritten) save a new .txt via a dialog."""
+        text = self.editor.toPlainText()
+        path = self._script_path
+        is_text = bool(path) and path.lower().endswith((".txt", ".md"))
+        if is_text:
+            if QMessageBox.question(
+                    self.widget(), self._tr("save_script_dlg"),
+                    self._tr("save_script_confirm").format(
+                        name=os.path.basename(path))) != QMessageBox.Yes:
+                return
+            target = path
+        else:
+            default = (os.path.splitext(path)[0] + ".txt") if path else "script.txt"
+            target, _ = QFileDialog.getSaveFileName(
+                self.widget(), self._tr("save_script_dlg"), default,
+                "Text (*.txt);;Markdown (*.md)")
+            if not target:
+                return
+        try:
+            with open(target, "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception as e:                         # noqa: BLE001
+            self._set_status(
+                self._tr("st_save_script_fail").format(err=str(e)), error=True)
+            return
+        # point the active session/tab at the saved file
+        self._script_path = target
+        base = os.path.basename(target)
+        i = self._session_index(self._active_sid)
+        if i >= 0:
+            self._sessions[i]["path"] = target
+            self._sessions[i]["name"] = base
+            ti = self.script_tabs.currentIndex()
+            if ti >= 0:
+                self.script_tabs.setTabText(ti, base)
+                self.script_tabs.setTabToolTip(ti, target)
+        self._snapshot_active()
+        self._set_status(self._tr("st_script_saved").format(name=base))
 
     def _on_table_select(self):
         model = self.table.selectionModel()
@@ -7360,18 +8088,60 @@ class TyperDocker(DockWidget):
                     it.setBackground(self._done_brush() if row in self._done else empty)
 
     def on_pick_color(self):
-        col = QColorDialog.getColor(self._color, self.widget(),
-                                    self._tr("color_dlg"))
-        if col.isValid():
-            self._color = col
-            self._update_color_btn()
+        # Live text-colour picking: as the colour is dragged in the dialog, apply
+        # it right away so the TextShapR cards, the live preview AND the canvas
+        # layer (when "Live on canvas" is on) follow in real time. Cancel reverts.
+        prev = QColor(self._color)
+
+        def _apply(col):
+            if col.isValid():
+                self._color = QColor(col)
+                self._update_color_btn()
+                self._on_style_changed()
+
+        dlg = QColorDialog(self._color, self.widget())
+        dlg.setWindowTitle(self._tr("color_dlg"))
+        dlg.currentColorChanged.connect(_apply)
+        if dlg.exec_():
+            _apply(dlg.selectedColor())
+        else:
+            _apply(prev)                  # cancelled -> restore the old colour
 
     def on_pick_outline_color(self):
-        col = QColorDialog.getColor(self._outline_color, self.widget(),
-                                    self._tr("outline_color_dlg"))
-        if col.isValid():
-            self._outline_color = col
-            self._update_outline_btn()
+        # Live outline-colour picking (see on_pick_color): applies while dragging.
+        prev = QColor(self._outline_color)
+
+        def _apply(col):
+            if col.isValid():
+                self._outline_color = QColor(col)
+                self._update_outline_btn()
+                self._on_style_changed()
+
+        dlg = QColorDialog(self._outline_color, self.widget())
+        dlg.setWindowTitle(self._tr("outline_color_dlg"))
+        dlg.currentColorChanged.connect(_apply)
+        if dlg.exec_():
+            _apply(dlg.selectedColor())
+        else:
+            _apply(prev)                  # cancelled -> restore the old colour
+
+    def on_pick_outline2_color(self):
+        # Live 2nd-outline-colour picking (see on_pick_color).
+        prev = QColor(self._outline2_color)
+
+        def _apply(col):
+            if col.isValid():
+                self._outline2_color = QColor(col)
+                self._update_outline2_btn()
+                self._on_style_changed()
+
+        dlg = QColorDialog(self._outline2_color, self.widget())
+        dlg.setWindowTitle(self._tr("outline2_color_dlg"))
+        dlg.currentColorChanged.connect(_apply)
+        if dlg.exec_():
+            _apply(dlg.selectedColor())
+        else:
+            _apply(prev)                  # cancelled -> restore the old colour
 
     def _on_auto_toggle(self):
         auto = self.auto_chk.isChecked()
@@ -7459,9 +8229,16 @@ class TyperDocker(DockWidget):
         try:
             self.font_picker.list.currentItemChanged.connect(
                 lambda *a: self._update_text_preview())
+            # also on familyChanged: a font set programmatically (a preset, or an
+            # uninstalled name adopted by setCurrentFamily) blocks the list
+            # signal above, so without this the live preview would keep the old
+            # font while TextShapR already switched.
+            self.font_picker.familyChanged.connect(
+                lambda *a: self._update_text_preview())
         except Exception:
             pass
         for chk in (self.bold_chk, self.italic_chk, self.underline_chk,
+                    self.liga_chk,
                     self.tidy_chk, self.comic_chk, self.crossbar_chk,
                     self.outline_chk, self.vertical_chk,
                     self.shadow_chk):
@@ -7557,6 +8334,9 @@ class TyperDocker(DockWidget):
             comic=self.comic_chk.isChecked(),
             crossbar_i=self.crossbar_chk.isChecked(),
             vertical=self.vertical_chk.isChecked(),
+            ligatures=self.liga_chk.isChecked(),
+            outline2_color=self._outline2_color,
+            outline2_px=self.outline2_spin.value(),
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
@@ -7565,6 +8345,7 @@ class TyperDocker(DockWidget):
             self._save_settings()
             self._done.add(self._index)
             self._mark_done_row(self._index)
+            self._schedule_session_save()
             if self._index < len(self._pairs) - 1:
                 self._index += 1
             self._refresh_view()
@@ -7674,6 +8455,9 @@ class TyperDocker(DockWidget):
             hyphenate=False,       # hyphens are already in the baked text
             replace_existing=(self.replace_chk.isChecked()
                               if replace is None else replace),
+            ligatures=self.liga_chk.isChecked(),
+            outline2_color=self._outline2_color,
+            outline2_px=self.outline2_spin.value(),
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
@@ -7683,6 +8467,7 @@ class TyperDocker(DockWidget):
             if self._pairs:
                 self._done.add(self._index)
                 self._mark_done_row(self._index)
+                self._schedule_session_save()
                 if advance and self._index < len(self._pairs) - 1:
                     self._index += 1
                 self._refresh_view()

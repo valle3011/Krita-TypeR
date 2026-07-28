@@ -48,6 +48,12 @@ größte Größe skaliert, die in die aktuelle Auswahl passt.</p>
 <p>Die gewählten Umbrüche (samt Trennstrichen) werden fest übernommen, die
 Größe wird auf die Vorschaugröße begrenzt – was das Kärtchen zeigt, landet
 also exakt so im Bild.</p>
+<p><b>Die gewählte Form bleibt gewählt.</b> Änderst du Größe, Zeilenabstand,
+Schrift oder den Modus, werden die Kärtchen neu berechnet – ausgewählt bleibt
+aber dieselbe Form (nicht wieder Kärtchen 1). Erst bei einer <b>neuen Zeile</b>
+springt die Auswahl zurück auf die empfohlene Form (★). Hast du die Umbrüche im
+Feld darunter von Hand geändert, bleibt auch diese Fassung erhalten: sie wird
+auf die neue Größe nachgerechnet und mit einem <b>✎</b> markiert.</p>
 <p><b>Mehrere Formen nacheinander ausprobieren stapelt nicht:</b> Wird eine
 Zeile erneut eingefügt, löscht TypeR zuerst die Ebene(n), die es früher für
 genau diese Zeile erstellt hat (erkannt am Ebenennamen
@@ -208,6 +214,15 @@ bei aktiver Auto-Anpassung.</p>
 <p>Der Umbruch verteilt die Wörter so, dass die Zeilen möglichst gleich lang
 sind (ruhige, ovale Blockform) und keine einzelne kurze Zeile oben hängt.</p>
 
+<h2>Blasen-Werkzeuge (standardmäßig aus)</h2>
+<p>TypeR kann die Sprechblase auch selbst zeichnen: ein Formen-Dropdown (Oval,
+Wolke, Zacken, …), ein Haken für den <b>Schwanz</b> und <b>Blase einfügen</b>.
+Das Panel <b>„Sprechblase"</b> im Type-Tab ist <b>standardmäßig ausgeblendet</b>
+– meist sind die Blasen auf der Seite ja schon gezeichnet. Einschalten:
+<b>Setup ▸ Experimentell ▸ „Blasen-Werkzeuge aktivieren"</b>. Die Einstellung
+wird gemerkt, und beim Ausschalten geht nichts verloren – das Panel wird nur
+versteckt.</p>
+
 <h2>Silbentrennung</h2>
 <p>Mit <b>Lange Wörter trennen</b> (nur bei aktiver Auto-Anpassung) werden zu
 breite Wörter an <b>korrekten Silbengrenzen</b> getrennt – mit einem „-", z. B.
@@ -217,6 +232,13 @@ Buchstaben davor, 3 danach; sehr kurze Wörter werden nicht getrennt). Fett/
 Kursiv und einzelne <code>**fett**</code>-Stellen bleiben über die Trennung
 hinweg erhalten; normale Absätze behalten ihr Ausbalancieren – getrennt wird nur,
 wenn ein Wort sonst nicht passt.</p>
+<p>Satzzeichen am Wort zählen nicht mit: <code>PEINLICH!</code> wird genauso
+getrennt wie <code>PEINLICH</code>, das Ausrufezeichen bleibt am hinteren Teil.
+Damit der Text lesbar bleibt, wird <b>ein Wort höchstens einmal</b> getrennt und
+es enden <b>höchstens zwei Zeilen hintereinander</b> mit einem Trennstrich –
+statt eines zerhackten <code>PEIN-/LI-/CHER!</code> wird die Schrift dann lieber
+eine Stufe kleiner. Ein Wort, das in den Zeilenrest nicht mehr passt, wandert in
+die nächste Zeile und wird dort gegen die <b>volle Breite</b> getrennt.</p>
 <p>Über das Klappmenü <b>Trennsprache</b> wählst du die Sprache: <b>Auto</b>,
 <b>English</b>, <b>Deutsch</b>, <b>Español</b>, <b>Français</b>, <b>Português</b>
 oder <b>Italiano</b> (nur Sprachen mit mitgelieferten Mustern erscheinen).

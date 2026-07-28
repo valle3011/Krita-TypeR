@@ -42,7 +42,9 @@ def build_sfx_svg(text, font_family, font_size, fill, outline, outline_px,
                   bold=False, italic=False, x=40, y=None,
                   anchor="start", img_w=None, img_h=None,
                   shadow=False, shadow_color="#000000",
-                  shadow_dx=0.0, shadow_dy=0.0, rotate=0.0, fill2=None):
+                  shadow_dx=0.0, shadow_dy=0.0, rotate=0.0, fill2=None,
+                  outline2=None, outline2_px=0.0,
+                  pattern_uri=None, pattern_w=0, pattern_h=0):
     """
     Baut das SVG für einen SFX-Text.
 
@@ -74,12 +76,32 @@ def build_sfx_svg(text, font_family, font_size, fill, outline, outline_px,
 
     has_outline = bool(outline_px) and outline_px > 0
     stroke_w = outline_px * 2 if has_outline else 0.0
+    # zweite, äußere Outline (breiter) für einen doppelten Rand: liegt UNTER der
+    # ersten Kontur, sodass ein weiß/schwarz/Text-Stapel möglich ist. Sie ist an
+    # die erste Outline gekoppelt – ist die erste aus (Breite 0), ist auch die
+    # zweite aus.
+    has_outline2 = (has_outline and bool(outline2)
+                    and bool(outline2_px) and outline2_px > 0)
+    stroke_w2 = outline2_px * 2 if has_outline2 else 0.0
+    # der Schatten übernimmt die breiteste Kontur, damit die Silhouette passt
+    shadow_stroke = max(stroke_w, stroke_w2)
 
-    # Optionale Verlaufsfüllung (oben helle -> unten fill2). Nur die Füllung
-    # nutzt den Verlauf; Kontur/Schatten bleiben einfarbig.
+    # Füllung: Muster/Textur (Vorrang) -> Verlauf -> einfarbig. Nur die Füllung
+    # nutzt Muster/Verlauf; Kontur/Schatten bleiben einfarbig.
     defs = ""
     fill_ref = fill
-    if fill2:
+    if pattern_uri:
+        pw = max(1, int(pattern_w or 64))
+        ph = max(1, int(pattern_h or 64))
+        # das Bild kachelt in Nutzerkoordinaten über die Glyphen (userSpaceOnUse)
+        defs = ('  <defs><pattern id="sfxpat" patternUnits="userSpaceOnUse"'
+                ' width="%d" height="%d">'
+                '<image x="0" y="0" width="%d" height="%d"'
+                ' preserveAspectRatio="xMidYMid slice"'
+                ' href="%s" xlink:href="%s"/>'
+                '</pattern></defs>\n' % (pw, ph, pw, ph, pattern_uri, pattern_uri))
+        fill_ref = "url(#sfxpat)"
+    elif fill2:
         defs = ('  <defs><linearGradient id="sfxgrad" x1="0" y1="0"'
                 ' x2="0" y2="1">'
                 '<stop offset="0" stop-color="%s"/>'
@@ -89,12 +111,20 @@ def build_sfx_svg(text, font_family, font_size, fill, outline, outline_px,
 
     body = ""
 
-    # 1) Schatten (ganz unten): versetzte Kopie; übernimmt die Konturstärke
+    # 1) Schatten (ganz unten): versetzte Kopie; übernimmt die breiteste Kontur
     if shadow and (shadow_dx or shadow_dy):
         body += _text_el(
             text_esc, font_esc, font_size, x + shadow_dx, y + shadow_dy, anchor,
             fill=shadow_color, weight_attr=weight_attr, style_attr=style_attr,
-            stroke=(shadow_color if stroke_w > 0 else None), stroke_w=stroke_w)
+            stroke=(shadow_color if shadow_stroke > 0 else None),
+            stroke_w=shadow_stroke)
+
+    # 1b) äußere Kontur (unter der inneren): breite Linie in outline2-Farbe
+    if has_outline2:
+        body += _text_el(
+            text_esc, font_esc, font_size, x, y, anchor,
+            fill=outline2, weight_attr=weight_attr, style_attr=style_attr,
+            stroke=outline2, stroke_w=stroke_w2)
 
     # 2) Kontur (Mitte): dicke Linie in Konturfarbe
     if has_outline:
@@ -121,7 +151,8 @@ def build_sfx_svg(text, font_family, font_size, fill, outline, outline_px,
         size_attrs = ""
 
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg"{size_attrs}>\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg"'
+        f' xmlns:xlink="http://www.w3.org/1999/xlink"{size_attrs}>\n'
         f'{body}'
         '</svg>'
     )

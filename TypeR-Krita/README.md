@@ -36,7 +36,9 @@ uncluttered — nothing was removed, everything is one click away:
   and **TextShapR**.
 - **Style** – bold/italic/underline, alignment, letter case, smart punctuation,
   size / padding / line spacing, outline and shadow (each with a small
-  settings popup), auto-fit, round bubble, hyphenation.
+  settings popup), auto-fit, round bubble, hyphenation. **Line spacing is
+  unclamped** – set it to `0` to stack lines on one baseline or well past `100`
+  to spread them as far apart as you like.
 - **Presets** – Manga → Character → style preset; save/delete/import/export
   live in the **⋯** menu next to the preset list.
 - **Setup** – interface language, the "Layout & sizes" panel, and behavior
@@ -70,8 +72,19 @@ size that fits the current selection.
 
 - **Mode bar:** **Balanced** (evenly balanced lines), **Round** (fit the
   ellipse of a round bubble), **Tall** (more lines / narrow block first),
-  **Wide** (fewer lines first) — plus **Hyphenation** as a toggle that splits
-  long words at correct syllable points so narrower shapes become possible.
+  **Wide** (fewer lines first). Two independent toggles sit alongside:
+  **Hyphenation** splits long words at correct syllable points so narrower
+  shapes become possible, and **De-hyphenate** rejoins words the *source* text
+  broke across a line (e.g. `embar- rassing` → `embarrassing`, but keeping a
+  real compound like `Spider- Man` → `Spider-Man`) before reshaping — the two
+  can be combined to clean up badly wrapped source text and re-break it cleanly.
+- The recommended (★) card is the **best-looking** shape, not merely the
+  largest that fits. Candidates are ranked by a typographic quality score that
+  rewards a comfortable fill of the bubble, even/balanced lines and a good
+  block-vs-bubble aspect, **prefers line breaks that land at clause punctuation**
+  (`. , ; : ! ?`), keeps lines within a comfortable reading measure, and avoids a
+  cramped edge-to-edge block, a lone stub line, or a leftover last line.
+  Near-identical shapes are dropped so the cards are all distinct choices.
 - **Numbered cards** (2 columns): click one to select it (blue frame), or press
   **1–9/0**. **Apply** inserts the selected shape as a text layer, **Apply +
   next** also advances to the next unit, **Shift+number** does both at once.
@@ -102,8 +115,12 @@ You can keep several scripts open at once. Each loaded script gets its own
 - Tabs show the **file name**; **double-click** a tab to give it your own name.
   The full path is shown as a tooltip. Tabs can be dragged to reorder.
 
-Not (yet) done: open tabs are **not** remembered across a Krita restart, and
-re-running *Analyze* on a tab re-parses it and resets that tab's "done" marks.
+- **Remembered across restarts:** the open tabs — their order, the script text,
+  the parsed units, the current line and the green "done" marks — are saved
+  automatically and reopened the next time you start Krita. The files are **not**
+  re-read, so your progress is kept exactly. (Empty *Untitled* tabs are skipped.)
+
+Re-running *Analyze* on a tab re-parses it and resets that tab's "done" marks.
 
 ## Pages ("Page N" markers)
 
@@ -216,10 +233,17 @@ stray markup inside a bubble:
   as the inserted layer.
 - **Styling:** bold / italic / underline, per-word bold via `**…**`, horizontal
   and vertical alignment, letter case (Normal / UPPERCASE / lowercase), smart
-  punctuation, line spacing and inner padding.
-- **Outline** and **drop shadow** for readability on busy backgrounds.
+  punctuation, **freely adjustable line spacing** (from `0` to far above `100`%)
+  and inner padding.
+- **Outline** (with an optional **second, outer outline** for a double rim —
+  e.g. white outside, black inside, coloured text on top) and a **drop shadow**
+  for readability on busy backgrounds. The outline width is the *visible*
+  thickness; turning the outline off turns the second one off with it.
 - **Presets** in three levels – **Manga → Character → style preset** – that can
-  be saved, switched, imported and exported as `.json`. Not every manga needs
+  be saved, switched, imported and exported as `.json`, or **imported straight
+  from an Excel font guide** (a sheet with a *Character* column and a column per
+  style — each cell is the font — becomes a preset per character; via the **⋯**
+  menu next to the preset list). Not every manga needs
   per-character fonts: turning **"Organize presets by character"** off (Setup
   tab) hides the character level, and the preset dropdown directly lists **all
   text presets of the manga** (duplicate names are shown as
@@ -300,6 +324,17 @@ installed; everything ships with the plugin. Pick the language in the
 offered); “Auto” uses the interface language when its patterns exist, otherwise
 a small accent heuristic, otherwise English.
 
+### De-hyphenation (the inverse)
+
+Source scripts sometimes already contain hyphenated line breaks (from OCR or an
+earlier typeset), e.g. `embar-` / `rassing`. The **De-hyphenate** toggle in
+TextShapR rejoins these before reshaping, so old break points don't get frozen
+into the new bubble: `embar- rassing` → `embarrassing`. A capitalised
+continuation is treated as a real compound and kept hyphenated
+(`Spider- Man` → `Spider-Man`), and an ordinary in-word hyphen (`X-ray`) is left
+alone. Combine it with **Hyphenation** to strip bad source breaks and re-break
+the text cleanly for the current bubble.
+
 ---
 
 ## Project layout
@@ -308,11 +343,26 @@ a small accent heuristic, otherwise English.
 | --- | --- |
 | `typer_kr/typer_kr.py` | Docker UI, readers, text-layer insertion |
 | `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
-| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation**, **TextShapR shape candidates** |
+| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation / de-hyphenation**, **TextShapR shape candidates + quality scoring** |
+| `typer_kr/bubbles.py` | BubblR: speech-bubble detection, reading order, round/rect shape, bubble↔unit mapping |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
+| `typer_kr/sfx/` | The MangaSFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
 | `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |
 | `typer_kr.desktop` | Krita plugin descriptor |
+
+### Tests
+
+Run the whole suite (no real Krita needed; PyQt5 only for the integration part):
+
+```
+python run_tests.py
+```
+
+It runs static checks (`py_compile`, `pyflakes`) plus four suites — pure layout
+logic, metamorphic/property/boundary/regression checks, SVG-structure + i18n
+integrity, and a Krita-stub integration suite that drives the real insert path,
+font picker and session persistence headless.
 
 All code comments and docstrings are in English. The user interface is
 available in **English, German, Spanish, French, Portuguese and Italian**

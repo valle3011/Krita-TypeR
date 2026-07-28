@@ -85,6 +85,9 @@ DEFAULTS = {
     "fill": "#000000",
     "outline": "#ffffff",
     "outline_px": 8,
+    # zweite (äußere) Outline für einen doppelten Rand – Breite 0 = aus
+    "outline2": "#000000",
+    "outline2_px": 0,
     # Schatten (Schlagschatten als versetzte Kopie) – standardmäßig aus
     "shadow": False,
     "shadow_color": "#000000",

@@ -6,7 +6,10 @@ Sprache: Standard Englisch, umschaltbar auf Deutsch (oben im Docker).
 Komfort: Live-Vorschau, GROSSBUCHSTABEN-Schalter, merkt sich den zuletzt
 genutzten Stil über Neustarts.
 """
+import base64
 import json
+import math
+import os
 import re
 
 from PyQt5.QtWidgets import (
@@ -14,12 +17,15 @@ from PyQt5.QtWidgets import (
     QComboBox, QPushButton, QSpinBox, QSlider, QColorDialog, QScrollArea,
     QCompleter, QInputDialog, QMessageBox, QMenu, QCheckBox,
     QDialog, QDialogButtonBox, QFileDialog, QSizePolicy, QToolButton,
+    QListWidget, QListWidgetItem,
 )
 from PyQt5.QtGui import (
     QColor, QFontDatabase, QFont, QFontMetricsF, QPainter, QPainterPath,
-    QBrush, QPen, QLinearGradient,
+    QBrush, QPen, QLinearGradient, QImage, QPixmap, QIcon,
 )
-from PyQt5.QtCore import Qt, QTimer, QStringListModel, QEvent
+from PyQt5.QtCore import (
+    Qt, QTimer, QStringListModel, QEvent, QBuffer, QByteArray, QSize,
+)
 
 from krita import Krita, DockWidget
 
@@ -28,6 +34,7 @@ from .config import (
     SFX_MODES, SFX_MODE_NAMES,
 )
 from .svg_builder import build_sfx_svg, _xml_escape
+from .rule_search import normalize_sfx, keyword_matches, rule_matches_query
 from . import modes as MODES
 from .presets_store import (
     load_user_presets, save_user_presets, load_font_rules, save_font_rules,
@@ -184,44 +191,6 @@ class CollapsibleSection(QWidget):
         self.header.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
         if self._on_toggle:
             self._on_toggle(self.key, not expanded)
-
-
-# Gedehnte SFX-Schreibweisen normalisieren, damit "BOOOOM", "BOOM" und
-# "GASHAAAN" alle gleich behandelt werden.
-_RUN_RE = re.compile(r"(.)\1+")          # jede Wiederholung eines Zeichens
-
-
-def normalize_sfx(text):
-    """Vereinheitlicht ein SFX-Wort fürs Stichwort-Matching:
-    klein schreiben, jeden Lauf gleicher Zeichen auf EIN Zeichen stauchen
-    ("booooom"->"bom", "gashaaan"->"gashan"), und alles außer Buchstaben/
-    Ziffern entfernen ("ka-boom!"->"kabom"). Stichwort und Text werden gleich
-    behandelt, daher matchen unterschiedlich gedehnte Schreibweisen sicher.
-
-    Ausnahme: Ein Wort aus nur EINEM wiederholten Zeichen (z. B. "zzz") würde
-    sonst auf ein einziges Zeichen schrumpfen und ignoriert werden; daher
-    behalten wir dort zwei Zeichen ("zzz"/"zzzz" -> "zz")."""
-    raw = re.sub(r"[^a-z0-9]+", "", (text or "").lower())
-    s = _RUN_RE.sub(r"\1", raw)
-    if len(s) == 1 and len(raw) >= 2:
-        s = s * 2
-    return s
-
-
-def keyword_matches(keyword, text_norm):
-    """True, wenn das gestauchte Stichwort zum gestauchten Text passt.
-
-    - 1 Zeichen Rest  -> ignorieren (zu breit).
-    - 2 Zeichen Rest  -> EXAKT (so matchen "ow"/"gr"/"ah" nur als ganzes Wort,
-      nicht versteckt in "pow"/"grab"/"haha").
-    - 3+ Zeichen      -> Teilstring (so matchen auch verdoppelte/gedehnte
-      Formen wie "boom-boom" -> "bombom" über "boom" -> "bom")."""
-    kw = normalize_sfx(keyword)
-    if len(kw) < 2:
-        return False
-    if len(kw) == 2:
-        return text_norm == kw
-    return kw in text_norm
 
 
 # ---------------------------------------------------------------------------
@@ -415,14 +384,29 @@ class SFXPreview(QWidget):
             sp = QPainterPath(path)
             sp.translate(o["shadow_dx"] * scale, o["shadow_dy"] * scale)
             p.fillPath(sp, QBrush(o["shadow_color"]))
+        # äußere Kontur zuerst (breiter); an die erste Outline gekoppelt
+        if o.get("outline") and o.get("outline2_px", 0) > 0:
+            pen2 = QPen(o["outline2_color"])
+            pen2.setWidthF(max(0.5, 2.0 * o["outline2_px"] * scale))
+            pen2.setJoinStyle(Qt.RoundJoin)
+            pen2.setCapStyle(Qt.RoundCap)
+            p.strokePath(path, pen2)
         if o.get("outline") and o.get("outline_px", 0) > 0:
             pen = QPen(o["outline_color"])
             pen.setWidthF(max(0.5, 2.0 * o["outline_px"] * scale))
             pen.setJoinStyle(Qt.RoundJoin)
             pen.setCapStyle(Qt.RoundCap)
             p.strokePath(path, pen)
+        pat = o.get("pattern_img")
         f2 = o.get("fill2")
-        if f2 is not None:
+        if pat is not None:
+            tw, th = o.get("pattern_tile", (0, 0))
+            tw = max(1, int(tw * scale))
+            th = max(1, int(th * scale))
+            pm = QPixmap.fromImage(pat).scaled(
+                tw, th, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            p.fillPath(path, QBrush(pm))
+        elif f2 is not None:
             br = path.boundingRect()
             grad = QLinearGradient(0.0, br.top(), 0.0, br.bottom())
             grad.setColorAt(0.0, o["fill"])
@@ -498,12 +482,16 @@ class MangaSFXDocker(DockWidget):
         self._lang = load_language("en")          # Standard: Englisch
         self._user_presets = load_user_presets()  # eigene Presets (persistiert)
         self._font_rules = load_font_rules()      # Stichwort -> Font(s) (persistiert)
+        self._pattern_path = ""                   # Textur-/Muster-Bild (Datei) für die Füllung
+        self._pattern_krita_name = ""             # ODER ein in Krita gespeichertes Muster
+        self._pattern_img = None                  # geladenes QImage (Cache)
         self._pending_state = load_settings()     # zuletzt genutzter Stil
         self._view = self._load_view_merged()     # Layout-/Anzeige-Einstellungen
         self._families_cache = None               # System-Fonts nur einmal laden
         self._usage = load_usage()                # gelernte Wort->Font-Häufigkeit
         self._group_fonts_cache = None            # Gruppenname -> Fonts (gefiltert)
         self._rule_lang = self._load_rule_lang_merged()  # aktive Regelsprache
+        self._rule_query = ""                     # Regel-Suchtext (nur Anzeige)
         # Work mode (manga/manhwa/doujin) + per-mode built-in hiding.
         self._mode = self._load_mode_merged()
         self._separate_builtins = load_separate_builtins(True)
@@ -770,7 +758,21 @@ class MangaSFXDocker(DockWidget):
                                            self._on_section_collapsed)
         self.font_combo = self._build_font_combo()
         self.font_combo.currentTextChanged.connect(lambda _t: self._update_preview())
-        self.sec_font.add(self.font_combo)
+        # "Use" applies the font typed/searched in the box (also on Enter), the
+        # same as clicking a suggestion — so a self-searched font is one click.
+        self.use_font_btn = QPushButton(self.t("use_font_btn"))
+        self.use_font_btn.setToolTip(self.t("use_font_btn_tip"))
+        self.use_font_btn.clicked.connect(self._apply_typed_font)
+        _le = self.font_combo.lineEdit()
+        if _le is not None:
+            _le.returnPressed.connect(self._apply_typed_font)
+        _frow = QHBoxLayout()
+        _frow.setContentsMargins(0, 0, 0, 0)
+        _frow.addWidget(self.font_combo, 1)
+        _frow.addWidget(self.use_font_btn)
+        _fw = QWidget()
+        _fw.setLayout(_frow)
+        self.sec_font.add(_fw)
         layout.addWidget(self.sec_font)
 
         # --- Größe & Farben ---
@@ -799,6 +801,31 @@ class MangaSFXDocker(DockWidget):
         grad_row.addWidget(self.fill2_btn, 1)
         sb.addLayout(grad_row)
         self._update_grad_enabled()
+        # Textur-/Muster-Füllung: den Text mit einem Bild (Screentone o. Ä.)
+        # füllen statt einfarbig. Hat Vorrang vor der Verlaufsfüllung.
+        pat_row = QHBoxLayout()
+        self.pattern_chk = QCheckBox(self.t("pattern_fill"))
+        self.pattern_chk.toggled.connect(
+            lambda _v: (self._update_pattern_enabled(), self._update_preview()))
+        pat_row.addWidget(self.pattern_chk)
+        self.pattern_btn = QPushButton(self.t("pattern_choose"))
+        self.pattern_btn.clicked.connect(self._pick_pattern)
+        pat_row.addWidget(self.pattern_btn, 1)
+        self.pattern_krita_btn = QPushButton(self.t("pattern_krita"))
+        self.pattern_krita_btn.setToolTip(self.t("pattern_krita_tip"))
+        self.pattern_krita_btn.clicked.connect(self._pick_krita_pattern)
+        pat_row.addWidget(self.pattern_krita_btn)
+        self.pattern_clear_btn = QPushButton("✕")
+        self.pattern_clear_btn.setFixedWidth(28)
+        self.pattern_clear_btn.setToolTip(self.t("pattern_clear"))
+        self.pattern_clear_btn.clicked.connect(self._clear_pattern)
+        pat_row.addWidget(self.pattern_clear_btn)
+        sb.addLayout(pat_row)
+        self.pattern_scale_slider, self.pattern_scale_spin = \
+            self._slider_spin_row(sb, self.t("pattern_scale"), 10, 400, 100)
+        self.pattern_scale_spin.valueChanged.connect(
+            lambda _v: self._update_preview())
+        self._update_pattern_enabled()
         sb.addWidget(self._heading(self.t("outline_color")))
         self.outline_btn = QPushButton()
         self.outline_btn.setFixedHeight(26)
@@ -808,6 +835,18 @@ class MangaSFXDocker(DockWidget):
         self.out_slider, self.out_spin = self._slider_spin_row(
             sb, self.t("outline_width"), 0, 60, DEFAULTS["outline_px"])
         self.out_spin.valueChanged.connect(lambda _v: self._update_preview())
+        # zweite (äußere) Outline für den doppelten Rand (z. B. außen weiß,
+        # innen schwarz, dann Text). Breite 0 = aus.
+        sb.addWidget(self._heading(self.t("outline2_color")))
+        self.outline2_btn = QPushButton()
+        self.outline2_btn.setFixedHeight(26)
+        self._set_btn_color(self.outline2_btn, QColor(DEFAULTS["outline2"]))
+        self.outline2_btn.clicked.connect(
+            lambda: self._pick_color(self.outline2_btn))
+        sb.addWidget(self.outline2_btn)
+        self.out2_slider, self.out2_spin = self._slider_spin_row(
+            sb, self.t("outline2_width"), 0, 80, DEFAULTS["outline2_px"])
+        self.out2_spin.valueChanged.connect(lambda _v: self._update_preview())
         # Rotation (Grad): dreht die ganze SFX um ihren Mittelpunkt.
         self.rot_slider, self.rot_spin = self._slider_spin_row(
             sb, self.t("rotation"), -180, 180, 0)
@@ -910,9 +949,21 @@ class MangaSFXDocker(DockWidget):
         rules_hint = QLabel(self.t("rules_hint"))
         rules_hint.setWordWrap(True)
         rb.addWidget(rules_hint)
+        # Suchfeld: filtert nur die Anzeige, nie die aktiven Regeln.
+        self.rule_search = QLineEdit(self._rule_query)
+        self.rule_search.setPlaceholderText(self.t("rule_search_ph"))
+        self.rule_search.setToolTip(self.t("rule_search_tip"))
+        self.rule_search.setClearButtonEnabled(True)
+        self.rule_search.textChanged.connect(self._on_rule_search)
+        self.rule_search.installEventFilter(self)                 # Esc = leeren
+        self._make_shrinkable(self.rule_search)
+        rb.addWidget(self.rule_search)
         self.rules_box = QVBoxLayout()
         self.rules_box.setSpacing(3)
         rb.addLayout(self.rules_box)
+        self.rule_count_lbl = QLabel("")
+        self.rule_count_lbl.setVisible(False)
+        rb.addWidget(self.rule_count_lbl)
         self.add_rule_btn = QPushButton(self.t("add_rule_btn"))
         self.add_rule_btn.setToolTip(self.t("add_rule_tip"))
         self.add_rule_btn.clicked.connect(self._add_font_rule)
@@ -974,12 +1025,15 @@ class MangaSFXDocker(DockWidget):
         self.text_input.setFocus()             # gleich lostippen können
 
     def eventFilter(self, obj, event):
-        """Esc im SFX-Feld leert es (schneller Neuanfang)."""
-        if (obj is getattr(self, "text_input", None)
-                and event.type() == QEvent.KeyPress
+        """Esc im SFX-Feld und in der Regelsuche leert das jeweilige Feld."""
+        if (event.type() == QEvent.KeyPress
                 and event.key() == Qt.Key_Escape):
-            self.text_input.clear()
-            return True
+            if obj is getattr(self, "text_input", None):
+                self.text_input.clear()
+                return True
+            if obj is getattr(self, "rule_search", None):
+                self.rule_search.clear()
+                return True
         return super().eventFilter(obj, event)
 
     # ==================================================================
@@ -1238,6 +1292,175 @@ class MangaSFXDocker(DockWidget):
         """Zweite Farbe nur bei aktiver Verlaufsfüllung bedienbar."""
         self.fill2_btn.setEnabled(self.grad_chk.isChecked())
 
+    # --- Textur-/Muster-Füllung ---------------------------------------
+    def _update_pattern_enabled(self):
+        """Bild/Skala nur bedienbar, wenn Musterfüllung aktiv ist; der Button
+        zeigt die aktive Quelle (Datei-Name oder Krita-Muster)."""
+        on = self.pattern_chk.isChecked()
+        for w in (self.pattern_btn, self.pattern_krita_btn,
+                  self.pattern_clear_btn, self.pattern_scale_slider,
+                  self.pattern_scale_spin):
+            w.setEnabled(on)
+        if self._pattern_path:
+            name = os.path.basename(self._pattern_path)
+        elif self._pattern_krita_name:
+            name = self._pattern_krita_name
+        else:
+            name = self.t("pattern_choose")
+        self.pattern_btn.setText(self._elide(name, 20))
+
+    def _pick_pattern(self):
+        """Bilddatei (Screentone/Textur) für die Musterfüllung wählen."""
+        path, _ = QFileDialog.getOpenFileName(
+            self.widget(), self.t("pattern_choose"), self._pattern_path or "",
+            self.t("pattern_filter"))
+        if not path:
+            return
+        img = QImage(path)
+        if img.isNull():
+            self._warn(self.t("warn_pattern_bad"))
+            return
+        self._pattern_path = path
+        self._pattern_krita_name = ""
+        self._pattern_img = img
+        if not self.pattern_chk.isChecked():
+            self.pattern_chk.setChecked(True)      # löst update+preview aus
+        self._update_pattern_enabled()
+        self._update_preview()
+
+    def _krita_pattern_image(self, name):
+        """QImage eines in Krita gespeicherten Musters (oder None)."""
+        try:
+            res = Krita.instance().resources("pattern")
+            r = res.get(name) if res else None
+            img = r.image() if r is not None else None
+            if img is not None and not img.isNull():
+                return img
+        except Exception:
+            pass
+        return None
+
+    def _pick_krita_pattern(self):
+        """Aus den in Krita gespeicherten Mustern (Pattern-Ressourcen) wählen."""
+        try:
+            res = Krita.instance().resources("pattern")
+        except Exception:
+            res = None
+        if not res:
+            self._warn(self.t("warn_no_krita_patterns"))
+            return
+        dlg = QDialog(self.widget())
+        dlg.setWindowTitle(self.t("pattern_krita_title"))
+        lay = QVBoxLayout(dlg)
+        lst = QListWidget()
+        lst.setViewMode(QListWidget.IconMode)
+        lst.setIconSize(QSize(64, 64))
+        lst.setResizeMode(QListWidget.Adjust)
+        lst.setMovement(QListWidget.Static)
+        lst.setMinimumSize(430, 340)
+        for nm in sorted(res.keys(), key=lambda s: s.lower()):
+            img = self._krita_pattern_image(nm)
+            if img is None:
+                continue
+            it = QListWidgetItem(self._elide(nm, 22))
+            it.setData(Qt.UserRole, nm)
+            it.setToolTip(nm)
+            it.setIcon(QIcon(QPixmap.fromImage(img).scaled(
+                64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+            lst.addItem(it)
+        if lst.count() == 0:
+            self._warn(self.t("warn_no_krita_patterns"))
+            return
+        lst.itemDoubleClicked.connect(lambda _i: dlg.accept())
+        lay.addWidget(lst)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        lay.addWidget(bb)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        it = lst.currentItem()
+        if it is None:
+            return
+        nm = it.data(Qt.UserRole)
+        img = self._krita_pattern_image(nm)
+        if img is None:
+            self._warn(self.t("warn_pattern_bad"))
+            return
+        self._pattern_krita_name = nm
+        self._pattern_path = ""
+        self._pattern_img = QImage(img)            # eigene Kopie behalten
+        if not self.pattern_chk.isChecked():
+            self.pattern_chk.setChecked(True)
+        self._update_pattern_enabled()
+        self._update_preview()
+
+    def _clear_pattern(self):
+        self._pattern_path = ""
+        self._pattern_krita_name = ""
+        self._pattern_img = None
+        self._update_pattern_enabled()
+        self._update_preview()
+
+    def _ensure_pattern_img(self):
+        """QImage lazy laden (Cache); None wenn kein/ungültiges Bild. Quelle ist
+        eine Datei ODER ein in Krita gespeichertes Muster."""
+        if self._pattern_img is not None and not self._pattern_img.isNull():
+            return self._pattern_img
+        if self._pattern_path and os.path.exists(self._pattern_path):
+            img = QImage(self._pattern_path)
+            if not img.isNull():
+                self._pattern_img = img
+                return img
+        if self._pattern_krita_name:
+            img = self._krita_pattern_image(self._pattern_krita_name)
+            if img is not None:
+                self._pattern_img = QImage(img)
+                return self._pattern_img
+        return None
+
+    def _pattern_active(self):
+        return bool(getattr(self, "pattern_chk", None)
+                    and self.pattern_chk.isChecked()) \
+            and self._ensure_pattern_img() is not None
+
+    def _pattern_tile(self):
+        """Kachelgröße (w, h) in Nutzer-/Seitenpixeln = Bildgröße * Skala%."""
+        img = self._ensure_pattern_img()
+        if img is None or not hasattr(self, "pattern_scale_spin"):
+            return (0, 0)
+        s = self.pattern_scale_spin.value() / 100.0
+        return (max(1, int(img.width() * s)), max(1, int(img.height() * s)))
+
+    def _pattern_data_uri(self):
+        """data:-URI des Musters. Datei: unverändert eingebettet. Krita-Muster
+        (kein Dateipfad): das QImage als PNG kodiert."""
+        if self._pattern_path and os.path.exists(self._pattern_path):
+            ext = os.path.splitext(self._pattern_path)[1].lower().lstrip(".")
+            mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif",
+                    "bmp": "bmp", "webp": "webp"}.get(ext, "png")
+            try:
+                with open(self._pattern_path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode("ascii")
+            except Exception:
+                return None
+            return "data:image/%s;base64,%s" % (mime, b64)
+        img = self._ensure_pattern_img()
+        if img is None:
+            return None
+        try:
+            im = img.convertToFormat(QImage.Format_ARGB32)
+            ba = QByteArray()
+            buf = QBuffer(ba)
+            buf.open(QBuffer.WriteOnly)
+            im.save(buf, "PNG")
+            buf.close()
+            b64 = bytes(ba.toBase64()).decode("ascii")
+        except Exception:
+            return None
+        return "data:image/png;base64," + b64
+
     def _update_preview(self):
         """WYSIWYG-Vorschau mit Font/Größe/Farben/Outline/Schatten neu zeichnen."""
         needed = ("preview", "font_combo", "size_spin", "fill_btn",
@@ -1264,6 +1487,8 @@ class MangaSFXDocker(DockWidget):
             "outline": self.out_spin.value() > 0,
             "outline_color": QColor(self.outline_btn._color),
             "outline_px": float(self.out_spin.value()),
+            "outline2_color": QColor(self.outline2_btn._color),
+            "outline2_px": float(self.out2_spin.value()),
             "shadow": self.shadow_chk.isChecked(),
             "shadow_color": QColor(self.shadow_btn._color),
             "shadow_dx": float(self.shadow_dx.value()),
@@ -1271,6 +1496,9 @@ class MangaSFXDocker(DockWidget):
             "rotate": float(self.rot_spin.value()),
             "fill2": (QColor(self.fill2_btn._color)
                       if self.grad_chk.isChecked() else None),
+            "pattern_img": (self._ensure_pattern_img()
+                            if self._pattern_active() else None),
+            "pattern_tile": self._pattern_tile(),
         })
 
     # --- Stand sichern / wiederherstellen -----------------------------
@@ -1282,6 +1510,12 @@ class MangaSFXDocker(DockWidget):
             "fill": self.fill_btn._color.name(),
             "outline": self.outline_btn._color.name(),
             "outline_px": self.out_spin.value(),
+            "outline2": self.outline2_btn._color.name(),
+            "outline2_px": self.out2_spin.value(),
+            "pattern": self._pattern_path,
+            "pattern_krita": self._pattern_krita_name,
+            "pattern_on": self.pattern_chk.isChecked(),
+            "pattern_scale": self.pattern_scale_spin.value(),
             "uppercase": self.upper_chk.isChecked(),
             "bold": self.bold_chk.isChecked(),
             "italic": self.italic_chk.isChecked(),
@@ -1299,6 +1533,7 @@ class MangaSFXDocker(DockWidget):
         if st.get("font"):
             self._select_font(st["font"], warn=False)
         for key, spin in (("size", self.size_spin), ("outline_px", self.out_spin),
+                          ("outline2_px", self.out2_spin),
                           ("shadow_dx", self.shadow_dx),
                           ("shadow_dy", self.shadow_dy)):
             if key in st:
@@ -1310,6 +1545,8 @@ class MangaSFXDocker(DockWidget):
             self._set_btn_color(self.fill_btn, QColor(st["fill"]))
         if st.get("outline"):
             self._set_btn_color(self.outline_btn, QColor(st["outline"]))
+        if st.get("outline2"):
+            self._set_btn_color(self.outline2_btn, QColor(st["outline2"]))
         if st.get("shadow_color"):
             self._set_btn_color(self.shadow_btn, QColor(st["shadow_color"]))
         if "uppercase" in st:
@@ -1320,7 +1557,28 @@ class MangaSFXDocker(DockWidget):
             self.italic_chk.setChecked(bool(st["italic"]))
         if "shadow" in st:
             self.shadow_chk.setChecked(bool(st["shadow"]))
+        self._restore_pattern(st)
         self._update_shadow_enabled()
+
+    def _restore_pattern(self, st):
+        """Muster (Pfad/Skala/An) aus Zustand oder Preset setzen. Fehlt die
+        Datei, bleibt die Musterfüllung schlicht aus."""
+        if not hasattr(self, "pattern_chk"):
+            return
+        self._pattern_path = st.get("pattern", "") or ""
+        self._pattern_krita_name = st.get("pattern_krita", "") or ""
+        self._pattern_img = None
+        if "pattern_scale" in st:
+            try:
+                self.pattern_scale_spin.setValue(int(st["pattern_scale"]))
+            except (TypeError, ValueError):
+                pass
+        # on only if the image (file or Krita muster) actually resolves
+        want = bool(st.get("pattern_on")) and self._ensure_pattern_img() is not None
+        self.pattern_chk.blockSignals(True)
+        self.pattern_chk.setChecked(want)
+        self.pattern_chk.blockSignals(False)
+        self._update_pattern_enabled()
 
     def _preset_tooltip(self, p):
         lines = [
@@ -1343,8 +1601,13 @@ class MangaSFXDocker(DockWidget):
         self._select_font(preset["font"])
         self.size_spin.setValue(preset["size"])
         self.out_spin.setValue(preset["outline_px"])
+        self.out2_spin.setValue(int(preset.get("outline2_px",
+                                               DEFAULTS.get("outline2_px", 0))))
         self._set_btn_color(self.fill_btn, QColor(preset["fill"]))
         self._set_btn_color(self.outline_btn, QColor(preset["outline"]))
+        self._set_btn_color(self.outline2_btn,
+                            QColor(preset.get("outline2",
+                                              DEFAULTS.get("outline2", "#000000"))))
         self.bold_chk.setChecked(bool(preset.get("bold", False)))
         self.italic_chk.setChecked(bool(preset.get("italic", False)))
         # Schatten (in alten Presets nicht vorhanden -> Standard aus)
@@ -1355,6 +1618,7 @@ class MangaSFXDocker(DockWidget):
                                                DEFAULTS.get("shadow_dx", 6))))
         self.shadow_dy.setValue(int(preset.get("shadow_dy",
                                                DEFAULTS.get("shadow_dy", 6))))
+        self._restore_pattern(preset)
         self._update_shadow_enabled()
         self._update_preview()
         self.status_label.setText(self.t("st_preset_loaded", name=preset["name"]))
@@ -1402,6 +1666,12 @@ class MangaSFXDocker(DockWidget):
             "fill": self.fill_btn._color.name(),
             "outline": self.outline_btn._color.name(),
             "outline_px": self.out_spin.value(),
+            "outline2": self.outline2_btn._color.name(),
+            "outline2_px": self.out2_spin.value(),
+            "pattern": self._pattern_path,
+            "pattern_krita": self._pattern_krita_name,
+            "pattern_on": self.pattern_chk.isChecked(),
+            "pattern_scale": self.pattern_scale_spin.value(),
             "bold": self.bold_chk.isChecked(),
             "italic": self.italic_chk.isChecked(),
             "shadow": self.shadow_chk.isChecked(),
@@ -1504,6 +1774,12 @@ class MangaSFXDocker(DockWidget):
         preset["fill"] = self.fill_btn._color.name()
         preset["outline"] = self.outline_btn._color.name()
         preset["outline_px"] = self.out_spin.value()
+        preset["outline2"] = self.outline2_btn._color.name()
+        preset["outline2_px"] = self.out2_spin.value()
+        preset["pattern"] = self._pattern_path
+        preset["pattern_krita"] = self._pattern_krita_name
+        preset["pattern_on"] = self.pattern_chk.isChecked()
+        preset["pattern_scale"] = self.pattern_scale_spin.value()
         preset["bold"] = self.bold_chk.isChecked()
         preset["italic"] = self.italic_chk.isChecked()
         preset["shadow"] = self.shadow_chk.isChecked()
@@ -1622,6 +1898,13 @@ class MangaSFXDocker(DockWidget):
             self.font_combo.setCurrentIndex(idx)
         else:
             self.font_combo.setCurrentText(font_name)
+
+    def _apply_typed_font(self):
+        """Apply the font typed/searched in the combo box (validated the same way
+        as a clicked suggestion)."""
+        name = self.font_combo.currentText().strip()
+        if name:
+            self._select_font(name)
 
     # ==================================================================
     #  Live-Vorschläge
@@ -1917,24 +2200,37 @@ class MangaSFXDocker(DockWidget):
 
         Eingebaute Regeln (aus config.py) sind immer dabei und nur lesbar
         (Klick übernimmt ihren ersten Font). Eigene Regeln sind links-/rechts-
-        klickbar zum Bearbeiten/Löschen."""
+        klickbar zum Bearbeiten/Löschen.
+
+        Das Suchfeld filtert nur diese Anzeige – aktiv bleiben alle Regeln."""
         self._clear_layout(self.rules_box)
         all_rules = self._all_rules()
         # Restore only helps when something is hidden; Hide-all only while a
-        # built-in is still visible.
+        # built-in is still visible. Both act on ALL rules, so they ignore the
+        # search filter.
         self.restore_builtins_btn.setEnabled(bool(self._hidden_arr()))
         self.hide_all_btn.setEnabled(any(is_b for _r, is_b in all_rules))
+        query = self._rule_query.strip()
+        shown = [(r, b) for r, b in all_rules if rule_matches_query(r, query)]
+        self._update_rule_count(len(shown), len(all_rules), query)
         if not all_rules:
             hint = QLabel(self.t("no_rules"))
             hint.setWordWrap(True)
             self.rules_box.addWidget(hint)
             return
+        if not shown:
+            hint = QLabel(self.t("no_rule_match", q=query))
+            hint.setWordWrap(True)
+            self.rules_box.addWidget(hint)
+            return
         for group in self._ordered_groups():
+            in_group = [(r, b) for r, b in shown
+                        if (r.get("group") or "") == group]
+            if not in_group:                       # ganz weggefiltert
+                continue
             self.rules_box.addWidget(
                 self._mini_heading(group if group else self.t("group_none")))
-            for rule, is_builtin in all_rules:
-                if (rule.get("group") or "") != group:
-                    continue
+            for rule, is_builtin in in_group:
                 kw = ", ".join(rule.get("keywords", []))
                 fo = ", ".join(rule.get("fonts", []))
                 full = f"{kw}  →  {fo}"
@@ -1968,6 +2264,22 @@ class MangaSFXDocker(DockWidget):
                     btn.customContextMenuRequested.connect(
                         lambda pos, r=rule, b=btn: self._show_rule_menu(r, b, pos))
                 self.rules_box.addWidget(btn)
+
+    def _on_rule_search(self, text):
+        """Suchfeld getippt: nur die Anzeige neu aufbauen."""
+        self._rule_query = text or ""
+        self._rebuild_rules()
+
+    def _update_rule_count(self, shown, total, query):
+        """„n von m Regeln“ – nur solange gesucht wird."""
+        lbl = getattr(self, "rule_count_lbl", None)
+        if lbl is None:                            # noch im Aufbau
+            return
+        if query:
+            lbl.setText(self.t("rules_count", n=shown, total=total))
+            lbl.setVisible(True)
+        else:
+            lbl.setVisible(False)
 
     def _ordered_groups(self):
         """Gruppen in Reihenfolge des ersten Auftretens; 'ohne Gruppe' ans Ende.
@@ -2210,6 +2522,8 @@ class MangaSFXDocker(DockWidget):
             outline=self.outline_btn._color.name(),
             outline_px=(outline_px if outline_px is not None
                         else self.out_spin.value()),
+            outline2=self.outline2_btn._color.name(),
+            outline2_px=self.out2_spin.value(),
             bold=self.bold_chk.isChecked(),
             italic=self.italic_chk.isChecked(),
             x=tx, y=ty, anchor="middle", img_w=img_w, img_h=img_h,
@@ -2220,18 +2534,31 @@ class MangaSFXDocker(DockWidget):
             rotate=self.rot_spin.value(),
             fill2=(self.fill2_btn._color.name()
                    if self.grad_chk.isChecked() else None),
+            pattern_uri=(self._pattern_data_uri()
+                         if self._pattern_active() else None),
+            pattern_w=self._pattern_tile()[0],
+            pattern_h=self._pattern_tile()[1],
         )
 
     def _restyle_sfx(self):
-        """Re-render the active SFX vector layer with the current style, in
-        place: keep its word and position, replace its shapes."""
+        """Re-render the active SFX layer with the current style, keeping its
+        word and position. Vector layers are restyled in place; with a texture
+        fill active the layer is replaced by a fresh raster layer (vector text
+        can't take a pattern)."""
         doc = Krita.instance().activeDocument()
         node = doc.activeNode() if doc else None
-        if node is None or node.type() != "vectorlayer":
+        if node is None:
             self._warn(self.t("st_no_sfx_layer"))
             return
-        shapes = node.shapes() if hasattr(node, "shapes") else []
-        # word: the input if filled, else read it back off the layer
+        is_vector = node.type() == "vectorlayer"
+        pattern_mode = self._pattern_active()
+        # only a vector SFX can be restyled in place; a texture render can start
+        # from any SFX layer (word from the input, position from its bounds)
+        if not is_vector and not pattern_mode:
+            self._warn(self.t("st_no_sfx_layer"))
+            return
+        shapes = node.shapes() if (is_vector and hasattr(node, "shapes")) else []
+        # word: the input if filled, else read it back off a vector layer
         text = self._effective_text()
         if not text:
             for sh in shapes:
@@ -2249,23 +2576,147 @@ class MangaSFXDocker(DockWidget):
         else:
             cx, cy = img_w / 2.0, img_h / 2.0
         ty = cy + self.size_spin.value() * 0.35
-        try:
-            for sh in list(shapes):
-                sh.remove()
-        except Exception:
-            pass                # if shapes cannot be removed, we add over them
-        svg = self._build_svg(text, cx, ty, img_w, img_h)
-        try:
-            ok = node.addShapesFromSvg(svg)
-        except Exception as e:                       # noqa: BLE001
-            self._warn(self.t("st_insert_fail", err=e))
-            return
+
+        if pattern_mode:
+            new_node, _created = self._insert_sfx_raster(
+                doc, text, cx, ty, self.size_spin.value(), None)
+            if new_node is None:
+                self._warn(self.t("st_insert_fail", err="texture"))
+                return
+            try:
+                node.remove()          # replace the old layer with the raster one
+            except Exception:
+                pass
+            doc.setActiveNode(new_node)
+        else:
+            try:
+                for sh in list(shapes):
+                    sh.remove()
+            except Exception:
+                pass            # if shapes cannot be removed, we add over them
+            svg = self._build_svg(text, cx, ty, img_w, img_h)
+            try:
+                ok = node.addShapesFromSvg(svg)
+            except Exception as e:                   # noqa: BLE001
+                self._warn(self.t("st_insert_fail", err=e))
+                return
+            if ok is False:
+                self._warn(self.t("st_svg_fail"))
+                return
         doc.refreshProjection()
-        if ok is False:
-            self._warn(self.t("st_svg_fail"))
-            return
         self._record_usage(text, self.font_combo.currentText())
         self.status_label.setText(self.t("st_restyled"))
+
+    def _render_sfx_qimage(self, text, size, outline_px=None):
+        """Render the current SFX (texture fill + double outline + shadow +
+        rotation) to an ARGB QImage. Returns (image, ax, ay) where (ax, ay) is
+        the pixel matching the SVG anchor: horizontal centre + baseline. This is
+        the raster twin of build_sfx_svg for the texture-fill fallback, and it
+        paints exactly what the live preview paints (same layer order)."""
+        fn = QFont(self.font_combo.currentText())
+        fn.setPixelSize(max(1, int(size)))
+        fn.setBold(self.bold_chk.isChecked())
+        fn.setItalic(self.italic_chk.isChecked())
+        fm = QFontMetricsF(fn)
+        adv = fm.horizontalAdvance(text)
+        asc, desc = fm.ascent(), fm.descent()
+
+        o1 = float(outline_px if outline_px is not None else self.out_spin.value())
+        o2 = float(self.out2_spin.value())
+        margin = int(max(o1, o2) * 2 + 6)
+        shadow_on = self.shadow_chk.isChecked()
+        sdx = float(self.shadow_dx.value()) if shadow_on else 0.0
+        sdy = float(self.shadow_dy.value()) if shadow_on else 0.0
+
+        # content rectangle relative to the anchor (h-centre, baseline) at origin
+        x0 = -adv / 2.0 - margin + min(0.0, sdx)
+        x1 = adv / 2.0 + margin + max(0.0, sdx)
+        y0 = -asc - margin + min(0.0, sdy)
+        y1 = desc + margin + max(0.0, sdy)
+        corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        angle = float(self.rot_spin.value())
+        if angle:
+            a = math.radians(angle)
+            ca, sa = math.cos(a), math.sin(a)
+            corners = [(cx * ca - cy * sa, cx * sa + cy * ca) for cx, cy in corners]
+        rx0 = min(c[0] for c in corners)
+        rx1 = max(c[0] for c in corners)
+        ry0 = min(c[1] for c in corners)
+        ry1 = max(c[1] for c in corners)
+        w = max(1, int(math.ceil(rx1 - rx0)))
+        h = max(1, int(math.ceil(ry1 - ry0)))
+        ax, ay = -rx0, -ry0                       # anchor inside the image
+
+        img = QImage(w, h, QImage.Format_ARGB32)
+        img.fill(0)
+        p = QPainter(img)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.translate(ax, ay)
+        if angle:
+            p.rotate(angle)
+        path = QPainterPath()
+        path.addText(-adv / 2.0, 0.0, fn, text)   # h-centred, baseline at 0
+
+        if shadow_on and (sdx or sdy):
+            sp = QPainterPath(path)
+            sp.translate(sdx, sdy)
+            p.fillPath(sp, QBrush(QColor(self.shadow_btn._color)))
+        if o1 > 0 and o2 > 0:              # 2nd outline coupled to the first
+            pen2 = QPen(QColor(self.outline2_btn._color))
+            pen2.setWidthF(max(0.5, 2.0 * o2))
+            pen2.setJoinStyle(Qt.RoundJoin)
+            pen2.setCapStyle(Qt.RoundCap)
+            p.strokePath(path, pen2)
+        if o1 > 0:
+            pen = QPen(QColor(self.outline_btn._color))
+            pen.setWidthF(max(0.5, 2.0 * o1))
+            pen.setJoinStyle(Qt.RoundJoin)
+            pen.setCapStyle(Qt.RoundCap)
+            p.strokePath(path, pen)
+        pimg = self._ensure_pattern_img()
+        if pimg is not None:
+            tw, th = self._pattern_tile()
+            pm = QPixmap.fromImage(pimg).scaled(
+                max(1, tw), max(1, th), Qt.IgnoreAspectRatio,
+                Qt.SmoothTransformation)
+            p.fillPath(path, QBrush(pm))
+        else:                                     # safety: solid if no image
+            p.fillPath(path, QBrush(QColor(self.fill_btn._color)))
+        p.end()
+        return img, ax, ay
+
+    def _insert_sfx_raster(self, doc, text, tx, ty, size, outline_px):
+        """Place the texture-filled SFX on a NEW paint layer (pixels), since
+        Krita's vector text cannot take a pattern fill. Returns (node, created)
+        or (None, False) on failure."""
+        try:
+            img, ax, ay = self._render_sfx_qimage(text, size, outline_px)
+        except Exception:                         # noqa: BLE001
+            return None, False
+        img_w, img_h = doc.width(), doc.height()
+        px = int(round(tx - ax))
+        py = int(round(ty - ay))
+        # clip to the canvas
+        cx0, cy0 = max(0, px), max(0, py)
+        cx1 = min(img_w, px + img.width())
+        cy1 = min(img_h, py + img.height())
+        if cx1 <= cx0 or cy1 <= cy0:
+            return None, False
+        if (cx0, cy0, cx1, cy1) != (px, py, px + img.width(), py + img.height()):
+            img = img.copy(cx0 - px, cy0 - py, cx1 - cx0, cy1 - cy0)
+        img = img.convertToFormat(QImage.Format_ARGB32)   # memory layout = BGRA
+        node = doc.createNode("SFX", "paintlayer")
+        root = doc.rootNode()
+        kids = root.childNodes()
+        root.addChildNode(node, kids[-1] if kids else None)
+        doc.setActiveNode(node)
+        nbytes = (img.sizeInBytes() if hasattr(img, "sizeInBytes")
+                  else img.byteCount())
+        buf = img.constBits()
+        buf.setsize(nbytes)
+        node.setPixelData(bytes(buf), cx0, cy0, img.width(), img.height())
+        return node, True
 
     def _insert_sfx(self):
         doc = Krita.instance().activeDocument()
@@ -2304,10 +2755,14 @@ class MangaSFXDocker(DockWidget):
                 self._warn(self.t("st_no_text"))
                 return
 
-        # Aktive Ebene prüfen – ist es keine Vektor-Ebene, neue anlegen.
+        # Eine Textur-/Musterfüllung kann Kritas Vektor-Text nicht darstellen
+        # (füllt einfarbig) -> dann rendern wir die SFX als Pixel-Ebene.
+        pattern_mode = self._pattern_active()
+
+        # Aktive Ebene prüfen – für Vektor: ist es keine Vektor-Ebene, neue anlegen.
         node = doc.activeNode()
         created = False
-        if node is None or node.type() != "vectorlayer":
+        if not pattern_mode and (node is None or node.type() != "vectorlayer"):
             node = doc.createVectorLayer("SFX")
             rootnode = doc.rootNode()
             children = rootnode.childNodes()
@@ -2358,14 +2813,21 @@ class MangaSFXDocker(DockWidget):
         ty = max(ty, size)
         tx = min(max(tx, size * 0.5), img_w - size * 0.5)
 
-        svg = self._build_svg(text, tx, ty, img_w, img_h,
-                              size=size, outline_px=outline_px)
-
-        try:
-            ok = node.addShapesFromSvg(svg)
-        except Exception as e:                      # noqa: BLE001
-            self._warn(self.t("st_insert_fail", err=e))
-            return
+        if pattern_mode:
+            node, created = self._insert_sfx_raster(
+                doc, text, tx, ty, size, outline_px)
+            if node is None:
+                self._warn(self.t("st_insert_fail", err="texture"))
+                return
+            ok = True
+        else:
+            svg = self._build_svg(text, tx, ty, img_w, img_h,
+                                  size=size, outline_px=outline_px)
+            try:
+                ok = node.addShapesFromSvg(svg)
+            except Exception as e:                  # noqa: BLE001
+                self._warn(self.t("st_insert_fail", err=e))
+                return
         doc.refreshProjection()
 
         if ok is False:
@@ -2433,8 +2895,14 @@ class MangaSFXDocker(DockWidget):
             self.font_combo.setCurrentIndex(0)
         self.size_spin.setValue(DEFAULTS["size"])
         self.out_spin.setValue(DEFAULTS["outline_px"])
+        self.out2_spin.setValue(DEFAULTS.get("outline2_px", 0))
         self._set_btn_color(self.fill_btn, QColor(DEFAULTS["fill"]))
         self._set_btn_color(self.outline_btn, QColor(DEFAULTS["outline"]))
+        self._set_btn_color(self.outline2_btn,
+                            QColor(DEFAULTS.get("outline2", "#000000")))
+        self.pattern_scale_spin.setValue(100)
+        self._clear_pattern()
+        self.pattern_chk.setChecked(False)
         self.shadow_chk.setChecked(bool(DEFAULTS.get("shadow", False)))
         self._set_btn_color(self.shadow_btn,
                             QColor(DEFAULTS.get("shadow_color", "#000000")))
@@ -2559,6 +3027,14 @@ class MangaSFXDocker(DockWidget):
                 "outline": str(p.get("outline", DEFAULTS["outline"])),
                 "outline_px": self._as_int(p.get("outline_px"),
                                            DEFAULTS["outline_px"]),
+                "outline2": str(p.get("outline2", DEFAULTS.get("outline2",
+                                                               "#000000"))),
+                "outline2_px": self._as_int(p.get("outline2_px"),
+                                            DEFAULTS.get("outline2_px", 0)),
+                "pattern": str(p.get("pattern", "")),
+                "pattern_krita": str(p.get("pattern_krita", "")),
+                "pattern_on": bool(p.get("pattern_on", False)),
+                "pattern_scale": self._as_int(p.get("pattern_scale"), 100),
                 "bold": bool(p.get("bold", False)),
                 "italic": bool(p.get("italic", False)),
                 "shadow": bool(p.get("shadow", False)),

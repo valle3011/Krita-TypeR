@@ -368,12 +368,93 @@ check("group_words with no breaks -> single line",
 _cb = LO.shape_candidates("aa bb cc dd", _measurer, 100, 100, 200, 1, 0.0,
                           mode="balanced")
 check("balanced candidates exist", len(_cb) >= 3)
-check("balanced candidates sorted by size (biggest first)",
-      [c["px"] for c in _cb] == sorted((c["px"] for c in _cb), reverse=True))
-check("balanced first candidate is the 2-line arrangement",
-      _cb and _cb[0]["k"] == 2)
+check("balanced candidates ranked by quality score (best first)",
+      [c["score"] for c in _cb] == sorted((c["score"] for c in _cb),
+                                          reverse=True))
+# The biggest font that fits ('aa bb' / 'cc dd', edge-to-edge in the 100x100
+# box) is no longer the recommendation: a calmer, better-filling shape scores
+# higher, so the top card is not simply the largest.
+check("recommendation is quality-based, not merely the largest font",
+      _cb and _cb[0]["px"] != max(c["px"] for c in _cb))
 check("candidates are deduplicated",
       len({tuple(_texts(c)) for c in _cb}) == len(_cb))
+
+# --- score_arrangement: the quality judgement behind the ranking ------------
+def _arr(px, *texts):
+    """A throwaway candidate: one run per line, no bold."""
+    return {"px": px, "k": len(texts), "lines": [[(t, False)] for t in texts]}
+
+# A block that fills ~60% of the bubble evenly beats one that hugs the rim, even
+# though the cramped block is set larger (px_ref caps the size advantage).
+_calm = _arr(26, "aaaaa", "bbbbb", "ccccc")
+_cramped = _arr(40, "aaaaa", "bbbbb")
+check("score prefers a calm ~60% fill over a cramped edge-to-edge block",
+      LO.score_arrangement(_calm, _measurer, 100, 100, 40) >
+      LO.score_arrangement(_cramped, _measurer, 100, 100, 40))
+
+# A near-empty final line reads as a leftover and scores below an even stack.
+check("score penalises a near-empty last line",
+      LO.score_arrangement(_arr(20, "aaaa", "bbbb", "cccc"), _measurer, 100, 100)
+      > LO.score_arrangement(_arr(20, "aaaa", "bbbb", "c"), _measurer, 100, 100))
+
+# Near-identical shapes are collapsed so the picker shows distinct choices: the
+# same block at another size is not a second option worth its own slot.
+_dd = LO._dedup_similar(
+    [_arr(30, "aaaaa", "bbbbb"),       # kept (best / first)
+     _arr(20, "aaaaa", "bbbbb"),       # same shape, smaller -> dropped
+     _arr(20, "aa", "bb bb cc")],      # different profile -> kept
+    _measurer)
+check("dedup collapses a same-shape twin at another size", len(_dd) == 2)
+check("dedup keeps the first (best-ranked) of a group", _dd[0]["px"] == 30)
+
+# Break quality: with the same widths, ending a line at a comma reads better
+# than snapping it mid-clause, so the punctuation break scores higher.
+check("score rewards a line break after punctuation",
+      LO.score_arrangement(_arr(20, "well,", "okay"), _measurer, 100, 100) >
+      LO.score_arrangement(_arr(20, "well", "okay,"), _measurer, 100, 100))
+# A line of only punctuation ('..') is ugly and scores below a real word.
+check("score penalises a line that is only punctuation",
+      LO.score_arrangement(_arr(20, "no", "oh way"), _measurer, 100, 100) >
+      LO.score_arrangement(_arr(20, "..", "oh way"), _measurer, 100, 100))
+# Reading measure: the same block scores lower under a tighter char cap.
+_long = _arr(20, "aaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbb")
+check("score penalises lines longer than the reading measure",
+      LO.score_arrangement(_long, _measurer, 400, 400, max_chars=40) >
+      LO.score_arrangement(_long, _measurer, 400, 400, max_chars=10))
+
+# No stub lines: a short interior line reads as a gap and scores below an even
+# block with the same last line.
+check("score penalises a short interior line",
+      LO.score_arrangement(_arr(20, "aaaaa", "bbbbb", "ccccc"), _measurer, 100, 100)
+      > LO.score_arrangement(_arr(20, "aaaaa", "b", "ccccc"), _measurer, 100, 100))
+
+# Line-count target: the same 4-line block scores higher when the target matches
+# its line count than when the target is far off.
+_four = _arr(20, "aa", "bb", "cc", "dd")
+check("lineTarget rewards arrangements near the target line count",
+      LO.score_arrangement(_four, _measurer, 100, 100, line_target=4) >
+      LO.score_arrangement(_four, _measurer, 100, 100, line_target=1))
+
+# De-hyphenation: rejoin a word the source split across a line, but keep a
+# capitalised compound hyphenated.
+_dh1, _ = LO.dehyphenate("embar- rassing")
+check("dehyphenate rejoins a lowercase continuation", _dh1 == "embarrassing")
+_dh2, _ = LO.dehyphenate("Spider- Man")
+check("dehyphenate keeps a capitalised compound hyphenated", _dh2 == "Spider-Man")
+check("dehyphenate leaves an ordinary in-word hyphen alone",
+      LO.dehyphenate("X-ray vision")[0] == "X-ray vision")
+# the bold mask follows the shortened text ('big-Bang', 'Bang' stays bold)
+_ht, _hm = LO.dehyphenate("big- Bang",
+                          [False, False, False, False, False, True, True, True, True])
+check("dehyphenate realigns the bold mask",
+      _ht == "big-Bang" and _hm == [False, False, False, False,
+                                    True, True, True, True])
+# and it feeds through the picker when enabled
+_cdh = LO.shape_candidates("hyphen- ation works", _measurer, 200, 200, 60, 1, 0.0,
+                           dehyphenate=True)
+check("shape_candidates de-hyphenates when asked",
+      _cdh and all("- " not in " ".join(_texts(c)) for c in _cdh)
+      and any("hyphenation" in " ".join(_texts(c)).lower() for c in _cdh))
 
 _ct = LO.shape_candidates("aa bb cc dd", _measurer, 100, 100, 200, 1, 0.0,
                           mode="tall")
@@ -391,6 +472,80 @@ _ch = LO.shape_candidates("hyphenation hyphenation", _measurer, 60, 300, 60, 1,
                           0.0, mode="balanced", hyphenate=True, lang="en")
 check("hyphenation toggle produces hyphenated lines",
       any("-" in t for c in _ch for t in _texts(c)))
+
+# hyphenation must not be blocked by punctuation stuck to the word
+check("hyphenate: plain word breaks at syllables",
+      LO.hyphenate("EMBARRASSING", "en") == [2, 5, 9])
+check("hyphenate: trailing punctuation does not disable it",
+      LO.hyphenate("EMBARRASSING!", "en") == [2, 5, 9])
+check("hyphenate: quotes/brackets shift the break indices",
+      LO.hyphenate("(embarrassing)", "en") == [3, 6, 10])
+check("hyphenate: split keeps the punctuation on its part",
+      [w.text for w in LO.split_word(
+          LO.make_words("EMBARRASSING!", [False] * 13)[0], 5)]
+      == ["EMBAR-", "RASSING!"])
+check("hyphenate: still nothing to break in a short word",
+      LO.hyphenate("SO!", "en") == [] and LO.hyphenate("THIS", "en") == [])
+check("hyphenate: a word of only punctuation is no word",
+      LO.hyphenate("!!!", "en") == [] and LO.hyphenate("...", "en") == [])
+# the case from the panel: the long word only wraps once punctuation is ignored
+_chp = LO.shape_candidates("THIS IS SO EMBARRASSING!", _measurer, 60, 300, 60,
+                           1, 0.0, mode="balanced", hyphenate=True, lang="en")
+check("hyphenation splits a word with a trailing '!'",
+      any("-" in t for c in _chp for t in _texts(c)))
+
+# typographic limits: one split per word, at most 2 hyphen lines in a row
+def _wrap_texts(max_w, **kw):
+    """Wrap the sample line at a fixed size and return its lines as text."""
+    words = LO.make_words("THIS IS SO EMBARRASSING!", [False] * 24)
+    width_of, space_w, _lh, _a, _d = _measurer(20)
+    lines = LO.wrap_greedy(words, width_of, space_w, max_w,
+                           lambda w: LO.hyphenate(w.text, "en"), **kw)
+    return [LO.runs_text(LO.line_runs(ln)) for ln in lines]
+
+
+def _max_hyphen_run(texts):
+    """Longest run of consecutive lines ending with a hyphen."""
+    best = run = 0
+    for t in texts:
+        run = run + 1 if t.endswith("-") else 0
+        best = max(best, run)
+    return best
+
+
+def _hyphens(texts):
+    return sum(1 for t in texts if t.endswith("-"))
+
+
+_narrow = (45.0, 55.0, 60.0, 70.0, 80.0, 90.0)
+check("a long word is hyphenated even after a filled line",
+      all(_hyphens(_wrap_texts(w)) >= 1 for w in _narrow))
+check("by default one word is broken only once",
+      all(_hyphens(_wrap_texts(w)) <= 1 for w in _narrow))
+check("hyphen ladder never exceeds two lines in a row",
+      all(_max_hyphen_run(_wrap_texts(w, max_word_splits=0)) <= 2
+          for w in _narrow))
+check("without the limits the same wrap splits more often",
+      any(_hyphens(_wrap_texts(w, max_ladder=0, max_word_splits=0))
+          > _hyphens(_wrap_texts(w)) for w in _narrow))
+check("limits never lose or add text",
+      all("".join(_wrap_texts(w)).replace("-", "").replace(" ", "")
+          == "THISISSOEMBARRASSING!" for w in _narrow))
+
+# fit_fixed_lines: re-fit a hand-edited arrangement without re-wrapping it
+_fx = LO.make_words("aa bb cc dd", [False] * 11)
+_fixed = [_fx[:2], _fx[2:]]
+_ff = LO.fit_fixed_lines(_fixed, _measurer, 100, 100, 200, 1)
+check("fit_fixed_lines keeps the given breaks",
+      _ff is not None and [[w.text for w in ln] for ln in _ff[1]]
+      == [["aa", "bb"], ["cc", "dd"]])
+check("fit_fixed_lines finds the same size as the balanced fit",
+      _ff is not None and _r2 is not None and _ff[0] == _r2[0])
+check("fit_fixed_lines: a smaller box yields a smaller size",
+      LO.fit_fixed_lines(_fixed, _measurer, 50, 100, 200, 1)[0] < _ff[0])
+check("fit_fixed_lines: nothing to fit -> None",
+      LO.fit_fixed_lines([], _measurer, 100, 100, 200, 1) is None and
+      LO.fit_fixed_lines(_fixed, _measurer, 1, 1, 200, 100) is None)
 
 check("empty text -> no candidates",
       LO.shape_candidates("   ", _measurer, 100, 100, 200, 1, 0.0) == [])
@@ -850,6 +1005,63 @@ check("note_line: meaning is optional",
       MD.note_line(2, "ドキ") == "② ドキ = doki")
 check("note_line: no romaji repeat when there is nothing to transliterate",
       MD.note_line(3, "BOOM") == "③ BOOM")
+
+# --- SFX rule matching + rule search ----------------------------------------
+_rspec = importlib.util.spec_from_file_location(
+    "rule_search", os.path.join(_HERE, "typer_kr", "sfx", "rule_search.py"))
+RS = importlib.util.module_from_spec(_rspec)
+_rspec.loader.exec_module(RS)
+
+# normalize_sfx / keyword_matches (moved here out of sfx_docker.py)
+check("normalize_sfx: stretched writings collapse",
+      RS.normalize_sfx("BOOOOM") == RS.normalize_sfx("BOOM") == "bom")
+check("normalize_sfx: punctuation drops out",
+      RS.normalize_sfx("ka-boom!") == "kabom")
+check("normalize_sfx: a single repeated char keeps two",
+      RS.normalize_sfx("zzz") == "zz" and RS.normalize_sfx("zzzz") == "zz")
+check("normalize_sfx: empty stays empty",
+      RS.normalize_sfx("") == "" and RS.normalize_sfx(None) == "")
+check("keyword_matches: 3+ chars match as substring",
+      RS.keyword_matches("boom", RS.normalize_sfx("KA-BOOOOM!")))
+check("keyword_matches: 2 chars only as a whole word",
+      RS.keyword_matches("ow", RS.normalize_sfx("OW"))
+      and not RS.keyword_matches("ow", RS.normalize_sfx("POW")))
+check("keyword_matches: 1 char is ignored",
+      not RS.keyword_matches("a", RS.normalize_sfx("aaah")))
+
+_rule = {"group": "Boom / Explosion", "keywords": ["boom", "kaboom"],
+         "fonts": ["CC Shout Out", "Impact"]}
+
+check("rule_matches_query: empty query keeps every rule",
+      RS.rule_matches_query(_rule, "") and RS.rule_matches_query(_rule, "   ")
+      and RS.rule_matches_query(_rule, None))
+check("rule_matches_query: keyword substring", RS.rule_matches_query(_rule, "boo"))
+check("rule_matches_query: font name, case-insensitive",
+      RS.rule_matches_query(_rule, "shout"))
+check("rule_matches_query: group name",
+      RS.rule_matches_query(_rule, "explosion"))
+check("rule_matches_query: fuzzy SFX spelling finds the keyword",
+      RS.rule_matches_query(_rule, "BOOOOM!")
+      and RS.rule_matches_query(_rule, "ka-boom"))
+check("rule_matches_query: no hit -> False",
+      not RS.rule_matches_query(_rule, "whoosh"))
+check("rule_matches_query: several words are ANDed",
+      RS.rule_matches_query(_rule, "boom impact")
+      and not RS.rule_matches_query(_rule, "boom whoosh"))
+check("rule_matches_query: font: prefix limits the field",
+      RS.rule_matches_query(_rule, "font:impact")
+      and not RS.rule_matches_query(_rule, "font:boom"))
+check("rule_matches_query: group: prefix limits the field",
+      RS.rule_matches_query(_rule, "group:boom")
+      and not RS.rule_matches_query(_rule, "group:impact"))
+check("rule_matches_query: kw: prefix limits the field",
+      RS.rule_matches_query(_rule, "kw:kaboom")
+      and not RS.rule_matches_query(_rule, "kw:impact"))
+check("rule_matches_query: unknown prefix is no field filter, just text",
+      not RS.rule_matches_query(_rule, "size:impact"))
+check("rule_matches_query: a rule without fonts/group survives",
+      RS.rule_matches_query({"keywords": ["thud"]}, "thud")
+      and not RS.rule_matches_query({"keywords": ["thud"]}, "boom"))
 
 # --- #21: Drive image comments as a script source --------------------------
 check("drive_file_id: /file/d/<id>/view",

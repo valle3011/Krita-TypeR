@@ -244,33 +244,51 @@ def _get_hyphenator(lang):
     return h or None
 
 
+def _core_span(word):
+    """Span (start, end) of the actual word inside `word`, ignoring attached
+    punctuation: quotes, brackets, "!", "?", ",", "…" and the like. Without
+    this, everyday words would never hyphenate — "EMBARRASSING!" is not a
+    plain word, but "EMBARRASSING" is."""
+    i, j = 0, len(word)
+    while i < j and not word[i].isalpha():
+        i += 1
+    while j > i and not word[j - 1].isalpha():
+        j -= 1
+    return i, j
+
+
 def hyphenate(word, lang="en", left=None, right=None):
     """Return the sorted character indices inside `word` where a hyphen may be
     placed (valid syllable breaks), honoring a minimum of `left` letters before
     and `right` letters after a break. When left/right are None the language's
-    own minima are used. Empty list if the word is too short, not a plain word,
-    or patterns are unavailable."""
+    own minima are used. Attached punctuation is ignored (and stays with its
+    part when the word is split). Empty list if the word is too short, not a
+    plain word, or patterns are unavailable."""
     dl, dr = _HYPH_MINS.get(_norm_lang(lang), (2, 3))
     if left is None:
         left = dl
     if right is None:
         right = dr
-    if not word or len(word) < left + right:
+    if not word:
         return []
-    if not _WORD_RE.match(word):
+    start, end = _core_span(word)
+    core = word[start:end]
+    if len(core) < left + right:
+        return []
+    if not _WORD_RE.match(core):
         return []
     h = _get_hyphenator(lang)
     if h is None:
         return []
-    pieces = h.split(word)
+    pieces = h.split(core)
     if len(pieces) < 2:
         return []
     breaks = []
     pos = 0
     for p in pieces[:-1]:
         pos += len(p)
-        if left <= pos <= len(word) - right:
-            breaks.append(pos)
+        if left <= pos <= len(core) - right:
+            breaks.append(start + pos)      # index in the ORIGINAL word
     return breaks
 
 
@@ -300,6 +318,50 @@ def split_word(word, i):
     left = Word(left_text, any(b for _, b in left_runs), left_runs)
     right = Word(right_text, any(b for _, b in right_runs), right_runs)
     return left, right
+
+
+# A hyphen followed by whitespace and a letter: a word broken across a line in
+# the SOURCE text (OCR, a previous typeset). The letters are left untouched; the
+# match spans only the hyphen and the run of spaces, so the mask stays easy to
+# realign.
+_DEHYPH_RE = re.compile(r"(?<=[^\W\d_])-(\s+)(?=([^\W\d_]))")
+
+
+def dehyphenate(text, mask=None):
+    """Undo source line-break hyphenation so the shaper can re-wrap freely: join
+    a word that was split across a line ("embar- rassing" -> "embarrassing").
+
+    A capitalised continuation is kept as a hyphenated compound instead
+    ("Spider- Man" -> "Spider-Man"), on the assumption it is a real hyphenated
+    name rather than a broken word. Only a hyphen *followed by whitespace* is
+    touched, so an ordinary in-word hyphen ("X-ray") is left alone.
+
+    Returns (new_text, new_mask) with the bold `mask` realigned to the shortened
+    text. This is the inverse of the `hyphenate`/`split_word` pair above.
+    """
+    text = text or ""
+    m = list(mask) if mask is not None else [False] * len(text)
+    if len(m) < len(text):
+        m += [False] * (len(text) - len(m))
+    out_t, out_m, last = [], [], 0
+    for mo in _DEHYPH_RE.finditer(text):
+        s, e = mo.start(), mo.end()
+        out_t.append(text[last:s])
+        out_m.extend(m[last:s])
+        if mo.group(2).isupper():          # capitalised -> keep as a compound
+            out_t.append("-")
+            out_m.append(m[s])             # the hyphen keeps its own bold bit
+        # lowercase continuation -> drop the hyphen and the spaces entirely
+        last = e
+    out_t.append(text[last:])
+    out_m.extend(m[last:])
+    new_text = "".join(out_t)
+    return new_text, out_m[:len(new_text)]
+
+
+# Internal alias so shape_candidates' `dehyphenate` parameter can toggle the
+# function without shadowing it.
+_dehyphenate = dehyphenate
 
 
 def _split_to_fit(word, avail, width_of, hyph):
@@ -337,50 +399,98 @@ def _fix_widows(lines, width_of, space_w, max_w):
     return lines
 
 
-def wrap_greedy(words, width_of, space_w, max_w, hyph=None):
+# Typographic limits for hyphenation, shared with the docker's preview wrap so
+# both produce the same lines: at most this many lines in a row may end with a
+# hyphen, and one word may be broken this often (1 = two parts).
+HYPH_MAX_LADDER = 2
+HYPH_MAX_WORD_SPLITS = 1
+
+
+def wrap_greedy(words, width_of, space_w, max_w, hyph=None,
+                max_ladder=HYPH_MAX_LADDER,
+                max_word_splits=HYPH_MAX_WORD_SPLITS):
     """Greedily wrap words into lines, each line <= max_w. With `hyph` (a
     callable word -> break indices) a word that does not fit is split at a valid
     syllable break instead of overflowing. A widow-avoidance pass keeps a lone
-    word off the last line when it can be paired without overflowing."""
+    word off the last line when it can be paired without overflowing.
+
+    Two typographic limits keep the result readable instead of shredded:
+    `max_ladder` is the classic "hyphen ladder" cap (at most that many lines in
+    a row may end with a hyphen) and `max_word_splits` is how often ONE word may
+    be broken (1 = two parts, the norm in comic lettering). When a split is not
+    allowed the wrap simply does not split — the size search then settles one
+    step smaller, with cleaner breaks. 0 = no limit."""
     lines = [[]]
     cur_w = 0.0
     queue = list(words)
     guard = 0
+    ladder = 0                                  # lines in a row ending with "-"
+    splits = 0                                  # splits of the word in hand
+    pending = None                              # the tail of the word in hand
+
+    def may_split():
+        return (bool(hyph)
+                and (max_ladder <= 0 or ladder < max_ladder)
+                and (max_word_splits <= 0 or splits < max_word_splits))
+
     while queue and guard < 100000:
         guard += 1
         w = queue.pop(0)
+        if w is not pending:                    # a fresh word, not a tail
+            splits = 0
+        pending = None
         ww = width_of(w)
         cur = lines[-1]
         if not cur:
             if ww <= max_w:
                 cur.append(w)
                 cur_w = ww
+                ladder = 0
             else:                               # too wide for a whole line
-                res = _split_to_fit(w, max_w, width_of, hyph) if hyph else None
+                res = _split_to_fit(w, max_w, width_of, hyph) \
+                    if may_split() else None
                 if res:
                     left, right = res
                     cur.append(left)
                     lines.append([])
                     cur_w = 0.0
+                    ladder += 1
+                    splits += 1
+                    pending = right
                     queue.insert(0, right)
                 else:
                     cur.append(w)               # give up -> overflow (as before)
                     cur_w = ww
+                    ladder = 0
         elif cur_w + space_w + ww <= max_w:
             cur.append(w)
             cur_w += space_w + ww
         else:
             avail = max_w - cur_w - space_w
-            res = _split_to_fit(w, avail, width_of, hyph) if hyph else None
+            res = _split_to_fit(w, avail, width_of, hyph) \
+                if may_split() else None
             if res:
                 left, right = res
                 cur.append(left)
                 lines.append([])
                 cur_w = 0.0
+                ladder += 1
+                splits += 1
+                pending = right
                 queue.insert(0, right)
+            elif ww > max_w and may_split():
+                # Nothing of it fits into the rest of this line, and it is too
+                # wide for a line of its own: start the new line and retry the
+                # word there, where it can be split against the FULL width.
+                lines.append([])
+                cur_w = 0.0
+                ladder = 0
+                pending = w                     # same word: keep its split count
+                queue.insert(0, w)
             else:
                 lines.append([w])
                 cur_w = ww
+                ladder = 0
     if lines and not lines[-1]:
         lines.pop()
     return _fix_widows(lines, width_of, space_w, max_w)
@@ -764,6 +874,27 @@ def fit_lines_width(words, measurer, usable_w, usable_h, max_px, min_px,
     return _search_px(check, max_px, min_px)
 
 
+def fit_fixed_lines(word_lines, measurer, usable_w, usable_h, max_px, min_px):
+    """Largest font size at which the GIVEN arrangement fits the box. The line
+    breaks are fixed: nothing is re-wrapped, only the size is searched. Used to
+    re-fit a hand-edited arrangement after the style or box changed. Returns
+    (px, lines) or None when it does not fit even at min_px."""
+    lines = [ws for ws in word_lines if ws]
+    if not lines:
+        return None
+
+    def check(px):
+        width_of, space_w, line_h, _a, _d = measurer(px)
+        if len(lines) * line_h > usable_h:
+            return None
+        for ln in lines:
+            if _line_width(ln, width_of, space_w) > usable_w + 0.5:
+                return None
+        return lines
+
+    return _search_px(check, max_px, min_px)
+
+
 def fit_lines_ellipse(words, measurer, a, b, max_px, min_px, hyph=None):
     """Largest font size at which the words fit an ellipse with semi-axes a, b.
     Returns (px, lines) or None."""
@@ -787,10 +918,185 @@ _ROUND_BOXES = ((1.0, 1.0), (0.9, 1.0), (0.8, 1.0), (0.7, 1.0), (0.6, 1.0),
 # target-width fractions for the hyphenating width sweep
 _WIDTH_FRACS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.42, 0.35, 0.28, 0.22)
 
+# The fill ratio (text-block area / usable area) that reads most comfortably in
+# a speech bubble: enough presence to not look lost, without touching the rim.
+# Both a cramped (near-1.0) and a sparse (near-0.0) block score below this peak.
+# Kept fairly high so the recommended card follows the user's size up (bigger,
+# fuller text) instead of settling on a small, over-airy block. The block is
+# ideal anywhere in [_TARGET_FILL, _FILL_SWEET_MAX]; only past the sweet max does
+# it read as crowding the bubble rim.
+_TARGET_FILL = 0.72
+_FILL_SWEET_MAX = 0.88
+
+# A line ending on one of these sits at a natural pause, so breaking there reads
+# better than snapping a line mid-clause.
+_CLAUSE_END = ".,;:!?…"          # . , ; : ! ? …
+# Comfortable reading measure: lines longer than this (in characters) are
+# penalised even when they still fit the box, the way a letterer caps line
+# length for legibility (cf. the PSD TextShapeR's per-mode maxLineWidth).
+_MAX_LINE_CHARS = 30
+
+# A line shorter than this fraction of the longest one reads as a gap in the
+# block, so interior stub lines are penalised (the LAST line is left to the
+# gentler `last_term`, since a slightly short final line is normal).
+_MIN_LINE_RATIO = 0.4
+
+# Preferred line count per mode, and how hard to nudge toward it. The weight is
+# small on purpose: this only breaks near-ties — fill and aspect still dominate,
+# so short text is never forced up to the target. (Adapted from the PSD
+# TextShapeR's lineTarget / lineTargetWeight.)
+_LINE_TARGETS = {"balanced": 4, "round": 4, "tall": 5, "wide": 3}
+_LINE_TARGET_WEIGHT = 0.25
+
+
+def _arr_metrics(cand, measurer):
+    """Geometry of an arrangement at its own fitted size: returns
+    (px, k, line_widths, block_w, block_h, line_h). `block_w` is the widest
+    line, `block_h` is k*line_h. Qt-free; uses the same `measurer` and run
+    lists as the generator so it measures exactly what will be inserted."""
+    lines = cand.get("lines") or []
+    k = len(lines)
+    px = max(1, int(cand.get("px", 1)))
+    width_of, _space_w, line_h, _asc, _desc = measurer(px)
+    line_ws = [width_of(runs) for runs in lines]
+    block_w = max(line_ws) if line_ws else 0.0
+    return px, k, line_ws, block_w, line_h * k, line_h
+
+
+def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
+                      max_chars=_MAX_LINE_CHARS, line_target=None):
+    """Typographic quality of a candidate arrangement (higher = better).
+
+    Combines the judgements a letterer makes by eye, so the recommended shape is
+    the one that *reads* best rather than merely the largest that fits:
+
+    * size, with diminishing returns (normalised against `px_ref`, the biggest
+      size in the candidate set, so a one-pixel gain can't beat a better shape);
+    * fill ratio, peaked at `_TARGET_FILL` and penalised on BOTH sides, so a
+      block that hugs the rim and one that leaves the bubble half-empty both lose;
+    * aspect match between the text block and the bubble (a wide block in a tall
+      bubble is penalised, and vice-versa);
+    * line balance — flat, even line widths beat a ragged stack;
+    * break quality — a rewarded bonus for lines that end at a clause boundary
+      (`_CLAUSE_END`), and a penalty for a line made only of punctuation;
+    * reading measure — a penalty for lines longer than `max_chars` characters,
+      even when they still fit the box;
+    * no stub lines — an interior line shorter than `_MIN_LINE_RATIO` of the
+      longest is penalised (it reads as a gap in the block);
+    * line-count target — when `line_target` is given, a mild pull toward that
+      many lines (a tie-breaker; fill/aspect still decide the big picture).
+
+    A near-empty final line gets a mild penalty on top (a leftover-looking last
+    line reads badly even when it holds more than one word; single-word widows
+    are already avoided upstream in `wrap_greedy`/`balance_even`).
+
+    Qt-free and O(k): safe to call for every candidate on each refresh.
+    """
+    lines = cand.get("lines") or []
+    px, k, line_ws, block_w, block_h, _line_h = _arr_metrics(cand, measurer)
+    if k == 0 or block_w <= 0 or usable_w <= 0 or usable_h <= 0:
+        return float("-inf")
+
+    ref = float(px_ref) if px_ref else float(px)
+    size_term = (px / ref) ** 0.5 if ref > 0 else 1.0        # sqrt: diminishing
+
+    # Fill is judged asymmetrically, the way a letterer does: a full bubble is
+    # good, an airy/small block is not, and only text crowding right against the
+    # rim is bad. So [_TARGET_FILL .. _FILL_SWEET_MAX] is ideal, below it is
+    # penalised as sparse, and above it drops off steeply toward edge-to-edge.
+    fill = (block_w * block_h) / (usable_w * usable_h)
+    if fill <= _TARGET_FILL:
+        fill_term = math.exp(-((fill - _TARGET_FILL) / 0.24) ** 2)
+    elif fill <= _FILL_SWEET_MAX:
+        fill_term = 1.0
+    else:
+        fill_term = max(0.15, 1.0 - (fill - _FILL_SWEET_MAX) * 6.5)
+
+    block_aspect = block_w / block_h if block_h > 0 else 0.0
+    box_aspect = usable_w / usable_h
+    if block_aspect > 0 and box_aspect > 0:
+        aspect_term = math.exp(-(math.log(block_aspect / box_aspect) / 0.9) ** 2)
+    else:
+        aspect_term = 0.0
+
+    if k >= 2:
+        avg = sum(line_ws) / k
+        rag = (sum((w - avg) ** 2 for w in line_ws) / k) ** 0.5 / block_w
+        balance_term = math.exp(-(rag / 0.5) ** 2)
+    else:
+        balance_term = 1.0
+
+    last_term = 1.0
+    if k >= 2:
+        last_frac = line_ws[-1] / block_w
+        if last_frac < 0.5:
+            last_term = min(1.0, 0.6 + 0.8 * last_frac)
+
+    # break quality: fraction of the internal breaks (all lines but the last)
+    # that land right after clause punctuation, minus lines of only punctuation.
+    texts = [runs_text(runs).strip() for runs in lines]
+    punct_term = 0.0
+    if k >= 2:
+        good = sum(1 for t in texts[:-1]
+                   if t and t[-1] in _CLAUSE_END and any(c.isalnum() for c in t))
+        punct_term = good / (k - 1)
+    punct_only = sum(1 for t in texts
+                     if t and not any(c.isalnum() for c in t))
+
+    # reading measure: quadratic overflow past max_chars, summed over the lines.
+    over = 0.0
+    if max_chars and max_chars > 0:
+        for t in texts:
+            n = len(t)
+            if n > max_chars:
+                frac = (n - max_chars) / float(max_chars)
+                over += frac * frac
+
+    # interior stub lines: a short line between longer ones (not the last line)
+    short = 0.0
+    for w in line_ws[:-1]:
+        r = w / block_w
+        if r < _MIN_LINE_RATIO:
+            d = (_MIN_LINE_RATIO - r) / _MIN_LINE_RATIO
+            short += d * d
+
+    # soft pull toward the mode's preferred line count
+    target_pen = abs(k - line_target) ** 1.5 if line_target else 0.0
+
+    quality = (1.3 * size_term          # give the chosen size real pull
+               + 1.4 * fill_term
+               + 1.1 * aspect_term
+               + 0.8 * balance_term
+               + 0.5 * punct_term) * last_term
+    return (quality
+            - 0.6 * over
+            - 0.5 * punct_only
+            - 0.6 * short
+            - _LINE_TARGET_WEIGHT * target_pen)
+
+
+def _dedup_similar(cands, measurer):
+    """Collapse near-identical arrangements so the picker offers *distinct*
+    shapes. Two candidates are 'the same shape' when they have the same line
+    count and the same relative line-width profile (rounded to 10%); the same
+    block set slightly bigger or smaller is not a second choice worth a slot.
+    Keeps the first of each group, so `cands` must already be sorted best-first.
+    """
+    kept, seen = [], set()
+    for c in cands:
+        _px, k, line_ws, block_w, _bh, _lh = _arr_metrics(c, measurer)
+        prof = tuple(round(w / block_w, 1) for w in line_ws) if block_w else ()
+        sig = (k, prof)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        kept.append(c)
+    return kept
+
 
 def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
                      mode="balanced", hyphenate=False, lang="en", mask=None,
-                     limit=10):
+                     limit=10, dehyphenate=False):
     """Generate candidate arrangements of `text` for the TextShapR picker.
 
     mode: 'balanced' (evenly balanced lines, biggest size first),
@@ -798,6 +1104,8 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
           'wide' (fewer lines / wide block first),
           'round' (fit differently proportioned ellipses).
     hyphenate: allow syllable breaks (uses `lang`'s patterns).
+    dehyphenate: first rejoin words the source split across a line (see
+        `dehyphenate`), so the shaper is free to re-wrap them.
 
     Embedded line breaks become spaces (the candidates create their own
     breaks). Returns a list of dicts {'px': int, 'k': int, 'lines': [run list
@@ -808,6 +1116,8 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     if mask is None:
         mask = [False] * len(text)
     flat = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
+    if dehyphenate:
+        flat, mask = _dehyphenate(flat, list(mask))
     words = make_words(flat, list(mask))
     if not words:
         return []
@@ -843,45 +1153,70 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
         for fw, fh in _ROUND_BOXES:
             add(fit_lines_ellipse(words, measurer, a * fw, b * fh,
                                   max_px, min_px, hyph_fn))
-        cands.sort(key=lambda c: (-c["px"], c["k"]))
     elif hyphenate:
         # exact-k balancing cannot split words, so hyphenated candidates come
         # from greedily wrapping to a sweep of narrower target widths
         for f in _WIDTH_FRACS:
             add(fit_lines_width(words, measurer, usable_w, usable_h,
                                 max_px, min_px, f, hyph_fn))
-        if mode == "tall":
-            cands.sort(key=lambda c: (-c["k"], -c["px"]))
-        elif mode == "wide":
-            cands.sort(key=lambda c: (c["k"], -c["px"]))
-        else:
-            cands.sort(key=lambda c: (-c["px"], c["k"]))
     else:
         for k in range(1, min(len(words), 12) + 1):
             add(fit_lines_k(words, measurer, usable_w, usable_h,
                             max_px, min_px, k))
-        if mode == "tall":
-            cands.sort(key=lambda c: -c["k"])
-        elif mode == "wide":
-            cands.sort(key=lambda c: c["k"])
-        else:
-            cands.sort(key=lambda c: (-c["px"], c["k"]))
-    return cands[:limit]
+
+    if not cands:
+        return []
+    # Rank by a real typographic quality score (fill, aspect, balance, size)
+    # instead of "biggest font first". The mode only biases the PRIMARY key
+    # (line count for tall/wide, size for round); the score breaks ties, and
+    # for 'balanced' it drives the whole order -> the recommended (first) card
+    # is the best-looking shape, not merely the largest that fits.
+    px_ref = max(c["px"] for c in cands) or 1
+    line_target = _LINE_TARGETS.get(mode)
+    for c in cands:
+        c["score"] = score_arrangement(c, measurer, usable_w, usable_h, px_ref,
+                                       line_target=line_target)
+    if mode == "tall":
+        cands.sort(key=lambda c: (-c["k"], -c["score"]))
+    elif mode == "wide":
+        cands.sort(key=lambda c: (c["k"], -c["score"]))
+    elif mode == "round":
+        cands.sort(key=lambda c: (-c["px"], -c["score"]))
+    else:                                    # balanced (incl. hyphenated)
+        cands.sort(key=lambda c: -c["score"])
+    return _dedup_similar(cands, measurer)[:limit]
 
 
-def vertical_start(valign, box_y, box_h, pad_frac, k, line_h, ascent, descent):
+def vertical_start(valign, box_y, box_h, pad_frac, k, line_h, ascent, descent,
+                   cap=None):
     """Baseline of the FIRST line depending on vertical alignment.
 
     valign='middle' : block centered around the box center (default).
     valign='top'    : block at the top of the box (with padding).
     valign='bottom' : block at the bottom of the box (with padding).
+
+    `cap` (the font's cap height) makes the centering OPTICAL rather than by the
+    em box: `ascent` includes the empty ascender/accent space above the capitals,
+    which differs from font to font and would leave all-caps lettering looking a
+    touch too high or low. Measuring the top from the cap height instead lands
+    the visible glyphs on the box centre. Falls back to `ascent` when unknown.
     """
+    # clamp the cap height to a sane share of the ascent so a bogus font metric
+    # can never shift the text the wrong way or by an absurd amount
+    use_cap = bool(cap and cap > 0 and ascent > 0)
+    c = max(0.55 * ascent, min(float(cap), ascent)) if use_cap else ascent
     pad = box_h * pad_frac / 2.0
     if valign == "top":
-        return box_y + pad + ascent
+        return box_y + pad + c
     if valign == "bottom":
         return box_y + box_h - pad - descent - (k - 1) * line_h
     cy = box_y + box_h / 2.0
+    if use_cap:
+        # optical: centre the CAP block (cap-top of the first line to the
+        # baseline of the last) on the box centre, so all-caps lettering sits
+        # dead centre — the empty ascender space and the descent are ignored.
+        return cy - ((k - 1) * line_h - c) / 2.0
+    # no cap height known: centre the em box (ascent + descent)
     return cy - ((k - 1) * line_h + descent - ascent) / 2.0
 
 
