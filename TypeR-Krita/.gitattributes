@@ -1,0 +1,6 @@
+# Keep line endings sane across OSes.
+* text=auto
+# Shell scripts must stay LF or they won't run on Linux/macOS.
+*.sh text eol=lf
+# Windows batch files want CRLF.
+*.bat text eol=crlf
