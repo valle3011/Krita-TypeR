@@ -253,6 +253,27 @@ class FavoritesStore:
         pool = [f for f in pool if _match(f, search)]
         return sorted(pool, key=lambda f: f.lower())
 
+    def missing_fonts(self, installed):
+        """Favourite families that are NOT in *installed* (compared
+        case-insensitively), case-insensitively sorted. Used to warn that a
+        favourite's font isn't available on this machine."""
+        inst = {(f or "").lower() for f in (installed or [])}
+        return sorted((f for f in self._fonts if f.lower() not in inst),
+                      key=lambda f: f.lower())
+
+    def merge(self, other):
+        """Fold another store's categories and font links into this one
+        (favourites add up, links union, nothing is dropped). Returns the number
+        of *new* favourite families added."""
+        if other is None:
+            return 0
+        before = set(self._fonts)
+        for c in other.categories():
+            self.add_category(c)
+        for fam in other.fonts():
+            self.add_font(fam, other.font_categories(fam))
+        return len(set(self._fonts) - before)
+
     def category_counts(self):
         """Map each category to how many favourites reference it."""
         counts = {c: 0 for c in self._categories}

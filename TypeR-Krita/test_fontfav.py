@@ -151,6 +151,32 @@ _partial = FF.FavoritesStore.from_json('{"fonts": {"X": "notalist"}}')
 check("from_json tolerates a bad font value (keeps font, no links)",
       _partial.is_favorite("X") and _partial.font_categories("X") == [])
 
+# --- missing fonts ---------------------------------------------------------
+s = FF.FavoritesStore()
+s.add_font("CC Wild Words", ["Dialog"])
+s.add_font("Anime Ace 2", ["Dialog"])
+s.add_font("Arial", [])
+check("missing_fonts lists favourites not in the installed set",
+      s.missing_fonts(["Arial"]) == ["Anime Ace 2", "CC Wild Words"])
+check("missing_fonts matches case-insensitively",
+      s.missing_fonts(["arial", "anime ace 2", "cc wild words"]) == [])
+check("missing_fonts with nothing installed returns all favourites",
+      s.missing_fonts([]) == ["Anime Ace 2", "Arial", "CC Wild Words"])
+
+# --- merge -----------------------------------------------------------------
+a = FF.FavoritesStore()
+a.add_font("Font A", ["Dialog"])
+b = FF.FavoritesStore()
+b.add_font("Font A", ["SFX"])          # same font, extra category
+b.add_font("Font B", ["Titel"])        # brand-new font
+added = a.merge(b)
+check("merge reports the number of NEW favourites added", added == 1)
+check("merge unions a shared font's categories",
+      a.font_categories("Font A") == ["Dialog", "SFX"])
+check("merge brings in new fonts + their categories",
+      a.font_categories("Font B") == ["Titel"] and "Titel" in a.categories())
+check("merge(None) is a safe no-op", a.merge(None) == 0)
+
 # --- UI state (last filter) survives round-trip ----------------------------
 s = FF.FavoritesStore()
 s.add_font("F", ["Dialog"])

@@ -13,15 +13,67 @@ A translator ``tr(key)`` supplies localized strings; a tiny English fallback is
 built in so the panel also works standalone (tests / other hosts).
 """
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
+import os
+import tempfile
+import zipfile
+
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtGui import QFont, QFontMetrics, QColor
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
     QListWidget, QListWidgetItem, QPushButton, QDialog, QDialogButtonBox,
-    QCheckBox, QInputDialog, QMessageBox, QScrollArea, QFrame,
+    QCheckBox, QInputDialog, QMessageBox, QScrollArea, QMenu,
+    QFileDialog, QStyledItemDelegate, QStyle,
 )
 
 from .fontfav import FavoritesStore, UNCATEGORIZED
+
+_ROLE_FAMILY = Qt.UserRole
+_ROLE_CATS = Qt.UserRole + 1
+
+
+class _FontItemDelegate(QStyledItemDelegate):
+    """Draws each row's font name IN THAT FONT, but only for the rows Qt actually
+    paints (the visible ones) and with a fixed row height. That keeps a long
+    favourites/font list fast — the slowness came from resolving a font per item
+    for size hints on every rebuild, which this avoids — while you still see what
+    each font looks like. Optional category suffix is drawn in the default font."""
+
+    def __init__(self, px=16, parent=None):
+        super().__init__(parent)
+        self._px = int(px)
+
+    def sizeHint(self, option, index):
+        return QSize(option.rect.width(), self._px + 12)
+
+    def paint(self, painter, option, index):
+        name = index.data(Qt.DisplayRole) or ""
+        fam = index.data(_ROLE_FAMILY) or name
+        cats = index.data(_ROLE_CATS) or ""
+        painter.save()
+        if option.state & QStyle.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+            fg = option.palette.highlightedText().color()
+        else:
+            fg = option.palette.text().color()
+        rect = option.rect.adjusted(6, 0, -6, 0)
+        ff = QFont(fam)
+        ff.setPixelSize(self._px)
+        painter.setFont(ff)
+        painter.setPen(fg)
+        painter.drawText(rect, Qt.AlignVCenter | Qt.AlignLeft, name)
+        if cats:
+            off = QFontMetrics(ff).horizontalAdvance(name) + 14
+            if off < rect.width() - 10:
+                df = QFont()
+                df.setPixelSize(max(9, self._px - 4))
+                painter.setFont(df)
+                c = QColor(fg)
+                c.setAlpha(150)
+                painter.setPen(c)
+                painter.drawText(rect.adjusted(off, 0, 0, 0),
+                                 Qt.AlignVCenter | Qt.AlignLeft, "· " + cats)
+        painter.restore()
 
 # English fallback so the panel is self-sufficient if no translator is passed.
 _FALLBACK = {
@@ -48,6 +100,24 @@ _FALLBACK = {
     "fav_delete": "Delete",
     "fav_delete_font_q": "Remove “{name}” from favourites?",
     "fav_count": "{n} fonts",
+    "fav_ctx_edit": "Edit categories…",
+    "fav_ctx_delete": "Delete…",
+    "fav_import": "Import…",
+    "fav_export": "Export…",
+    "fav_import_done": "Imported {n} new favourite fonts.",
+    "fav_export_done": "Exported {n} favourites with {fonts} font files "
+                       "({missing} not found on this PC).",
+    "fav_import_bundle_done": "Imported {n} favourites.\nFonts: {inst} installed, "
+                              "{skip} already present, {fail} failed.\nRestart "
+                              "Krita if a newly installed font doesn't show yet.",
+    "fav_export_filter": "TypeR font bundle (*.zip)",
+    "fav_import_filter": "TypeR font bundle (*.zip);;JSON (*.json);;All files (*)",
+    "fav_io_error": "Could not read/write the file:\n{err}",
+    "fav_missing_title": "Missing fonts",
+    "fav_missing_intro": "These favourite fonts are not installed on this "
+                         "computer. Install/download them so your text renders "
+                         "with the intended font:",
+    "fav_missing_none": "All favourite fonts are installed. ✓",
     "ok": "OK",
     "cancel": "Cancel",
 }
@@ -60,13 +130,18 @@ class FontFavoritesPanel(QWidget):
     fontChosen = pyqtSignal(str)
 
     def __init__(self, families_fn, apply_fn, load_fn, save_fn, tr=None,
-                 current_font_fn=None, parent=None):
+                 current_font_fn=None, find_fonts_fn=None, install_fonts_fn=None,
+                 parent=None):
         super().__init__(parent)
         self._families_fn = families_fn
         self._apply_fn = apply_fn
         self._load_fn = load_fn
         self._save_fn = save_fn
         self._current_font_fn = current_font_fn
+        # optional: bundle the actual font files on export + install them on
+        # import. When absent, export/import falls back to the list only.
+        self._find_fonts_fn = find_fonts_fn
+        self._install_fonts_fn = install_fonts_fn
         self._tr = tr or (lambda k: _FALLBACK.get(k, k))
         self._store = FavoritesStore.from_json(self._safe_load())
 
@@ -119,19 +194,20 @@ class FontFavoritesPanel(QWidget):
 
         self.list = QListWidget()
         self.list.setMinimumHeight(160)
+        # Speed: uniform row height + a delegate that renders each font in its own
+        # face for the VISIBLE rows only. This shows what every favourite looks
+        # like (the whole point) without the per-item font resolution that made a
+        # long list lag on every rebuild/click.
+        self.list.setUniformItemSizes(True)
+        self.list.setItemDelegate(_FontItemDelegate(16, self.list))
         self.list.itemDoubleClicked.connect(self._on_double)
-        self.list.currentItemChanged.connect(lambda *_: self._update_preview())
+        self.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self._list_context_menu)
         lay.addWidget(self.list, 1)
 
         self.count_lbl = QLabel("")
         self.count_lbl.setStyleSheet("color: gray; font-size: 10px;")
         lay.addWidget(self.count_lbl)
-
-        self.preview = QLabel("")
-        self.preview.setFrameShape(QFrame.StyledPanel)
-        self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumHeight(44)
-        lay.addWidget(self.preview)
 
         # action buttons, wrapped so they never clip on a narrow docker
         btns = QHBoxLayout()
@@ -158,6 +234,15 @@ class FontFavoritesPanel(QWidget):
         self.manage_btn = QPushButton(self.t("fav_manage"))
         self.manage_btn.clicked.connect(self._manage_categories)
         lay.addWidget(self.manage_btn)
+
+        io_row = QHBoxLayout()
+        self.import_btn = QPushButton(self.t("fav_import"))
+        self.import_btn.clicked.connect(self._import_favorites)
+        self.export_btn = QPushButton(self.t("fav_export"))
+        self.export_btn.clicked.connect(self._export_favorites)
+        io_row.addWidget(self.import_btn)
+        io_row.addWidget(self.export_btn)
+        lay.addLayout(io_row)
 
     # -- selection helpers --------------------------------------------------
     def _selected_family(self):
@@ -222,32 +307,19 @@ class FontFavoritesPanel(QWidget):
         self.list.clear()
         for fam in fams:
             cats = self._store.font_categories(fam)
-            label = fam if not cats else "%s   ·  %s" % (fam, ", ".join(cats))
-            item = QListWidgetItem(label)
-            item.setData(Qt.UserRole, fam)
-            f = QFont(fam)
-            f.setPixelSize(15)
-            item.setFont(f)
+            item = QListWidgetItem(fam)             # name only; delegate paints it
+            item.setData(_ROLE_FAMILY, fam)
+            item.setData(_ROLE_CATS, ", ".join(cats) if cats else "")
             self.list.addItem(item)
         self.list.blockSignals(False)
         if self.list.count():
             self.list.setCurrentRow(0)
+            self.count_lbl.setText(self.t("fav_count", n=self.list.count()))
         else:
-            self.preview.setText(self.t("fav_none"))
-            self.preview.setFont(QFont())
-        self.count_lbl.setText(self.t("fav_count", n=self.list.count()))
+            self.count_lbl.setText(self.t("fav_none"))
         has = self.list.count() > 0
         for b in (self.apply_btn, self.edit_btn, self.remove_btn):
             b.setEnabled(has)
-
-    def _update_preview(self):
-        fam = self._selected_family()
-        if not fam:
-            return
-        self.preview.setText(fam + "  –  AaBb 123")
-        f = QFont(fam)
-        f.setPixelSize(22)
-        self.preview.setFont(f)
 
     # -- actions ------------------------------------------------------------
     def _apply_current(self):
@@ -335,14 +407,166 @@ class FontFavoritesPanel(QWidget):
         self._reload_categories()
         self._refresh_list()
 
+    def _list_context_menu(self, pos):
+        """Right-click a favourite: edit its categories or delete it (delete
+        asks for confirmation)."""
+        it = self.list.itemAt(pos)
+        if it is None:
+            return
+        self.list.setCurrentItem(it)
+        menu = QMenu(self.list)
+        act_edit = menu.addAction(self.t("fav_ctx_edit"))
+        menu.addSeparator()
+        act_del = menu.addAction(self.t("fav_ctx_delete"))
+        chosen = menu.exec_(self.list.mapToGlobal(pos))
+        if chosen is act_edit:
+            self._edit_categories()
+        elif chosen is act_del:
+            self._remove_current()      # already asks for confirmation
+
+    # -- import / export ----------------------------------------------------
+    def _export_favorites(self):
+        """Export a .zip bundle: the favourites list PLUS the actual font files
+        (found on this PC by family name), so it can be moved to another machine.
+        Fonts that aren't installed here can't be bundled."""
+        path, _f = QFileDialog.getSaveFileName(
+            self, self.t("fav_export"), "font-favourites.zip",
+            self.t("fav_export_filter"))
+        if not path:
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+        fams = self._store.fonts()
+        files = {}
+        if self._find_fonts_fn is not None:
+            try:
+                files = self._find_fonts_fn(fams) or {}
+            except Exception:                           # noqa: BLE001
+                files = {}
+        try:
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("favourites.json", self._store.to_json())
+                added = set()
+                for _fam, fp in files.items():
+                    base = os.path.basename(fp)
+                    if base.lower() in added:
+                        continue
+                    added.add(base.lower())
+                    try:
+                        z.write(fp, "fonts/" + base)
+                    except Exception:                   # noqa: BLE001
+                        pass
+        except Exception as e:                          # noqa: BLE001
+            QMessageBox.warning(self, self.t("fav_export"),
+                                self.t("fav_io_error", err=e))
+            return
+        missing = [f for f in fams if f not in files]
+        QMessageBox.information(
+            self, self.t("fav_export"),
+            self.t("fav_export_done", n=len(fams), fonts=len(files),
+                   missing=len(missing)))
+
+    def _import_favorites(self):
+        """Import a .zip bundle (favourites + font files, fonts get installed)
+        or an old plain .json (list only)."""
+        path, _f = QFileDialog.getOpenFileName(
+            self, self.t("fav_import"), "", self.t("fav_import_filter"))
+        if not path:
+            return
+        if zipfile.is_zipfile(path):
+            self._import_bundle(path)
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except Exception as e:                          # noqa: BLE001
+            QMessageBox.warning(self, self.t("fav_import"),
+                                self.t("fav_io_error", err=e))
+            return
+        incoming = FavoritesStore.from_json(text)
+        n = self._store.merge(incoming)
+        self._persist()
+        self._reload_categories()
+        self._restore_filter()
+        self._refresh_list()
+        QMessageBox.information(self, self.t("fav_import"),
+                                self.t("fav_import_done", n=n))
+        missing = incoming.missing_fonts(self._families())
+        if missing:
+            self._warn_missing(missing)
+
+    def _import_bundle(self, path):
+        incoming = FavoritesStore()
+        font_paths = []
+        try:
+            with zipfile.ZipFile(path) as z:
+                names = z.namelist()
+                if "favourites.json" in names:
+                    incoming = FavoritesStore.from_json(
+                        z.read("favourites.json").decode("utf-8"))
+                fonts = [nm for nm in names
+                         if nm.startswith("fonts/") and not nm.endswith("/")]
+                if fonts:
+                    tmp = tempfile.mkdtemp(prefix="typer_fonts_")
+                    for nm in fonts:
+                        dest = os.path.join(tmp, os.path.basename(nm))
+                        with open(dest, "wb") as fh:
+                            fh.write(z.read(nm))
+                        font_paths.append(dest)
+        except Exception as e:                          # noqa: BLE001
+            QMessageBox.warning(self, self.t("fav_import"),
+                                self.t("fav_io_error", err=e))
+            return
+        n = self._store.merge(incoming)
+        res = {"installed": [], "skipped": [], "failed": []}
+        if font_paths and self._install_fonts_fn is not None:
+            try:
+                res = self._install_fonts_fn(font_paths) or res
+            except Exception:                           # noqa: BLE001
+                pass
+        self._persist()
+        self._reload_categories()
+        self._restore_filter()
+        self._refresh_list()
+        QMessageBox.information(
+            self, self.t("fav_import"),
+            self.t("fav_import_bundle_done", n=n,
+                   inst=len(res.get("installed", [])),
+                   skip=len(res.get("skipped", [])),
+                   fail=len(res.get("failed", []))))
+        # only nag about missing fonts the bundle couldn't provide
+        if not font_paths:
+            missing = incoming.missing_fonts(self._families())
+            if missing:
+                self._warn_missing(missing)
+
+    # -- missing fonts ------------------------------------------------------
+    def _warn_missing(self, missing):
+        QMessageBox.information(
+            self, self.t("fav_missing_title"),
+            self.t("fav_missing_intro") + "\n\n• " + "\n• ".join(missing))
+
+    def show_missing_fonts_dialog(self):
+        """Public: list favourite fonts that aren't installed (or confirm all
+        are). Used by the Setup-tab button too."""
+        missing = self._store.missing_fonts(self._families())
+        if missing:
+            self._warn_missing(missing)
+        else:
+            QMessageBox.information(self, self.t("fav_missing_title"),
+                                    self.t("fav_missing_none"))
+        return missing
+
     # -- small dialogs / utilities -----------------------------------------
+    def _families(self):
+        try:
+            return list(self._families_fn() or [])
+        except Exception:
+            return []
+
     def _ask_font(self):
         """Pick an installed family from a searchable list."""
-        fams = []
-        try:
-            fams = list(self._families_fn() or [])
-        except Exception:
-            fams = []
+        fams = self._families()
         if not fams:
             return None
         fam, ok = _FontChooserDialog(self, self.t, fams).run()
@@ -389,12 +613,11 @@ class _FontChooserDialog(QDialog):
         self.search.textChanged.connect(self._filter)
         lay.addWidget(self.search)
         self.list = QListWidget()
+        self.list.setUniformItemSizes(True)      # fast with thousands of fonts
+        self.list.setItemDelegate(_FontItemDelegate(16, self.list))
         for fam in families:
             it = QListWidgetItem(fam)
-            it.setData(Qt.UserRole, fam)
-            f = QFont(fam)
-            f.setPixelSize(15)
-            it.setFont(f)
+            it.setData(_ROLE_FAMILY, fam)
             self.list.addItem(it)
         self.list.itemDoubleClicked.connect(lambda *_: self.accept())
         lay.addWidget(self.list, 1)

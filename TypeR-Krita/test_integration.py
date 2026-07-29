@@ -43,14 +43,30 @@ except Exception as e:                          # pragma: no cover
 
 
 class _FakeNode:
-    def __init__(self):
+    def __init__(self, kind="vector"):
         self.svg = None
+        self.kind = kind
+        self.pixels = None
+        self.inherit_alpha = None
+        self._kids = []
 
     def addShapesFromSvg(self, svg):
         self.svg = svg
         return True
 
     def addChildNode(self, node, above):
+        self._kids.append(node)
+        return True
+
+    def childNodes(self):
+        return list(self._kids)
+
+    def setPixelData(self, buf, x, y, w, h):
+        self.pixels = (len(buf), x, y, w, h)
+        return True
+
+    def setInheritAlpha(self, value):        # clip-to-layer-below (vector mode)
+        self.inherit_alpha = value
         return True
 
 
@@ -58,6 +74,7 @@ class _FakeDoc:
     def __init__(self, w=800, h=600):
         self._w, self._h = w, h
         self.last = None
+        self._root = _FakeNode("root")
 
     def width(self):
         return self._w
@@ -69,12 +86,28 @@ class _FakeDoc:
         return None
 
     def rootNode(self):
-        return _FakeNode()
+        return self._root
 
     def createVectorLayer(self, label):
-        n = _FakeNode()
+        n = _FakeNode("vector")
         self.last = n
         return n
+
+    def createNode(self, name, typ):            # raster (paint) insert path
+        n = _FakeNode(typ)
+        self.last = n
+        return n
+
+    def createGroupLayer(self, name):           # 'keep vector' clip path
+        n = _FakeNode("grouplayer")
+        self.last = n
+        return n
+
+    def setActiveNode(self, node):
+        return None
+
+    def waitForDone(self):
+        return None
 
     def refreshProjection(self):
         return None
@@ -207,6 +240,70 @@ ok, key, svg = insert(outline=False, outline_color=QColor(255, 255, 255),
                       outline2_px=14)
 check("outline OFF drops the 2nd outline too (only the fill remains)",
       svg and svg.count("<text") == 1)
+
+# A pattern-filled or soft/blurred outline can't be a Krita vector paint, so
+# those styles must route the insert onto a RASTER (paint) layer instead; a
+# plain outline stays a vector text layer.
+from PyQt5.QtGui import QImage as _QImage
+
+
+def insert_node(**kw):
+    doc = _FakeDoc(800, 600)
+    _KR_APP._doc = doc
+    base = dict(line="THAT HE PISSES ME OFF, BUT", font_family="Arial",
+                font_px=72, color=QColor(0, 0, 0), auto_fit=True, max_px=72,
+                padding_frac=0.1, line_spacing=1.0, align="center",
+                valign="middle", layer_index=1, box=(100, 100, 320, 320))
+    base.update(kw)
+    ok, key, fmt = TK.insert_text_layer(
+        base.pop("line"), base.pop("font_family"), base.pop("font_px"),
+        base.pop("color"), base.pop("auto_fit"), base.pop("max_px"),
+        base.pop("padding_frac"), base.pop("line_spacing"), **base)
+    return ok, doc.last
+
+
+_pat = _QImage(8, 8, _QImage.Format_ARGB32)
+_pat.fill(QColor(200, 50, 50).rgb())
+ok, node = insert_node(outline=True, outline_color=QColor(255, 255, 255),
+                       outline_px=8, pattern_img=_pat)
+check("pattern-filled outline routes onto a raster paint layer",
+      ok and node is not None and node.kind == "paintlayer"
+      and node.pixels is not None)
+ok, node = insert_node(outline=True, outline_color=QColor(255, 255, 255),
+                       outline_px=4, soft=True, soft_color=QColor(0, 0, 0),
+                       soft_px=3, soft_blur=8)
+check("soft/blurred outline routes onto a raster paint layer",
+      ok and node is not None and node.kind == "paintlayer")
+ok, node = insert_node(outline=True, outline_color=QColor(255, 255, 255),
+                       outline_px=6)
+check("a plain outline (no pattern/soft) stays a vector text layer",
+      ok and node is not None and node.kind == "vector")
+ok, node = insert_node(fill_pattern=_pat)
+check("a pattern TEXT FILL routes onto a raster paint layer",
+      ok and node is not None and node.kind == "paintlayer")
+
+# 'keep text as vector': a fill pattern with vector_clip makes a GROUP holding
+# an editable vector text layer + a pattern paint layer set to inherit-alpha
+_vdoc = _FakeDoc(800, 600)
+_KR_APP._doc = _vdoc
+ok, key, _f = TK.insert_text_layer(
+    "HELLO", "Arial", 48, QColor(0, 0, 0), True, 48, 0.1, 1.0,
+    align="center", layer_index=1, box=(100, 100, 320, 220),
+    fill_pattern=_pat, fill_scale=100, vector_clip=True)
+_groups = [n for n in _vdoc._root.childNodes() if n.kind == "grouplayer"]
+check("vector_clip fill pattern creates a group layer", ok and len(_groups) == 1)
+if _groups:
+    _kids = _groups[0].childNodes()
+    _kinds = [k.kind for k in _kids]
+    check("group holds an editable vector text layer (with SVG)",
+          any(k.kind == "vector" and k.svg for k in _kids))
+    check("group holds a pattern paint layer set to inherit-alpha",
+          any(k.kind == "paintlayer" and k.inherit_alpha is True for k in _kids))
+# vertical text keeps the vector path even if a pattern is set (raster is H-only)
+ok, node = insert_node(outline=True, outline_color=QColor(255, 255, 255),
+                       outline_px=6, pattern_img=_pat, vertical=True)
+check("vertical text ignores the raster path (vector only)",
+      ok and node is not None and node.kind == "vector")
 
 # no document -> a clean failure, not a crash
 _KR_APP._doc = None
@@ -368,6 +465,10 @@ try:
     _ff_panel.add_favorite("Anime Ace 2", ["Dialog"])
     check("adding favourites persists via save_fn", "CC Wild Words" in _ff_blob["v"])
     check("both favourites show in the list", _ff_panel.list.count() == 2)
+    from typer_kr.fontfav_ui import _FontItemDelegate as _FFDel
+    check("favourites list uses the per-font delegate (shows faces, stays fast)",
+          isinstance(_ff_panel.list.itemDelegate(), _FFDel)
+          and _ff_panel.list.uniformItemSizes())
     # category filter narrows to the SFX-tagged font
     _sfx_i = next((i for i in range(_ff_panel.cat_combo.count())
                    if _ff_panel.cat_combo.itemData(i) == "SFX"), None)
@@ -391,6 +492,15 @@ try:
     _ff_panel2.cat_combo.setCurrentIndex(0)
     check("clearing the filter shows both favourites again",
           _ff_panel2.list.count() == 2)
+    # import/export + missing-font detection are wired
+    check("panel exposes import/export buttons",
+          hasattr(_ff_panel, "import_btn") and hasattr(_ff_panel, "export_btn"))
+    check("panel has a right-click handler + missing-fonts dialog",
+          hasattr(_ff_panel, "_list_context_menu")
+          and hasattr(_ff_panel, "show_missing_fonts_dialog"))
+    _miss = _ff_panel._store.missing_fonts(["Arial"])
+    check("missing_fonts flags favourites that aren't installed",
+          "CC Wild Words" in _miss and "Anime Ace 2" in _miss)
 except Exception as _ff_e:                          # pragma: no cover
     check("font-favourites panel smoke test ran", False)
     import traceback
@@ -404,6 +514,9 @@ except Exception as _ff_e:                          # pragma: no cover
 if imported:
     try:
         def _build_docker(tab_order):
+            # pretend the one-time order repair already ran, so a custom order
+            # is honoured (the repair would otherwise clear it on first build)
+            _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
             _KR_APP._settings[("typer_kr", "tabOrder")] = tab_order
             return TK.TyperDocker()
 
@@ -419,10 +532,238 @@ if imported:
             # the Setup tab is never toggleable, so it must always be present
             check("Setup tab present (order=%r)" % (_order or "default"),
                   _d._tab_index_of("setup") is not None)
+            if _order == "":
+                check("Setup 'missing favourite fonts' button is present",
+                      hasattr(_d, "fav_missing_btn"))
             _d.deleteLater()
-        _KR_APP._settings.pop(("typer_kr", "tabOrder"), None)
+
+        # Robustness: a saved order that names an ABSENT tab (BubblR hidden) and
+        # omits a PRESENT one (Fonts) must not shuffle tabs around — the missing
+        # id is ignored and the unlisted tab lands at the end, content in sync.
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _KR_APP._settings[("typer_kr", "enableBubblr")] = "false"
+        _KR_APP._settings[("typer_kr", "tabOrder")] = \
+            "type,style,setup,bubblr,shapr,sfx"
+        _d = TK.TyperDocker()
+        _bar = _d.main_tabs.tabBar()
+        _got = [_bar.tabData(i) for i in range(_d.main_tabs.count())]
+        check("absent id ignored + unlisted Fonts tab appended at the end",
+              _got == ["type", "style", "setup", "shapr", "sfx", "fonts"])
+        check("content stays in sync with a ghost-id order",
+              all(_d.main_tabs.widget(i) is _d._tab_pages.get(_bar.tabData(i))
+                  for i in range(_d.main_tabs.count())))
+        _d.deleteLater()
+
+        # One-time repair clears a corrupted order exactly once.
+        _KR_APP._settings.pop(("typer_kr", "tabOrderRepairV2"), None)
+        _KR_APP._settings[("typer_kr", "enableBubblr")] = "true"
+        _KR_APP._settings[("typer_kr", "tabOrder")] = "sfx,fonts,type"
+        _d = TK.TyperDocker()
+        check("repair clears the saved order once",
+              _KR_APP._settings.get(("typer_kr", "tabOrder")) == ""
+              and _KR_APP._settings.get(("typer_kr", "tabOrderRepairV2")) == "done")
+        _d.deleteLater()
+        for _k in ("tabOrder", "tabOrderRepairV2", "enableBubblr"):
+            _KR_APP._settings.pop(("typer_kr", _k), None)
     except Exception as _to_e:                      # pragma: no cover
         check("main-tab order regression ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- 'Missing fonts' report: gathers from favourites + SFX + main presets --
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _md = TK.TyperDocker()
+        check("TypeR version bumped for a real feature update (not 1.7)",
+              TK.VERSION != "1.7")
+        _sfxf = _md._sfx_fonts()
+        check("SFX referenced fonts include the built-in presets",
+              "CC Shout Out" in _sfxf and "Creepster" in _sfxf)
+        # fonts that are never installed anywhere -> always 'missing'
+        _md.fonts_panel.add_favorite("Zzz Fake Face 42", ["Dialog"])
+        _md._groups = {"M": {"C": {"p": {"font": "Yyy Fake Face 99"}}}}
+        check("missing report flags a favourite that isn't installed",
+              "Zzz Fake Face 42" in _md._missing_of(_md._favorite_fonts()))
+        _allmiss = _md._missing_of(_md._all_referenced_fonts())
+        check("'all missing' spans favourites AND main presets",
+              "Zzz Fake Face 42" in _allmiss and "Yyy Fake Face 99" in _allmiss)
+        check("missing lists are de-duplicated case-insensitively",
+              len(_md._dedup_ci(["Arial", "arial", "ARIAL"])) == 1)
+        _md.deleteLater()
+    except Exception:                               # pragma: no cover
+        check("missing-fonts report ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- pattern generator (imgfx.make_pattern + the dialog) -------------------
+if imported:
+    try:
+        from typer_kr import imgfx as _IMG
+
+        def _opaque(im):
+            return sum(1 for y in range(im.height()) for x in range(im.width())
+                       if (im.pixel(x, y) >> 24) & 0xFF)
+
+        for _k in _IMG.PATTERN_KINDS:
+            _t = _IMG.make_pattern(_k, QColor(0, 0, 0), QColor(255, 255, 255),
+                                   size=6, gap=6)
+            check("make_pattern(%r) yields a non-empty tile" % _k,
+                  _t is not None and not _t.isNull() and _opaque(_t) > 0)
+        # a transparent background really leaves holes
+        _dots = _IMG.make_pattern("dots", QColor(0, 0, 0), None, size=4, gap=12)
+        _trans = sum(1 for y in range(_dots.height())
+                     for x in range(_dots.width())
+                     if ((_dots.pixel(x, y) >> 24) & 0xFF) == 0)
+        check("transparent-bg pattern keeps transparent pixels", _trans > 0)
+
+        from typer_kr.patterngen import PatternGeneratorDialog
+        _pg = PatternGeneratorDialog(None, lambda k: k)
+        _pg.kind.setCurrentIndex(0)
+        check("pattern-generator dialog builds and makes a tile",
+              _pg._current_tile() is not None
+              and not _pg._current_tile().isNull())
+        # live preview: every change emits the current tile so the host can
+        # apply it to the real text preview while the dialog is open
+        _emits = {"n": 0, "last": None}
+        _pg.previewChanged.connect(
+            lambda t: _emits.update(n=_emits["n"] + 1, last=t))
+        _pg.kind.setCurrentIndex(3)
+        _pg.size.setValue(9)
+        check("generator emits a live tile on every change",
+              _emits["n"] >= 2 and _emits["last"] is not None
+              and not _emits["last"].isNull())
+        # 'Save to library' button emits the current tile
+        _saved = {}
+        _pg.saveRequested.connect(lambda t: _saved.update(t=t))
+        _pg.save_btn.click()
+        check("generator's Save button emits the current tile",
+              _saved.get("t") is not None and not _saved["t"].isNull())
+
+        # the live preview must render pattern/soft/fill without crashing
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _pd = TK.TyperDocker()
+        # pattern fills + 'kind of text' are experimental and OFF by default
+        check("pattern fills are experimental + off by default (controls hidden)",
+              not _pd.enable_patterns_chk.isChecked()
+              and _pd._style_pattern_box.isHidden()
+              and _pd._fill_panel.isHidden()
+              and not _pd._patterns_on())
+        check("'kind of text' is experimental + off by default (panel hidden)",
+              not _pd.enable_texttypes_chk.isChecked()
+              and _pd._texttype_panel.isHidden())
+        _pd.enable_patterns_chk.setChecked(True)   # opt in for the tests below
+        check("enabling the experiment reveals the pattern controls",
+              not _pd._style_pattern_box.isHidden()
+              and not _pd._fill_panel.isHidden() and _pd._patterns_on())
+        _pv = _pd.preview
+        _pv.resize(220, 110)
+        _pv.set_text("HELLO WORLD")
+
+        def _pv_nonempty():
+            _im = _pv.grab().toImage()
+            return any((_im.pixel(x, y) >> 24) & 0xFF
+                       for y in range(0, _im.height(), 5)
+                       for x in range(0, _im.width(), 5))
+
+        check("live preview paints normally", _pv_nonempty())
+        _pd.outline_chk.setChecked(True)
+        _pd._outline_pattern_img = _pat
+        _pd.fill_pattern_chk.setChecked(True)
+        _pd._fill_pattern_img = _pat
+        _pd.style_soft_chk.setChecked(True)
+        _pd.style_soft_width_spin.setValue(3)
+        _pd.style_soft_blur_spin.setValue(6)
+        _pd._update_text_preview()
+        check("live preview renders pattern outline + soft + fill (no crash)",
+              _pv_nonempty())
+
+        # manual refresh button + NON-modal generator (so other style edits stay
+        # live in the preview while the generator is open)
+        check("live preview has a manual refresh button",
+              hasattr(_pd, "preview_refresh_btn"))
+        _pd.preview_refresh_btn.click()          # must not crash
+        _pd._run_pattern_generator(QColor(0, 0, 0), "fill")
+        _gdlg = _pd._patgen_dlg
+        check("generator opens non-modally and live-applies to the fill",
+              _gdlg is not None and not _gdlg.isModal()
+              and _pd.fill_pattern_chk.isChecked()
+              and _pd._fill_pattern_img is not None)
+        _gdlg.size.setValue(13)                  # a change → live tile applied
+        check("changing the generator keeps applying live",
+              _pd._fill_pattern_img is not None)
+        _gdlg.accept()
+        check("accepting commits the pattern and closes the generator",
+              _pd._patgen_dlg is None and bool(_pd._fill_pattern_path))
+        # saved-pattern library: 'Saved…' buttons + persistence round-trip
+        check("outline + fill rows have a 'Saved…' picker button",
+              hasattr(_pd, "outline_pattern_saved_btn")
+              and hasattr(_pd, "fill_pattern_saved_btn"))
+        check("pattern library starts empty", _pd._load_pattern_library() == [])
+        _tile = TK.IMG.make_pattern("dots", QColor(0, 0, 0), None, 5, 8)
+        _ppath = _pd._save_generated_pattern(_tile)
+        _pd._save_pattern_library([{"name": "My Dots", "path": _ppath}])
+        check("a saved pattern persists and reloads",
+              len(TK.TyperDocker()._load_pattern_library()) == 1)
+        _KR_APP._settings.pop(("typer_kr", "patternLibrary"), None)
+        try:
+            os.remove(_ppath)
+        except Exception:
+            pass
+        _pd.deleteLater()
+    except Exception:                               # pragma: no cover
+        check("pattern-generator suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- Font bundle: export favourites WITH font files, import + install ------
+if imported:
+    try:
+        import zipfile as _zip
+        import tempfile as _tf
+        from PyQt5.QtWidgets import QFileDialog as _QFD, QMessageBox as _QMB
+        from typer_kr.fontfav_ui import FontFavoritesPanel as _FP
+        from typer_kr import fontfiles as _FFILES
+        _QMB.information = staticmethod(lambda *a, **k: None)
+        _QMB.warning = staticmethod(lambda *a, **k: None)
+        _fdir = _tf.mkdtemp()
+        _ff = os.path.join(_fdir, "MyFont.ttf")
+        with open(_ff, "wb") as _fh:
+            _fh.write(b"dummy-font")
+        _b1 = {"v": ""}
+        _pan = _FP(families_fn=lambda: ["Arial"], apply_fn=lambda f: None,
+                   load_fn=lambda: _b1["v"],
+                   save_fn=lambda t: _b1.__setitem__("v", t), tr=lambda k: k,
+                   find_fonts_fn=lambda fams: ({"MyFont": _ff}
+                                               if "MyFont" in fams else {}))
+        _pan.add_favorite("MyFont", ["Dialog"])
+        _zp = os.path.join(_fdir, "bundle.zip")
+        _QFD.getSaveFileName = staticmethod(lambda *a, **k: (_zp, ""))
+        _pan._export_favorites()
+        _names = _zip.ZipFile(_zp).namelist()
+        check("export bundles favourites.json + the actual font file",
+              "favourites.json" in _names
+              and any(n.startswith("fonts/") for n in _names))
+        _inst = {"paths": None}
+        _b2 = {"v": ""}
+        _pan2 = _FP(
+            families_fn=lambda: ["Arial"], apply_fn=lambda f: None,
+            load_fn=lambda: _b2["v"], save_fn=lambda t: _b2.__setitem__("v", t),
+            tr=lambda k: k,
+            install_fonts_fn=lambda ps: (
+                _inst.update(paths=[os.path.basename(x) for x in ps]),
+                {"installed": [os.path.basename(x) for x in ps],
+                 "skipped": [], "failed": []})[1])
+        _QFD.getOpenFileName = staticmethod(lambda *a, **k: (_zp, ""))
+        _pan2._import_favorites()
+        check("import merges favourites AND installs the bundled font",
+              _pan2._store.is_favorite("MyFont") and _inst["paths"] == ["MyFont.ttf"])
+        # read-only: locating font files omits a font that isn't installed
+        _fres = _FFILES.find_font_files(["Zzz Not A Real Font 9999"])
+        check("find_font_files omits a font that isn't installed",
+              isinstance(_fres, dict) and "Zzz Not A Real Font 9999" not in _fres)
+    except Exception:                               # pragma: no cover
+        check("font-bundle suite ran", False)
         import traceback
         traceback.print_exc()
 

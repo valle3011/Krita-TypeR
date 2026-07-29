@@ -2494,6 +2494,33 @@ class MangaSFXDocker(DockWidget):
         self._refresh_suggestions(self.text_input.text())
         self.status_label.setText(self.t("st_rule_updated"))
 
+    def referenced_fonts(self):
+        """Every font family the SFX side refers to — built-in presets, the
+        user's own presets, and the font rules — deduplicated (order kept). Used
+        by TypeR's 'Missing fonts' report to flag SFX fonts that aren't
+        installed."""
+        seen = []
+
+        def _add(f):
+            f = (f or "").strip()
+            if f and f not in seen:
+                seen.append(f)
+
+        try:
+            from .config import SFX_PRESETS
+            for p in SFX_PRESETS:
+                _add(p.get("font"))
+        except Exception:                               # noqa: BLE001
+            pass
+        for p in (getattr(self, "_user_presets", None) or []):
+            if isinstance(p, dict):
+                _add(p.get("font"))
+        for r in (getattr(self, "_font_rules", None) or []):
+            if isinstance(r, dict):
+                for f in (r.get("fonts") or []):
+                    _add(f)
+        return seen
+
     def _ask_fonts(self, fonts_init):
         """
         Dialog zum Auswählen der Font(s) für eine Regel.

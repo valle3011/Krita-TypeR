@@ -23,7 +23,8 @@ SUITES = [
 
 MODULES = [
     "typer_kr/typer_kr.py", "typer_kr/layout.py", "typer_kr/langpair.py",
-    "typer_kr/fontfav.py", "typer_kr/fontfav_ui.py",
+    "typer_kr/fontfav.py", "typer_kr/fontfav_ui.py", "typer_kr/fontfiles.py",
+    "typer_kr/imgfx.py", "typer_kr/patterngen.py",
     "typer_kr/bubbles.py", "typer_kr/balloons.py", "typer_kr/comments.py",
     "typer_kr/texttypes.py", "typer_kr/sfx/sfx_docker.py",
     "typer_kr/sfx/svg_builder.py", "typer_kr/sfx/i18n.py",
