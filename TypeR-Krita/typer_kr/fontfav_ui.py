@@ -17,34 +17,46 @@ import os
 import tempfile
 import zipfile
 
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
-from PyQt5.QtGui import QFont, QFontMetrics, QColor
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
+from PyQt5.QtGui import QFont, QFontMetrics, QColor, QPixmap, QPainter
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
     QListWidget, QListWidgetItem, QPushButton, QDialog, QDialogButtonBox,
     QCheckBox, QInputDialog, QMessageBox, QScrollArea, QMenu,
-    QFileDialog, QStyledItemDelegate, QStyle,
+    QFileDialog, QStyledItemDelegate, QStyle, QSlider,
 )
 
 from .fontfav import FavoritesStore, UNCATEGORIZED
 
 _ROLE_FAMILY = Qt.UserRole
 _ROLE_CATS = Qt.UserRole + 1
+_FACE_PX = 16                       # font size of the per-row face preview
+#: Cap on how many rendered font faces (and their tinted copies) are kept in
+#: memory. Well above any screenful, so scroll locality means an evicted face is
+#: always far off-screen; if the user scrolls back to it, paint re-renders it
+#: once (no flicker). Bounds memory on huge favourite lists.
+_FACE_CACHE_MAX = 400
 
 
 class _FontItemDelegate(QStyledItemDelegate):
-    """Draws each row's font name IN THAT FONT, but only for the rows Qt actually
-    paints (the visible ones) and with a fixed row height. That keeps a long
-    favourites/font list fast — the slowness came from resolving a font per item
-    for size hints on every rebuild, which this avoids — while you still see what
-    each font looks like. Optional category suffix is drawn in the default font."""
+    """Draws each favourite IN ITS OWN FONT — but the potentially slow bit (Qt
+    loading a decorative font the first time it's drawn) is done off the paint
+    path: the panel renders each face to a cached pixmap on a timer, and until
+    that's ready this delegate shows the plain name. So the tab opens instantly
+    no matter how many favourites there are, and the faces fade in. The panel
+    owns the cache; a fixed row height keeps layout cheap."""
 
-    def __init__(self, px=16, parent=None):
+    def __init__(self, panel, px=_FACE_PX, parent=None):
         super().__init__(parent)
+        self._panel = panel
         self._px = int(px)
 
+    def _size(self):
+        return getattr(self._panel, "_face_px", self._px) if self._panel \
+            else self._px
+
     def sizeHint(self, option, index):
-        return QSize(option.rect.width(), self._px + 12)
+        return QSize(option.rect.width(), self._size() + 12)
 
     def paint(self, painter, option, index):
         name = index.data(Qt.DisplayRole) or ""
@@ -57,16 +69,28 @@ class _FontItemDelegate(QStyledItemDelegate):
         else:
             fg = option.palette.text().color()
         rect = option.rect.adjusted(6, 0, -6, 0)
-        ff = QFont(fam)
-        ff.setPixelSize(self._px)
-        painter.setFont(ff)
-        painter.setPen(fg)
-        painter.drawText(rect, Qt.AlignVCenter | Qt.AlignLeft, name)
+        # Render the face NOW if it isn't cached yet, so a row is *never* drawn
+        # in the wrong (default) font and then swapped — that swap is the flicker
+        # the user sees when scrolling faster than the background prewarm. Once
+        # cached it's a cheap blit; the sync render only ever happens once a row.
+        tinted = self._panel._tinted_face(fam, fg) if self._panel else None
+        if tinted:                     # cached glyph mask tinted to fg: cheap blit
+            painter.drawPixmap(
+                rect.left(), rect.top() + (rect.height() - tinted.height()) // 2,
+                tinted)
+            name_w = tinted.width()
+        else:                          # font couldn't be rendered: plain name
+            f = QFont()
+            f.setPixelSize(self._size())
+            painter.setFont(f)
+            painter.setPen(fg)
+            painter.drawText(rect, Qt.AlignVCenter | Qt.AlignLeft, name)
+            name_w = QFontMetrics(f).horizontalAdvance(name)
         if cats:
-            off = QFontMetrics(ff).horizontalAdvance(name) + 14
+            off = name_w + 14
             if off < rect.width() - 10:
                 df = QFont()
-                df.setPixelSize(max(9, self._px - 4))
+                df.setPixelSize(max(9, self._size() - 4))
                 painter.setFont(df)
                 c = QColor(fg)
                 c.setAlpha(150)
@@ -102,6 +126,8 @@ _FALLBACK = {
     "fav_count": "{n} fonts",
     "fav_ctx_edit": "Edit categories…",
     "fav_ctx_delete": "Delete…",
+    "fav_size": "Aa",
+    "fav_size_tip": "Preview size — drag to see the fonts bigger.",
     "fav_import": "Import…",
     "fav_export": "Export…",
     "fav_import_done": "Imported {n} new favourite fonts.",
@@ -145,6 +171,25 @@ class FontFavoritesPanel(QWidget):
         self._tr = tr or (lambda k: _FALLBACK.get(k, k))
         self._store = FavoritesStore.from_json(self._safe_load())
 
+        # progressively-rendered font-face cache (see _FontItemDelegate): the tab
+        # opens instantly with plain names, then each row's own face fades in as
+        # it is rendered off the paint path — so opening never stutters.
+        self._face_cache = {}          # family -> QPixmap of the name in its font
+        self._face_pending = []        # families still to render
+        # tinted-to-text-colour blits, keyed (family, colour) — so scrolling
+        # doesn't re-tint the glyph mask on every single repaint (a ~100x win).
+        self._tint_cache = {}
+        try:
+            self._face_px = max(10, min(64, int(self._store.ui_get("face_px", 16))))
+        except Exception:
+            self._face_px = 16
+        self._face_timer = QTimer(self)
+        # a small interval (not 0) so the background prewarm never competes with
+        # the first paint or an active scroll — the sync render in paint covers
+        # any row the prewarm hasn't reached yet, so this only trades a gentler
+        # CPU load for the prewarm finishing a touch later.
+        self._face_timer.setInterval(5)
+        self._face_timer.timeout.connect(self._render_faces_step)
         self._build()
         self._reload_categories()
         self._restore_filter()
@@ -192,6 +237,17 @@ class FontFavoritesPanel(QWidget):
         filt.addWidget(self.search, 1)
         lay.addLayout(filt)
 
+        # preview size: drag to make the font faces bigger for a closer look
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel(self.t("fav_size")))
+        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider.setRange(10, 64)
+        self.size_slider.setValue(self._face_px)
+        self.size_slider.setToolTip(self.t("fav_size_tip"))
+        self.size_slider.valueChanged.connect(self._on_face_size_changed)
+        size_row.addWidget(self.size_slider, 1)
+        lay.addLayout(size_row)
+
         self.list = QListWidget()
         self.list.setMinimumHeight(160)
         # Speed: uniform row height + a delegate that renders each font in its own
@@ -199,7 +255,7 @@ class FontFavoritesPanel(QWidget):
         # like (the whole point) without the per-item font resolution that made a
         # long list lag on every rebuild/click.
         self.list.setUniformItemSizes(True)
-        self.list.setItemDelegate(_FontItemDelegate(16, self.list))
+        self.list.setItemDelegate(_FontItemDelegate(self, _FACE_PX, self.list))
         self.list.itemDoubleClicked.connect(self._on_double)
         self.list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._list_context_menu)
@@ -320,6 +376,151 @@ class FontFavoritesPanel(QWidget):
         has = self.list.count() > 0
         for b in (self.apply_btn, self.edit_btn, self.remove_btn):
             b.setEnabled(has)
+        self._prewarm_faces(fams)
+
+    # -- progressive font-face rendering (no first-open stutter) -----------
+    def _prewarm_faces(self, families):
+        """Queue rows' faces (not just the visible ones) to render in the
+        background, so scrolling doesn't keep hitting un-rendered rows. Capped at
+        the cache size: on a huge list we prewarm the first _FACE_CACHE_MAX and
+        let the sync render in paint cover the rest on demand (no point rendering
+        faces we'd only evict). A face, once shown, stays its own font for good."""
+        budget = _FACE_CACHE_MAX - (len(self._face_cache) + len(self._face_pending))
+        for fam in families:
+            if budget <= 0:
+                break
+            if fam and fam not in self._face_cache and fam not in self._face_pending:
+                self._face_pending.append(fam)
+                budget -= 1
+        if self._face_pending and not self._face_timer.isActive():
+            self._face_timer.start()
+    def _face_pixmap(self, family):
+        """The cached alpha-mask pixmap of `family`'s name in its own font, or
+        None if not rendered yet."""
+        return self._face_cache.get(family)
+
+    def _ensure_face(self, family):
+        """Return the face pixmap, rendering + caching it now if needed. Called
+        from the delegate's paint so a row is never shown in the wrong font and
+        then swapped (the scroll flicker). The background prewarm means this
+        usually just hits the cache; the sync render happens at most once a row."""
+        if not family:
+            return None
+        pm = self._face_cache.get(family)
+        if pm is None:
+            pm = self._make_face(family)
+            self._face_cache[family] = pm      # cache even False, so no retry
+            self._evict_faces()
+        return pm
+
+    def _evict_faces(self):
+        """Keep the caches bounded. dict preserves insertion order, so the
+        oldest-rendered faces go first — with scroll locality those are the
+        furthest off-screen, never a currently-visible row (see _FACE_CACHE_MAX).
+        The matching tinted copies are dropped in one pop (tints are per-family)."""
+        over = len(self._face_cache) - _FACE_CACHE_MAX
+        if over <= 0:
+            return
+        for fam in list(self._face_cache.keys())[:over]:
+            self._face_cache.pop(fam, None)
+            self._tint_cache.pop(fam, None)
+
+    def _tinted_face(self, family, color):
+        """The face pixmap tinted to `color`, cached per family then per colour.
+        The tint is a full compositing pass, so doing it once and blitting the
+        result keeps scrolling smooth (rows repaint constantly). Returns None if
+        the face couldn't be rendered (caller falls back to the plain name)."""
+        face = self._ensure_face(family)
+        if not face:
+            return None
+        by_colour = self._tint_cache.get(family)
+        if by_colour is None:
+            by_colour = self._tint_cache[family] = {}
+        rgba = color.rgba()
+        tinted = by_colour.get(rgba)
+        if tinted is None:
+            tinted = QPixmap(face.size())
+            tinted.fill(Qt.transparent)
+            tp = QPainter(tinted)
+            tp.drawPixmap(0, 0, face)
+            tp.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            tp.fillRect(tinted.rect(), color)
+            tp.end()
+            by_colour[rgba] = tinted
+        return tinted
+
+    def _on_face_size_changed(self, v):
+        """Preview-size slider: bigger font faces for a closer look. Re-applies
+        the row height, drops the (old-size) cache so faces re-render, and
+        remembers the choice."""
+        self._face_px = int(v)
+        self._face_cache.clear()
+        self._tint_cache.clear()
+        self._face_pending = []
+        try:
+            self._store.ui_set("face_px", int(v))
+            self._persist()
+        except Exception:
+            pass
+        # uniform-item-sizes cached the old row height; toggle to recompute it
+        self.list.setUniformItemSizes(False)
+        self.list.setUniformItemSizes(True)
+        self.list.doItemsLayout()
+        # re-render every face at the new size so scrolling stays flicker-free
+        self._prewarm_faces([self.list.item(i).data(_ROLE_FAMILY)
+                             for i in range(self.list.count())])
+        self.list.viewport().update()
+
+    def _request_face(self, family):
+        """A visible row's face isn't cached yet — queue it to render off the
+        paint path so opening the tab stays instant. A currently-visible row
+        jumps to the front so what the user is looking at renders first."""
+        if not family or family in self._face_cache:
+            return
+        if family in self._face_pending:
+            self._face_pending.remove(family)          # re-prioritise it
+        self._face_pending.insert(0, family)
+        if not self._face_timer.isActive():
+            self._face_timer.start()
+
+    def _render_faces_step(self):
+        """Render a batch of queued faces, then repaint so those rows swap from
+        the plain name to the real face. A big-enough batch means scrolling
+        rarely catches a row mid-render (which would look like a flicker)."""
+        drew = False
+        for _ in range(8):
+            if not self._face_pending:
+                break
+            fam = self._face_pending.pop(0)
+            if fam not in self._face_cache:
+                self._face_cache[fam] = self._make_face(fam)
+                drew = True
+        if drew:
+            self._evict_faces()
+        if not self._face_pending:
+            self._face_timer.stop()
+        if drew:
+            self.list.viewport().update()
+
+    def _make_face(self, family):
+        """Pixmap of `family`'s name drawn IN that font as an opaque-on-transparent
+        mask (the delegate tints it to the row's text colour). Rendering this is
+        what loads the font — done here, off the paint path. False on failure."""
+        try:
+            f = QFont(family)
+            f.setPixelSize(self._face_px)
+            fm = QFontMetrics(f)
+            w = max(1, min(fm.horizontalAdvance(family) + 4, 1600))
+            pm = QPixmap(w, self._face_px + 8)
+            pm.fill(Qt.transparent)
+            p = QPainter(pm)
+            p.setFont(f)
+            p.setPen(QColor(0, 0, 0))
+            p.drawText(2, self._face_px, family)
+            p.end()
+            return pm
+        except Exception:              # noqa: BLE001
+            return False
 
     # -- actions ------------------------------------------------------------
     def _apply_current(self):
@@ -614,7 +815,6 @@ class _FontChooserDialog(QDialog):
         lay.addWidget(self.search)
         self.list = QListWidget()
         self.list.setUniformItemSizes(True)      # fast with thousands of fonts
-        self.list.setItemDelegate(_FontItemDelegate(16, self.list))
         for fam in families:
             it = QListWidgetItem(fam)
             it.setData(_ROLE_FAMILY, fam)

@@ -1111,5 +1111,64 @@ check("a multi-line comment stays one unit",
 check("image_comments_to_script: no comments -> empty script",
       LP.image_comments_to_script([]) == "")
 
+# --- TextShapR line-break quality: dangling stop-words + widows -------------
+check("_word_is_stop flags a dangling preposition/article",
+      LO._word_is_stop("to") and LO._word_is_stop("the") and LO._word_is_stop("a"))
+check("_word_is_stop ignores content words",
+      not LO._word_is_stop("homework") and not LO._word_is_stop("run"))
+check("a word that ends a clause is a fine break, not a stop",
+      not LO._word_is_stop("to,") and not LO._word_is_stop("the."))
+check("_bare_last strips quotes/brackets + lowercases",
+      LO._bare_last("(The") == "the" and LO._bare_last("to") == "to")
+
+
+def _cand(px, *line_texts):
+    return {"px": px, "k": len(line_texts),
+            "lines": [[(t, False)] for t in line_texts]}
+
+
+# same shape, same widths — only the interior line's LAST word differs: a bare
+# stop word ('to') must score exactly the stop penalty below a content word.
+_a = _cand(40, "I run to", "the end")     # interior line ends on 'to' (stop)
+_b = _cand(40, "I run ox", "the end")     # ends on 'ox' (content), same width
+_sa = LO.score_arrangement(_a, _measurer, 200, 200)
+_sb = LO.score_arrangement(_b, _measurer, 200, 200)
+check("a line ending on a dangling stop-word scores lower",
+      _sb - _sa > 0.29 and _sb - _sa < 0.31)
+
+# the shaper keeps short function words attached where the balance allows it:
+# this text can be shaped with no interior line dangling a stop-word.
+_shp = LO.shape_candidates(
+    "we should try to find a way to fix this before it gets worse",
+    _measurer, 260, 320, 200, 6, 0.1, mode="balanced")
+_top = [LO.runs_text(r) for r in _shp[0]["lines"]]
+check("top shape keeps function words attached (no dangling stop-word)",
+      not any(L.split() and LO._bare_last(L.split()[-1]) in LO._LINE_END_STOPS
+              for L in _top[:-1]))
+
+# widow: the shaper's top pick doesn't leave a lone single word as the last line
+check("top shape avoids a single-word widow last line",
+      len(_top) < 2 or len(_top[-1].split()) >= 2)
+
+# outline-aware fit: reserving an inset shrinks the fitted size so outlined
+# text stays inside the box instead of overflowing.
+_p0 = LO.shape_candidates("BIG LOUD TEXT", _measurer, 200, 100, 200, 6, 0.0)
+_p1 = LO.shape_candidates("BIG LOUD TEXT", _measurer, 200, 100, 200, 6, 0.0,
+                          inset=20)
+check("an outline inset shrinks the fitted size (no overflow)",
+      _p0 and _p1 and _p1[0]["px"] < _p0[0]["px"])
+
+# richer pool: several distinct line counts are offered for a longer line
+_pool = LO.shape_candidates(
+    "make sure you plan out all of your summer homework tonight",
+    _measurer, 260, 320, 200, 6, 0.1)
+check("shaper offers several distinct shapes to choose from",
+      len({c["k"] for c in _pool}) >= 3)
+
+# a conjunction reads best at the START of a line (break before 'but')
+check("_word_is_conj flags a leading conjunction",
+      LO._word_is_conj("but") and LO._word_is_conj("and")
+      and not LO._word_is_conj("homework"))
+
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

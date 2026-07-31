@@ -70,10 +70,31 @@ class _FakeNode:
         return True
 
 
+class _FakeSelection:
+    def __init__(self, x=100, y=50, w=40, h=20):
+        self._x, self._y, self._w, self._h = x, y, w, h
+
+    def x(self):
+        return self._x
+
+    def y(self):
+        return self._y
+
+    def width(self):
+        return self._w
+
+    def height(self):
+        return self._h
+
+    def pixelData(self, x, y, w, h):
+        return bytes([255]) * (w * h)               # fully selected
+
+
 class _FakeDoc:
     def __init__(self, w=800, h=600):
         self._w, self._h = w, h
         self.last = None
+        self.sel = None
         self._root = _FakeNode("root")
 
     def width(self):
@@ -83,7 +104,7 @@ class _FakeDoc:
         return self._h
 
     def selection(self):
-        return None
+        return self.sel
 
     def rootNode(self):
         return self._root
@@ -501,6 +522,46 @@ try:
     _miss = _ff_panel._store.missing_fonts(["Arial"])
     check("missing_fonts flags favourites that aren't installed",
           "CC Wild Words" in _miss and "Anime Ace 2" in _miss)
+    # preview-size slider: bigger faces, remembered across panels
+    check("panel offers a preview-size slider defaulting to the face size",
+          hasattr(_ff_panel, "size_slider")
+          and _ff_panel.size_slider.value() == _ff_panel._face_px)
+    _ff_panel.size_slider.setValue(44)
+    check("dragging the slider grows the delegate's face size + drops the cache",
+          _ff_panel._face_px == 44
+          and _ff_panel.list.itemDelegate()._size() == 44
+          and not _ff_panel._face_cache)
+    _ff_panel3 = FontFavoritesPanel(
+        families_fn=lambda: [], apply_fn=lambda f: None,
+        load_fn=lambda: _ff_blob["v"], save_fn=lambda t: None, tr=lambda k: k)
+    check("a new panel restores the chosen preview size",
+          _ff_panel3._face_px == 44)
+    # perf: a tinted face is cached per (family, colour) — same colour reuses it
+    from PyQt5.QtGui import QColor as _QC
+    _c1, _c2 = _QC(200, 200, 200), _QC(255, 255, 255)
+    check("tinting a face caches the result (reused on the next repaint)",
+          _ff_panel3._tinted_face("Arial", _c1)
+          is _ff_panel3._tinted_face("Arial", _c1))
+    check("a different text colour makes its own tinted copy",
+          _ff_panel3._tinted_face("Arial", _c2)
+          is not _ff_panel3._tinted_face("Arial", _c1))
+    # memory: the face/tint caches are bounded — oldest (off-screen) evicted
+    import typer_kr.fontfav_ui as _FFUImod
+    _old_max = _FFUImod._FACE_CACHE_MAX
+    try:
+        _FFUImod._FACE_CACHE_MAX = 20
+        for _i in range(120):
+            _fam = "Fam%03d" % _i
+            _ff_panel3._ensure_face(_fam)
+            _ff_panel3._tinted_face(_fam, _c1)
+        check("face + tint caches stay bounded under the cap (no leak)",
+              len(_ff_panel3._face_cache) <= 20
+              and len(_ff_panel3._tint_cache) <= 20)
+        check("eviction drops the oldest face and keeps the newest",
+              "Fam000" not in _ff_panel3._face_cache
+              and "Fam119" in _ff_panel3._face_cache)
+    finally:
+        _FFUImod._FACE_CACHE_MAX = _old_max
 except Exception as _ff_e:                          # pragma: no cover
     check("font-favourites panel smoke test ran", False)
     import traceback
@@ -616,6 +677,22 @@ if imported:
                      for x in range(_dots.width())
                      if ((_dots.pixel(x, y) >> 24) & 0xFF) == 0)
         check("transparent-bg pattern keeps transparent pixels", _trans > 0)
+        # the common manga screentones are all offered (dots, line tones incl.
+        # diagonal, cross-hatch, sand/noise grain, shoujo sparkle)
+        check("manga screentones present (dots/diagonal/noise/sparkle/…)",
+              set(("dots", "hstripes", "vstripes", "diagonal", "crosshatch",
+                   "noise", "sparkle")).issubset(set(_IMG.PATTERN_KINDS)))
+        # and each has a working screentone-gradient variant (dense -> sparse)
+        for _gk in ("diagonal", "noise", "sparkle"):
+            _gg = _IMG.make_pattern_gradient(_gk, QColor(0, 0, 0), None,
+                                             5, 7, 0.0, 200, 80)
+
+            def _side(_im, _x0, _x1):
+                return sum(1 for _y in range(0, _im.height(), 3)
+                           for _x in range(_x0, _x1, 3)
+                           if (_im.pixel(_x, _y) >> 24) & 0xFF)
+            check("%r gradient is denser at the dark tail than the head" % _gk,
+                  not _gg.isNull() and _side(_gg, 0, 50) > _side(_gg, 150, 200))
 
         from typer_kr.patterngen import PatternGeneratorDialog
         _pg = PatternGeneratorDialog(None, lambda k: k)
@@ -639,6 +716,39 @@ if imported:
         _pg.save_btn.click()
         check("generator's Save button emits the current tile",
               _saved.get("t") is not None and not _saved["t"].isNull())
+        # gradient (dark -> light) with a direction
+        _grad = TK.IMG.make_gradient(QColor(0, 0, 0), QColor(255, 255, 255), 0, 48)
+        check("make_gradient goes dark -> light across the tile",
+              QColor(_grad.pixel(2, 24)).lightness()
+              < QColor(_grad.pixel(45, 24)).lightness())
+        _pg.gradient_chk.setChecked(True)
+        check("generator gradient mode produces a tile",
+              _pg.is_gradient() and _pg._current_tile() is not None
+              and not _pg._current_tile().isNull())
+        # screentone-density gradient: ink is dense at the tail, sparse at the
+        # head (this is what lets the user recreate a manga tone fade)
+        _kinds = [_pg.kind.itemData(_i) for _i in range(_pg.kind.count())]
+        check("generator offers a 'smooth' gradient option next to the patterns",
+              "smooth" in _kinds and "dots" in _kinds)
+        _pg.kind.setCurrentIndex(_kinds.index("dots"))
+        check("pattern kind stays live in gradient mode (it shapes the tone)",
+              _pg.kind.isEnabled() and _pg.size.isEnabled())
+        _spec = _pg.gradient_spec()
+        check("gradient_spec exposes the params for re-rendering at size",
+              _spec and _spec["kind"] == "dots" and "angle_deg" in _spec)
+        _hg = TK.IMG.make_pattern_gradient("dots", QColor(0, 0, 0), None,
+                                           6, 8, 0.0, 240, 80)
+
+        def _ink(_x0, _x1):
+            _n = 0
+            for _y in range(0, _hg.height(), 3):
+                for _x in range(_x0, _x1, 3):
+                    if (_hg.pixel(_x, _y) >> 24) & 0xFF:
+                        _n += 1
+            return _n
+        check("screentone gradient is denser at the dark tail than the light head",
+              _ink(0, 60) > _ink(180, 240) * 1.5)
+        _pg.gradient_chk.setChecked(False)
 
         # the live preview must render pattern/soft/fill without crashing
         _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
@@ -669,13 +779,11 @@ if imported:
         check("live preview paints normally", _pv_nonempty())
         _pd.outline_chk.setChecked(True)
         _pd._outline_pattern_img = _pat
-        _pd.fill_pattern_chk.setChecked(True)
-        _pd._fill_pattern_img = _pat
         _pd.style_soft_chk.setChecked(True)
         _pd.style_soft_width_spin.setValue(3)
         _pd.style_soft_blur_spin.setValue(6)
         _pd._update_text_preview()
-        check("live preview renders pattern outline + soft + fill (no crash)",
+        check("live preview renders pattern outline + soft (no crash)",
               _pv_nonempty())
 
         # manual refresh button + NON-modal generator (so other style edits stay
@@ -687,7 +795,6 @@ if imported:
         _gdlg = _pd._patgen_dlg
         check("generator opens non-modally and live-applies to the fill",
               _gdlg is not None and not _gdlg.isModal()
-              and _pd.fill_pattern_chk.isChecked()
               and _pd._fill_pattern_img is not None)
         _gdlg.size.setValue(13)                  # a change → live tile applied
         check("changing the generator keeps applying live",
@@ -710,6 +817,41 @@ if imported:
             os.remove(_ppath)
         except Exception:
             pass
+        # fill a canvas SELECTION with a pattern (generator + fill-panel buttons)
+        check("generator has a 'fill selection' button + signal",
+              hasattr(_pg, "apply_sel_btn")
+              and hasattr(_pg, "applyToSelectionRequested"))
+        check("fill panel has a 'fill selection' button",
+              hasattr(_pd, "fill_sel_btn"))
+        _sdoc = _FakeDoc()
+        _sdoc.sel = _FakeSelection(100, 50, 40, 20)
+        _KR_APP._doc = _sdoc
+        _pd._fill_selection_with_pattern(
+            TK.IMG.make_pattern("checker", QColor(0, 0, 0), None, 6, 6))
+        check("filling a selection makes a clipped paint layer at its position",
+              _sdoc.last is not None and _sdoc.last.kind == "paintlayer"
+              and _sdoc.last.pixels is not None
+              and _sdoc.last.pixels[1] == 100 and _sdoc.last.pixels[2] == 50)
+        # a gradient stretches across the selection (doesn't crash / tiles)
+        _sdoc.last = None
+        _pd._fill_selection_with_pattern(
+            TK.IMG.make_gradient(QColor(0, 0, 0), QColor(255, 255, 255), 0, 48),
+            stretch=True)
+        check("a gradient fills the selection (stretched)",
+              _sdoc.last is not None and _sdoc.last.kind == "paintlayer")
+        # a screentone-gradient spec is re-rendered at the exact selection size
+        # (round dots), with no source tile passed at all
+        _sdoc.last = None
+        _pd._fill_selection_with_pattern(
+            None, True,
+            {"kind": "dots", "fg": QColor(0, 0, 0), "bg": None,
+             "size": 6, "gap": 8, "angle_deg": 0})
+        check("a screentone-gradient spec fills the selection (re-rendered at size)",
+              _sdoc.last is not None and _sdoc.last.kind == "paintlayer")
+        # outline pattern can target the 1st / 2nd / both outlines
+        check("outline pattern offers a 1st/2nd/both target",
+              hasattr(_pd, "outline_pattern_target_combo")
+              and _pd.outline_pattern_target_combo.count() == 3)
         _pd.deleteLater()
     except Exception:                               # pragma: no cover
         check("pattern-generator suite ran", False)
@@ -764,6 +906,43 @@ if imported:
               isinstance(_fres, dict) and "Zzz Not A Real Font 9999" not in _fres)
     except Exception:                               # pragma: no cover
         check("font-bundle suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- TextShapR: a PICKED shape never silently changes on a style change ----
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _sd = TK.TyperDocker()
+        _sw = _sd.shapr_widget
+        _sd._current_text = (
+            lambda: "make sure you plan out all of your summer homework tonight")
+        _sd.insert_arrangement = lambda c, a, replace=None: True
+        _KR_APP._doc = _FakeDoc(500, 700)
+        _sd.font_picker.setCurrentFamily("Arial")
+        _sw.refresh()
+        if len(_sw._cards) >= 3:
+            _sw._select(2, user=True)              # user pins card #3
+            _pin = [TK.L.runs_text(r) for r in _sw._cands[_sw._sel]["lines"]]
+            _sd.font_picker.setCurrentFamily("Times New Roman")
+            _sw.restyle()
+            check("a picked TextShapR shape survives a FONT change",
+                  [TK.L.runs_text(r)
+                   for r in _sw._cands[_sw._sel]["lines"]] == _pin)
+            _sd.size_spin.setValue(max(10, _sd.size_spin.value() - 20))
+            _sw.restyle()
+            check("a picked TextShapR shape survives a SIZE change",
+                  [TK.L.runs_text(r)
+                   for r in _sw._cands[_sw._sel]["lines"]] == _pin)
+            _sw._reshuffle()
+            check("an explicit reshuffle (mode toggle) drops the pin",
+                  _sw._custom is None)
+        else:
+            check("shaper produced cards for the lock test", False)
+        _KR_APP._doc = None
+        _sd.deleteLater()
+    except Exception:                               # pragma: no cover
+        check("shape-lock suite ran", False)
         import traceback
         traceback.print_exc()
 

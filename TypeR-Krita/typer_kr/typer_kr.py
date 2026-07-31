@@ -80,7 +80,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.8"
+VERSION = "1.9"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -433,6 +433,10 @@ LANG = {
         "outline_pattern_krita": "Krita pattern…",
         "outline_pattern_bad": "That image could not be loaded.",
         "outline_pattern_none": "No Krita patterns found.",
+        "outline_pattern_target_label": "Pattern on:",
+        "outline_pattern_t1": "1st outline",
+        "outline_pattern_t2": "2nd outline",
+        "outline_pattern_tboth": "Both outlines",
         "style_soft": "Soft outline",
         "style_soft_pattern": "Use pattern",
         "style_soft_w": "Width",
@@ -446,10 +450,17 @@ LANG = {
         "patlib_empty": "No saved patterns yet — make one with “Generate…”.",
         "patlib_delete": "Delete",
         "patgen_save": "★ Save to library…",
-        "panel_style_fill": "Text fill (pattern)",
-        "fill_pattern_chk": "Fill the text with a pattern",
-        "fill_pattern_pick": "Choose fill image…",
-        "fill_vector": "Keep text editable (pattern on a clip layer)",
+        "patgen_apply_sel": "▣ Fill the current selection",
+        "patgen_gradient": "Gradient / screentone fade (dense → sparse)",
+        "patgen_smooth": "Smooth colour",
+        "panel_style_fill": "Pattern → selection",
+        "fill_pattern_hint": "Pick or make a pattern, then select an area on the "
+                             "canvas (e.g. your text) and click “Fill selection”.",
+        "fill_pattern_pick": "Choose pattern…",
+        "fill_apply_sel": "▣ Fill selection with this pattern",
+        "sel_none": "Select an area on the canvas first (e.g. your text).",
+        "sel_filled": "Filled the selection with the pattern.",
+        "sel_pattern_layer": "Pattern fill",
         "auto": "Auto-fit to selection (size + wrap)",
         "auto_tip": "On: select a speech bubble, pick a font – the text wraps and scales to the largest size that fits.\nOff: fixed size, centered in the image/selection.",
         "hyphenate": "Hyphenate long words",
@@ -1059,6 +1070,10 @@ LANG = {
         "outline_pattern_krita": "Krita-Muster…",
         "outline_pattern_bad": "Bild konnte nicht geladen werden.",
         "outline_pattern_none": "Keine Krita-Muster gefunden.",
+        "outline_pattern_target_label": "Muster auf:",
+        "outline_pattern_t1": "1. Outline",
+        "outline_pattern_t2": "2. Outline",
+        "outline_pattern_tboth": "Beide Outlines",
         "style_soft": "Weiche Outline",
         "style_soft_pattern": "Muster nutzen",
         "style_soft_w": "Breite",
@@ -1072,10 +1087,16 @@ LANG = {
         "patlib_empty": "Noch keine gespeicherten Muster — mit „Erzeugen…“ anlegen.",
         "patlib_delete": "Löschen",
         "patgen_save": "★ In Bibliothek speichern…",
-        "panel_style_fill": "Text-Füllung (Muster)",
-        "fill_pattern_chk": "Text mit einem Muster füllen",
-        "fill_pattern_pick": "Füll-Bild wählen…",
-        "fill_vector": "Text editierbar lassen (Muster auf Clip-Ebene)",
+        "patgen_apply_sel": "▣ Auf aktuelle Auswahl anwenden",
+        "panel_style_fill": "Muster → Auswahl",
+        "fill_pattern_hint": "Muster wählen/erzeugen, dann eine Fläche auf der "
+                             "Leinwand markieren (z. B. deinen Text) und „Auswahl "
+                             "füllen“ klicken.",
+        "fill_pattern_pick": "Muster wählen…",
+        "fill_apply_sel": "▣ Auswahl mit diesem Muster füllen",
+        "sel_none": "Erst eine Fläche auf der Leinwand markieren (z. B. deinen Text).",
+        "sel_filled": "Auswahl mit dem Muster gefüllt.",
+        "sel_pattern_layer": "Muster-Füllung",
         # Muster-Generator (Dialog)
         "patgen_title": "Muster erstellen",
         "patgen_kind": "Muster:",
@@ -1090,6 +1111,11 @@ LANG = {
         "patgen_dots": "Punkte (Raster)",
         "patgen_grid": "Gitter",
         "patgen_crosshatch": "Kreuzschraffur",
+        "patgen_diagonal": "Diagonale Linien",
+        "patgen_noise": "Sand / Rauschen (Körnung)",
+        "patgen_sparkle": "Funkeln (Sterne)",
+        "patgen_gradient": "Verlauf / Raster-Verlauf (dicht → dünn)",
+        "patgen_smooth": "Weicher Farbverlauf",
         "auto": "Automatisch in Auswahl einpassen (Größe + Umbruch)",
         "auto_tip": "An: Auswahl als Sprechblase markieren, Font wählen – der Text bricht um und wird auf die größte passende Größe skaliert.\nAus: feste Größe, in der Bild-/Auswahlmitte.",
         "hyphenate": "Lange Wörter trennen",
@@ -1163,6 +1189,8 @@ LANG = {
         "fav_delete": "Löschen",
         "fav_delete_font_q": "„{name}“ aus den Favoriten entfernen?",
         "fav_count": "{n} Schriften",
+        "fav_size": "Aa",
+        "fav_size_tip": "Vorschaugröße – ziehen, um die Schriften größer zu sehen.",
         "fav_ctx_edit": "Kategorien bearbeiten…",
         "fav_ctx_delete": "Löschen…",
         "fav_import": "Importieren…",
@@ -2196,7 +2224,8 @@ def _render_text_raster(text_lines, line_pos, block_start, font_px, family,
                         shadow, shadow_color, shadow_dx, shadow_dy,
                         pattern_img, pattern_scale,
                         soft, soft_color, soft_px, soft_blur, soft_pattern,
-                        fill_pattern=None, fill_scale=100):
+                        fill_pattern=None, fill_scale=100,
+                        pattern_target="outline1"):
     """Render the text block to an ARGB QImage for the raster insert path (used
     when the text and/or outline is pattern-filled and/or has a soft/blurred
     halo — none of those can be a Krita vector paint). Returns (img, ox, oy)
@@ -2230,10 +2259,18 @@ def _render_text_raster(text_lines, line_pos, block_start, font_px, family,
     w = max(1, int(math.ceil(rect.right() + spread)) - ox)
     h = max(1, int(math.ceil(rect.bottom() + spread)) - oy)
 
-    outline_brush = (_scaled_pattern_brush(pattern_img, pattern_scale)
-                     if pattern_img is not None and not pattern_img.isNull()
-                     else QBrush(outline_color if outline_color is not None
-                                 else QColor(0, 0, 0)))
+    # the pattern fills the chosen outline(s); the other stays its solid colour
+    _pat_brush = (_scaled_pattern_brush(pattern_img, pattern_scale)
+                  if pattern_img is not None and not pattern_img.isNull()
+                  else None)
+    o1_brush = (_pat_brush if _pat_brush is not None
+                and pattern_target in ("outline1", "both")
+                else QBrush(outline_color if outline_color is not None
+                            else QColor(0, 0, 0)))
+    o2_brush = (_pat_brush if _pat_brush is not None
+                and pattern_target in ("outline2", "both")
+                else QBrush(QColor(outline2_color) if outline2_color is not None
+                            else QColor(0, 0, 0)))
 
     img = QImage(w, h, QImage.Format_ARGB32)
     img.fill(0)
@@ -2258,13 +2295,12 @@ def _render_text_raster(text_lines, line_pos, block_start, font_px, family,
         p.fillPath(sp, QBrush(shadow_color if shadow_color is not None
                               else QColor(0, 0, 0)))
     if o2 > 0:
-        pen2 = QPen(QColor(outline2_color))
-        pen2.setWidthF(o2)
+        pen2 = QPen(o2_brush, o2)
         pen2.setJoinStyle(Qt.RoundJoin)
         pen2.setCapStyle(Qt.RoundCap)
         p.strokePath(path, pen2)
     if o1 > 0:
-        pen = QPen(outline_brush, o1)
+        pen = QPen(o1_brush, o1)
         pen.setJoinStyle(Qt.RoundJoin)
         pen.setCapStyle(Qt.RoundCap)
         p.strokePath(path, pen)
@@ -2581,7 +2617,7 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                       pattern_img=None, pattern_scale=100, soft=False,
                       soft_color=None, soft_px=0.0, soft_blur=0.0,
                       soft_pattern=False, fill_pattern=None, fill_scale=100,
-                      vector_clip=False):
+                      vector_clip=False, pattern_target="outline1"):
     """Insert a single line of text as a text layer.
 
     auto_fit=True: the line is wrapped automatically, balanced and scaled to the
@@ -2771,7 +2807,8 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                 pattern_scale,
                 soft, soft_color, soft_px, soft_blur,
                 (soft_pattern and has_pattern),
-                (fill_pattern if has_fill_pattern else None), fill_scale)
+                (fill_pattern if has_fill_pattern else None), fill_scale,
+                pattern_target)
             node = _paint_layer_from_image(doc, img, ox, oy, label)
         except Exception as exc:  # pragma: no cover - Krita-version dependent
             return False, "st_create_fail", {"exc": exc}
@@ -3334,6 +3371,7 @@ class TextPreview(QWidget):
         """Pattern-fill / soft-outline data for the preview (guarded: these
         controls are built after the preview, so default to 'off' if missing)."""
         out = {"outline_pattern_img": None, "outline_pattern_scale": 100,
+               "outline_pattern_target": "outline1",
                "soft": False, "soft_px": 0.0, "soft_blur": 0.0,
                "soft_color": QColor(0, 0, 0), "soft_pattern": False,
                "fill_pattern_img": None, "fill_scale": 100}
@@ -3344,14 +3382,15 @@ class TextPreview(QWidget):
             if outline_on:
                 out["outline_pattern_img"] = d._ensure_outline_pattern_img()
                 out["outline_pattern_scale"] = d.outline_pattern_scale_spin.value()
+                out["outline_pattern_target"] = (
+                    d.outline_pattern_target_combo.currentData() or "outline1")
                 out["soft"] = d.style_soft_chk.isChecked()
                 out["soft_px"] = float(d.style_soft_width_spin.value())
                 out["soft_blur"] = float(d.style_soft_blur_spin.value())
                 out["soft_color"] = QColor(d._style_soft_color)
                 out["soft_pattern"] = d.style_soft_pattern_chk.isChecked()
-            if d.fill_pattern_chk.isChecked():
-                out["fill_pattern_img"] = d._ensure_fill_pattern_img()
-                out["fill_scale"] = d.fill_pattern_scale_spin.value()
+            # the text itself is no longer auto pattern-filled (patterns apply
+            # only to hand-made selections), so no fill_pattern in the preview.
         except Exception:                               # noqa: BLE001
             pass
         return out
@@ -3667,19 +3706,21 @@ class TextPreview(QWidget):
             sp = QPainterPath(path)
             sp.translate(o["shadow_dx"] * scale, o["shadow_dy"] * scale)
             p.fillPath(sp, QBrush(o["shadow_color"]))
+        _tgt = o.get("outline_pattern_target", "outline1")
+        _obr = (_scaled_pattern_brush(
+                    out_pat, o.get("outline_pattern_scale", 100) * scale)
+                if out_pat is not None else None)
         if o["outline"] and o.get("outline2_px", 0) > 0:   # outer, drawn first
-            pen2 = QPen(o["outline2_color"])
-            pen2.setWidthF(max(0.5, o["outline2_px"] * scale))
+            b2 = _obr if (_obr is not None and _tgt in ("outline2", "both")) \
+                else QBrush(o["outline2_color"])
+            pen2 = QPen(b2, max(0.5, o["outline2_px"] * scale))
             pen2.setJoinStyle(Qt.RoundJoin)
             pen2.setCapStyle(Qt.RoundCap)
             p.strokePath(path, pen2)
         if o["outline"] and o["outline_px"] > 0:
-            if out_pat is not None:
-                obrush = _scaled_pattern_brush(
-                    out_pat, o.get("outline_pattern_scale", 100) * scale)
-            else:
-                obrush = QBrush(o["outline_color"])
-            pen = QPen(obrush, max(0.5, o["outline_px"] * scale))
+            b1 = _obr if (_obr is not None and _tgt in ("outline1", "both")) \
+                else QBrush(o["outline_color"])
+            pen = QPen(b1, max(0.5, o["outline_px"] * scale))
             pen.setJoinStyle(Qt.RoundJoin)
             pen.setCapStyle(Qt.RoundCap)
             p.strokePath(path, pen)
@@ -3880,13 +3921,13 @@ class TextShapRWidget(QWidget):
                 b.setChecked(True)
             self._mode_group.addButton(b, i)
             bar.addWidget(b)
-        self._mode_group.buttonClicked.connect(lambda *_a: self.refresh())
+        self._mode_group.buttonClicked.connect(lambda *_a: self._reshuffle())
         # auto-pick the round shape when the selection is an ellipse
         self.auto_shape_btn = QPushButton(t("shaper_auto"))
         self.auto_shape_btn.setCheckable(True)
         self.auto_shape_btn.setChecked(True)
         self.auto_shape_btn.setToolTip(t("shaper_auto_tip"))
-        self.auto_shape_btn.toggled.connect(lambda *_a: self.refresh())
+        self.auto_shape_btn.toggled.connect(lambda *_a: self._reshuffle())
         bar.addWidget(self.auto_shape_btn)
         # live: insert the selected candidate onto the canvas (replacing)
         # so you see it at the real page position; off by default.
@@ -3899,20 +3940,20 @@ class TextShapRWidget(QWidget):
         self.match_btn = QPushButton(t("shaper_match"))
         self.match_btn.setCheckable(True)
         self.match_btn.setToolTip(t("shaper_match_tip"))
-        self.match_btn.toggled.connect(lambda *_a: self.refresh())
+        self.match_btn.toggled.connect(lambda *_a: self._reshuffle())
         bar.addWidget(self.match_btn)
         # hyphenation is a toggle on top of the mode, not exclusive with it
         self.hyph_btn = QPushButton(t("shaper_hyph"))
         self.hyph_btn.setCheckable(True)
         self.hyph_btn.setChecked(docker.hyph_chk.isChecked())
-        self.hyph_btn.toggled.connect(lambda *_a: self.refresh())
+        self.hyph_btn.toggled.connect(lambda *_a: self._reshuffle())
         bar.addWidget(self.hyph_btn)
         # de-hyphenation: rejoin words the source split across a line before
         # reshaping (the inverse of hyphenation; off by default).
         self.dehyph_btn = QPushButton(t("shaper_dehyph"))
         self.dehyph_btn.setCheckable(True)
         self.dehyph_btn.setToolTip(t("shaper_dehyph_tip"))
-        self.dehyph_btn.toggled.connect(lambda *_a: self.refresh())
+        self.dehyph_btn.toggled.connect(lambda *_a: self._reshuffle())
         bar.addWidget(self.dehyph_btn)
         lay.addLayout(bar)
 
@@ -3981,8 +4022,13 @@ class TextShapRWidget(QWidget):
         # What the cards were built from, so a re-fit (size/style/mode change)
         # can put the selection back instead of jumping to card 1.
         self._text_key = None
-        self._custom = None            # hand-edited arrangement (markup lines)
-        self._custom_index = 0         # the slot it was edited in
+        # The PINNED arrangement (markup lines). Once the user picks a card its
+        # exact line breaks are pinned here and re-fitted on every style change,
+        # so the selected shape NEVER silently turns into another one — only new
+        # text or an explicit reshuffle (mode/hyphenation toggle) drops it.
+        self._custom = None
+        self._custom_index = 0         # the slot it was picked/edited in
+        self._custom_hand = False      # True only for a hand-EDITED pin (badge)
         self._last_box = (1.0, 1.0)
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
@@ -4135,6 +4181,7 @@ class TextShapRWidget(QWidget):
             prev_key = None
             prev_index = -1
             self._custom = None
+            self._custom_hand = False
 
         if family and clean.strip():
             measurer = _make_measurer(family,
@@ -4154,7 +4201,8 @@ class TextShapRWidget(QWidget):
                     max_px, SHAPER_MIN_PX, d.pad_spin.value() / 100.0,
                     mode=mode, hyphenate=self.hyph_btn.isChecked(),
                     lang=d._hyph_lang_for(clean), mask=mask, limit=10,
-                    dehyphenate=self.dehyph_btn.isChecked())
+                    dehyphenate=self.dehyph_btn.isChecked(),
+                    inset=self._outline_inset())
             except Exception:
                 self._cands = []
             # a hand-edited arrangement survives the re-fit as its own card
@@ -4198,19 +4246,22 @@ class TextShapRWidget(QWidget):
                 word_lines.append(ws)
         if not word_lines:
             return
+        _ins = 2.0 * self._outline_inset()
         try:
             res = L.fit_fixed_lines(word_lines, measurer,
-                                    box_w * (1.0 - pad_frac),
-                                    box_h * (1.0 - pad_frac), max_px, 6)
+                                    box_w * (1.0 - pad_frac) - _ins,
+                                    box_h * (1.0 - pad_frac) - _ins, max_px, 6)
         except Exception:
             res = None
         if not res:
             self._custom = None
+            self._custom_hand = False
             return
         px, wl = res
         runs = [L.line_runs(ws) for ws in wl]
         cand = {"px": px, "k": len(runs), "lines": runs,
-                "words": [list(ws) for ws in wl], "custom": True}
+                "words": [list(ws) for ws in wl],
+                "custom": bool(self._custom_hand)}
         key = self._cand_key(cand)
         if any(self._cand_key(c) == key for c in self._cands):
             return                       # the edit matches a generated shape
@@ -4218,6 +4269,22 @@ class TextShapRWidget(QWidget):
         if not 0 <= i <= len(self._cands):
             i = len(self._cands)
         self._cands.insert(i, cand)      # back into the slot it was edited in
+
+    def _outline_inset(self):
+        """Per-side px to reserve for the outline so outlined text stays inside
+        the bubble (the stroke extends ~half its width beyond the glyph; a soft
+        outline spreads further)."""
+        d = self._docker
+        if not d.outline_chk.isChecked():
+            return 0.0
+        px = max(d.outline_spin.value(), d.outline2_spin.value()) / 2.0
+        try:
+            if d._patterns_on() and d.style_soft_chk.isChecked():
+                px += (d.style_soft_width_spin.value()
+                       + 2.0 * d.style_soft_blur_spin.value())
+        except Exception:                               # noqa: BLE001
+            pass
+        return float(px)
 
     def _restore_index(self, key, index):
         """Card to select after a rebuild: the same arrangement if it is still
@@ -4249,7 +4316,22 @@ class TextShapRWidget(QWidget):
             card.set_selected(i == index)
         self._load_break_editor(index)
         if user:
+            # PIN the chosen arrangement: its exact line breaks are re-fitted on
+            # every later style change (size/font/colour/outline/pattern), so the
+            # selection never silently morphs into a different shape.
+            cand = self._cands[index]
+            self._custom = tuple(L.runs_markup(r) for r in cand.get("lines", []))
+            self._custom_index = index
+            self._custom_hand = bool(cand.get("custom"))
             self._live_preview()
+
+    def _reshuffle(self):
+        """Explicit 'give me different shapes' (mode / auto-shape / match /
+        hyphenation toggle): drop the pinned selection so the fresh best for the
+        new setting is shown."""
+        self._custom = None
+        self._custom_hand = False
+        self.refresh()
 
     def _live_preview(self):
         """When 'live' is on, insert the selected candidate onto the
@@ -4303,6 +4385,7 @@ class TextShapRWidget(QWidget):
         # remember the edit so a later re-fit (size, style, mode) keeps it
         self._custom = tuple(L.runs_markup(r) for r in runs)
         self._custom_index = self._sel
+        self._custom_hand = True                 # hand-edited -> show the badge
         self._cards[self._sel].set_custom(True)
         self._cards[self._sel].update()
         self._break_timer.start()
@@ -4858,10 +4941,12 @@ class TyperDocker(DockWidget):
         self._outline_pattern_path = ""
         self._outline_pattern_krita_name = ""
         self._outline_pattern_img = None
-        # pattern that FILLS the text itself (Style tab)
+        # pattern/gradient used to fill a hand-made SELECTION (Style tab)
         self._fill_pattern_path = ""
         self._fill_pattern_krita_name = ""
         self._fill_pattern_img = None
+        self._fill_pattern_stretch = False   # True for a gradient (fit, no tile)
+        self._fill_pattern_grad_spec = None  # gradient params, re-rendered at size
         self._lang = self._load_lang()
         self._groups = self._load_groups()
         # Reopen on the manga (and character) worked on last time; _ensure_levels
@@ -5738,6 +5823,17 @@ class TyperDocker(DockWidget):
         self.outline_pattern_scale_spin.valueChanged.connect(
             lambda _v: self._update_text_preview())
         pbl.addWidget(self.outline_pattern_scale_spin)
+        # which outline the pattern fills: the 1st (inner), 2nd (outer) or both
+        tgt_row = QHBoxLayout()
+        self.lbl_outline_pattern_target = QLabel()
+        tgt_row.addWidget(self.lbl_outline_pattern_target)
+        self.outline_pattern_target_combo = NoScrollComboBox()
+        for _key in ("outline1", "outline2", "both"):
+            self.outline_pattern_target_combo.addItem("", _key)
+        self.outline_pattern_target_combo.currentIndexChanged.connect(
+            lambda _i: self._update_text_preview())
+        tgt_row.addWidget(self.outline_pattern_target_combo, 1)
+        pbl.addLayout(tgt_row)
 
         # soft (blurred) outline / glow: solid colour OR the pattern above
         soft_row = QHBoxLayout()
@@ -5794,13 +5890,15 @@ class TyperDocker(DockWidget):
         self._update_outline_btn()
         self._update_outline2_btn()
 
-        # --- text fill pattern: give the TEXT a texture/pattern fill (raster) ---
+        # --- pattern fill for a SELECTION: pick/generate a pattern, then drop
+        # it into a hand-made canvas selection (the text itself is never auto
+        # pattern-filled — you mark the area yourself). ---
         _fill_pb = self._new_panel("style_fill", "style")
         _fl = _fill_pb.body_layout()
-        self.fill_pattern_chk = QCheckBox()
-        self.fill_pattern_chk.toggled.connect(
-            lambda _v: (self._update_fill_enabled(), self._update_text_preview()))
-        _fl.addWidget(self.fill_pattern_chk)
+        self.fill_pattern_hint = QLabel()
+        self.fill_pattern_hint.setWordWrap(True)
+        self.fill_pattern_hint.setStyleSheet("color: gray;")
+        _fl.addWidget(self.fill_pattern_hint)
         fillp_row = QHBoxLayout()
         self.fill_pattern_btn = QPushButton()
         self.fill_pattern_btn.clicked.connect(self._pick_fill_pattern_file)
@@ -5823,16 +5921,14 @@ class TyperDocker(DockWidget):
         self.fill_pattern_scale_spin.setRange(10, 400)
         self.fill_pattern_scale_spin.setValue(100)
         self.fill_pattern_scale_spin.setSuffix(" %")
-        self.fill_pattern_scale_spin.valueChanged.connect(
-            lambda _v: self._update_text_preview())
         _fl.addWidget(self.fill_pattern_scale_spin)
-        # keep the text an editable vector layer (pattern on a clip layer)
-        self.fill_vector_chk = QCheckBox()
-        _fl.addWidget(self.fill_vector_chk)
+        # fill a hand-made canvas SELECTION with the current pattern
+        self.fill_sel_btn = QPushButton()
+        self.fill_sel_btn.clicked.connect(self._fill_selection_current)
+        _fl.addWidget(self.fill_sel_btn)
         lay_style.addWidget(_fill_pb)
         self._fill_panel = _fill_pb          # gated by the 'patterns' experiment
         self._update_fill_pattern_btn()
-        self._update_fill_enabled()
 
         # --- shadow panel: checkbox on the tab, color + offset in a popup ---
         self.shadow_dlg = QDialog(main)
@@ -6071,18 +6167,12 @@ class TyperDocker(DockWidget):
     # -- font favourites (fonts tab) ---------------------------------------
     def _apply_favorite_font(self, family):
         """Route a font picked in the Fonts tab into the live picker so the next
-        insert (and the preview) use it, then jump to the Type tab so the user
-        can type/insert right away."""
+        insert (and the preview) use it — WITHOUT leaving the Fonts tab, so you
+        can keep browsing/trying fonts."""
         if not family:
             return
         try:
             self.font_picker.setCurrentFamily(family)
-        except Exception:
-            pass
-        try:
-            idx = self._tab_index_of("type")
-            if idx is not None:
-                self.main_tabs.setCurrentIndex(idx)
         except Exception:
             pass
         try:
@@ -6621,12 +6711,16 @@ class TyperDocker(DockWidget):
         self.outline_pattern_krita_btn.setText(t("outline_pattern_krita"))
         self.outline_pattern_gen_btn.setText(t("pattern_generate"))
         self.outline_pattern_saved_btn.setText(t("pattern_saved"))
+        self.lbl_outline_pattern_target.setText(t("outline_pattern_target_label"))
+        for _i, _k in enumerate(("outline_pattern_t1", "outline_pattern_t2",
+                                 "outline_pattern_tboth")):
+            self.outline_pattern_target_combo.setItemText(_i, t(_k))
         self._update_outline_pattern_btn()
-        self.fill_pattern_chk.setText(t("fill_pattern_chk"))
+        self.fill_pattern_hint.setText(t("fill_pattern_hint"))
         self.fill_pattern_krita_btn.setText(t("outline_pattern_krita"))
         self.fill_pattern_gen_btn.setText(t("pattern_generate"))
         self.fill_pattern_saved_btn.setText(t("pattern_saved"))
-        self.fill_vector_chk.setText(t("fill_vector"))
+        self.fill_sel_btn.setText(t("fill_apply_sel"))
         self._update_fill_pattern_btn()
         self.style_soft_chk.setText(t("style_soft"))
         self.style_soft_pattern_chk.setText(t("style_soft_pattern"))
@@ -6954,6 +7048,67 @@ class TyperDocker(DockWidget):
         self._save_pattern_library(lib)
         self._set_status(self._tr("patlib_saved").format(name=name))
 
+    def _fill_selection_with_pattern(self, tile, stretch=False, grad_spec=None):
+        """Fill the document's current selection with `tile`, clipped to the
+        selection shape, on a NEW paint layer. Lets the user pick the area (e.g.
+        their own text) by hand and drop a pattern into it. `stretch` fits the
+        image once across the whole selection (for a gradient) instead of tiling
+        it (for a repeating pattern). `grad_spec`, when given, re-renders the
+        gradient at the exact selection size — so screentone dots stay round
+        instead of being stretched into ovals."""
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            self._set_status(self._tr("st_no_doc"), error=True)
+            return
+        if grad_spec is None and (tile is None or tile.isNull()):
+            return
+        sel = doc.selection()
+        if sel is None:
+            self._set_status(self._tr("sel_none"), error=True)
+            return
+        sx, sy, sw, sh = sel.x(), sel.y(), sel.width(), sel.height()
+        if sw <= 0 or sh <= 0:
+            self._set_status(self._tr("sel_none"), error=True)
+            return
+        img = QImage(sw, sh, QImage.Format_ARGB32_Premultiplied)
+        img.fill(0)
+        p = QPainter(img)
+        if grad_spec is not None:     # re-render the fade at the real size
+            fresh = IMG.make_pattern_gradient(width=sw, height=sh, **grad_spec)
+            p.drawImage(0, 0, fresh)
+        elif stretch:                 # one span across the whole selection
+            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            p.drawImage(QRectF(0, 0, sw, sh), tile, QRectF(tile.rect()))
+        else:
+            p.fillRect(0, 0, sw, sh, _scaled_pattern_brush(tile, 100))
+        try:                          # clip to the selection's actual shape
+            mbytes = bytes(sel.pixelData(sx, sy, sw, sh))
+            if len(mbytes) >= sw * sh:
+                mask = QImage(mbytes, sw, sh, sw,
+                              QImage.Format_Alpha8).copy()
+                p.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+                p.drawImage(0, 0, mask)
+        except Exception:             # noqa: BLE001 — fall back to the bbox fill
+            pass
+        p.end()
+        img = img.convertToFormat(QImage.Format_ARGB32)
+        node = _paint_layer_from_image(doc, img, sx, sy,
+                                       self._tr("sel_pattern_layer"))
+        if node is not None:
+            self._set_status(self._tr("sel_filled"))
+        else:
+            self._set_status(self._tr("sel_none"), error=True)
+
+    def _fill_selection_current(self):
+        """Fill-panel button: use the currently chosen selection-fill pattern."""
+        img = self._ensure_fill_pattern_img()
+        if img is None:
+            self._set_status(self._tr("fill_pattern_pick"), error=True)
+            return
+        self._fill_selection_with_pattern(
+            img, getattr(self, "_fill_pattern_stretch", False),
+            getattr(self, "_fill_pattern_grad_spec", None))
+
     def _pick_saved_pattern(self):
         """Modal picker over the saved-pattern library (with delete). Returns
         (QImage, path) or (None, None)."""
@@ -7032,8 +7187,8 @@ class TyperDocker(DockWidget):
         self._fill_pattern_path = path
         self._fill_pattern_krita_name = ""
         self._fill_pattern_img = img
-        if not self.fill_pattern_chk.isChecked():
-            self.fill_pattern_chk.setChecked(True)
+        self._fill_pattern_stretch = False
+        self._fill_pattern_grad_spec = None
         self._update_fill_pattern_btn()
         self._update_text_preview()
 
@@ -7048,7 +7203,7 @@ class TyperDocker(DockWidget):
             return
         if target == "fill":
             prev = (self._fill_pattern_path, self._fill_pattern_krita_name,
-                    self._fill_pattern_img, self.fill_pattern_chk.isChecked())
+                    self._fill_pattern_img)
         else:
             prev = (self._outline_pattern_path,
                     self._outline_pattern_krita_name, self._outline_pattern_img)
@@ -7056,11 +7211,6 @@ class TyperDocker(DockWidget):
         def _live(tile):
             if target == "fill":
                 self._fill_pattern_img = tile
-                if not self.fill_pattern_chk.isChecked():
-                    self.fill_pattern_chk.blockSignals(True)
-                    self.fill_pattern_chk.setChecked(True)
-                    self.fill_pattern_chk.blockSignals(False)
-                    self._update_fill_enabled()
             else:
                 self._outline_pattern_img = tile
             self._update_text_preview()
@@ -7079,6 +7229,9 @@ class TyperDocker(DockWidget):
         dlg.setModal(False)
         dlg.previewChanged.connect(_live)
         dlg.saveRequested.connect(self._save_pattern_to_library)
+        dlg.applyToSelectionRequested.connect(
+            lambda t: self._fill_selection_with_pattern(
+                t, dlg.is_gradient(), dlg.gradient_spec()))
 
         def _finish(result):
             if result == QDialog.Accepted:
@@ -7088,6 +7241,8 @@ class TyperDocker(DockWidget):
                     self._fill_pattern_img = img
                     self._fill_pattern_path = path
                     self._fill_pattern_krita_name = ""
+                    self._fill_pattern_stretch = dlg.is_gradient()
+                    self._fill_pattern_grad_spec = dlg.gradient_spec()
                     self._update_fill_pattern_btn()
                 else:
                     self._outline_pattern_img = img
@@ -7097,11 +7252,7 @@ class TyperDocker(DockWidget):
             else:                                       # restore the old pattern
                 if target == "fill":
                     (self._fill_pattern_path, self._fill_pattern_krita_name,
-                     self._fill_pattern_img, _on) = prev
-                    self.fill_pattern_chk.blockSignals(True)
-                    self.fill_pattern_chk.setChecked(_on)
-                    self.fill_pattern_chk.blockSignals(False)
-                    self._update_fill_enabled()
+                     self._fill_pattern_img) = prev
                     self._update_fill_pattern_btn()
                 else:
                     (self._outline_pattern_path,
@@ -7143,16 +7294,7 @@ class TyperDocker(DockWidget):
         return None
 
     def _fill_pattern_active(self):
-        return (self.fill_pattern_chk.isChecked()
-                and self._ensure_fill_pattern_img() is not None)
-
-    def _update_fill_enabled(self):
-        on = self.fill_pattern_chk.isChecked()
-        for w in (self.fill_pattern_btn, self.fill_pattern_krita_btn,
-                  self.fill_pattern_gen_btn, self.fill_pattern_saved_btn,
-                  self.fill_pattern_clear_btn, self.fill_pattern_scale_spin,
-                  self.fill_vector_chk):
-            w.setEnabled(on)
+        return self._ensure_fill_pattern_img() is not None
 
     def _pick_fill_pattern_file(self):
         path, _f = QFileDialog.getOpenFileName(
@@ -7167,8 +7309,8 @@ class TyperDocker(DockWidget):
         self._fill_pattern_path = path
         self._fill_pattern_krita_name = ""
         self._fill_pattern_img = img
-        if not self.fill_pattern_chk.isChecked():
-            self.fill_pattern_chk.setChecked(True)
+        self._fill_pattern_stretch = False
+        self._fill_pattern_grad_spec = None
         self._update_fill_pattern_btn()
         self._update_text_preview()
 
@@ -7179,8 +7321,8 @@ class TyperDocker(DockWidget):
         self._fill_pattern_krita_name = nm
         self._fill_pattern_path = ""
         self._fill_pattern_img = QImage(img)
-        if not self.fill_pattern_chk.isChecked():
-            self.fill_pattern_chk.setChecked(True)
+        self._fill_pattern_stretch = False
+        self._fill_pattern_grad_spec = None
         self._update_fill_pattern_btn()
         self._update_text_preview()
 
@@ -7194,6 +7336,8 @@ class TyperDocker(DockWidget):
         self._fill_pattern_path = ""
         self._fill_pattern_krita_name = ""
         self._fill_pattern_img = None
+        self._fill_pattern_stretch = False
+        self._fill_pattern_grad_spec = None
         self._update_fill_pattern_btn()
         self._update_text_preview()
 
@@ -8207,17 +8351,17 @@ class TyperDocker(DockWidget):
             "outline_pattern_path": self._outline_pattern_path,
             "outline_pattern_krita": self._outline_pattern_krita_name,
             "outline_pattern_scale": self.outline_pattern_scale_spin.value(),
+            "outline_pattern_target": (
+                self.outline_pattern_target_combo.currentData() or "outline1"),
             "soft_outline": self.style_soft_chk.isChecked(),
             "soft_outline_pattern": self.style_soft_pattern_chk.isChecked(),
             "soft_outline_color": self._style_soft_color.name(),
             "soft_outline_w": self.style_soft_width_spin.value(),
             "soft_outline_blur": self.style_soft_blur_spin.value(),
-            # pattern that fills the text itself
-            "fill_pattern_on": self.fill_pattern_chk.isChecked(),
+            # the current selection-fill pattern (chosen, applied by hand)
             "fill_pattern_path": self._fill_pattern_path,
             "fill_pattern_krita": self._fill_pattern_krita_name,
             "fill_pattern_scale": self.fill_pattern_scale_spin.value(),
-            "fill_vector": self.fill_vector_chk.isChecked(),
         }
 
     def _save_settings(self):
@@ -8294,6 +8438,11 @@ class TyperDocker(DockWidget):
             if "outline_pattern_scale" in d:
                 self.outline_pattern_scale_spin.setValue(
                     int(d["outline_pattern_scale"]))
+            if "outline_pattern_target" in d:
+                _ti = self.outline_pattern_target_combo.findData(
+                    d["outline_pattern_target"])
+                if _ti >= 0:
+                    self.outline_pattern_target_combo.setCurrentIndex(_ti)
             if "soft_outline_color" in d:
                 self._style_soft_color = QColor(d["soft_outline_color"])
                 self._update_style_soft_btn()
@@ -8307,7 +8456,7 @@ class TyperDocker(DockWidget):
             if "soft_outline" in d:
                 self.style_soft_chk.setChecked(bool(d["soft_outline"]))
             self._update_soft_enabled()
-            # text fill pattern
+            # the chosen selection-fill pattern
             if "fill_pattern_path" in d or "fill_pattern_krita" in d:
                 self._fill_pattern_path = d.get("fill_pattern_path", "") or ""
                 self._fill_pattern_krita_name = d.get("fill_pattern_krita", "") or ""
@@ -8315,11 +8464,6 @@ class TyperDocker(DockWidget):
                 self._update_fill_pattern_btn()
             if "fill_pattern_scale" in d:
                 self.fill_pattern_scale_spin.setValue(int(d["fill_pattern_scale"]))
-            if "fill_vector" in d:
-                self.fill_vector_chk.setChecked(bool(d["fill_vector"]))
-            if "fill_pattern_on" in d:
-                self.fill_pattern_chk.setChecked(bool(d["fill_pattern_on"]))
-            self._update_fill_enabled()
             if "shadow" in d:
                 self.shadow_chk.setChecked(bool(d["shadow"]))
             if "shadow_x" in d:
@@ -9881,11 +10025,8 @@ class TyperDocker(DockWidget):
             soft_px=self.style_soft_width_spin.value(),
             soft_blur=self.style_soft_blur_spin.value(),
             soft_pattern=self.style_soft_pattern_chk.isChecked(),
-            fill_pattern=(self._ensure_fill_pattern_img()
-                          if (self._patterns_on()
-                              and self.fill_pattern_chk.isChecked()) else None),
-            fill_scale=self.fill_pattern_scale_spin.value(),
-            vector_clip=self.fill_vector_chk.isChecked(),
+            pattern_target=(self.outline_pattern_target_combo.currentData()
+                            or "outline1"),
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:
@@ -10017,11 +10158,8 @@ class TyperDocker(DockWidget):
             soft_px=self.style_soft_width_spin.value(),
             soft_blur=self.style_soft_blur_spin.value(),
             soft_pattern=self.style_soft_pattern_chk.isChecked(),
-            fill_pattern=(self._ensure_fill_pattern_img()
-                          if (self._patterns_on()
-                              and self.fill_pattern_chk.isChecked()) else None),
-            fill_scale=self.fill_pattern_scale_spin.value(),
-            vector_clip=self.fill_vector_chk.isChecked(),
+            pattern_target=(self.outline_pattern_target_combo.currentData()
+                            or "outline1"),
         )
         self._set_status(self._insert_msg(key, fmt), error=not ok)
         if ok:

@@ -542,6 +542,18 @@ def balance_even(words, width_of, space_w, usable_w, k):
                     # (the usual look).
                     weight = 1.0 + 0.04 * l
                     cost = (target - lw) ** 2 * weight + rem
+                    # phrase-aware break quality, scaled to the deviation cost so
+                    # it only decides between near-equally-balanced splits:
+                    t2 = target * target
+                    if l > 1:                       # interior line (has a break)
+                        if _word_is_stop(words[j]):
+                            cost += 0.20 * t2       # don't dangle a function word
+                        elif _ends_clause(words[j]):
+                            cost -= 0.06 * t2        # ended a clause: nice break
+                        elif j + 1 < n and _word_is_conj(words[j + 1]):
+                            cost -= 0.06 * t2        # next line starts 'and…/but…'
+                    elif l == 1 and i == n - 1:
+                        cost += 0.30 * t2           # single-word last line (widow)
                     if cost < best:
                         best = cost
                         bestj = j
@@ -931,6 +943,51 @@ _FILL_SWEET_MAX = 0.88
 # A line ending on one of these sits at a natural pause, so breaking there reads
 # better than snapping a line mid-clause.
 _CLAUSE_END = ".,;:!?…"          # . , ; : ! ? …
+
+# Short function words that dangle badly at the END of a line in lettering
+# (articles, prepositions, conjunctions, a couple of short pronouns). A line
+# should not end on one of these — it belongs with the word that follows. Used
+# as a tie-breaker so, among near-equally-balanced splits, the shaper picks the
+# one that keeps these words attached.
+_LINE_END_STOPS = frozenset((
+    "a", "an", "the", "to", "of", "in", "on", "at", "by", "for", "and", "or",
+    "but", "nor", "as", "so", "if", "is", "it", "my", "our", "your", "i",
+    "with", "from", "into", "onto", "than", "up",
+))
+_TRIM_PUNCT = "\"'“”‘’.,;:!?—-…()[]{}*«»"
+
+
+def _bare_last(text):
+    """A word stripped of closing quotes/brackets and lower-cased, for stop-word
+    tests. Returns '' when the word ends a clause (a fine place to break, so it
+    must never count as a dangling stop word)."""
+    t = str(text).rstrip("\"'“”‘’)]}»")
+    if not t or t[-1] in _CLAUSE_END:
+        return ""
+    return t.strip(_TRIM_PUNCT).lower()
+
+
+def _word_is_stop(word):
+    return _bare_last(getattr(word, "text", word)) in _LINE_END_STOPS
+
+
+# Coordinating/subordinating conjunctions + relative pronouns: a line that
+# STARTS with one of these reads well (the phrase begins on its own line), so
+# breaking right BEFORE it is a naturally good place.
+_CONJ_START = frozenset((
+    "and", "but", "or", "nor", "so", "yet", "because", "although", "though",
+    "while", "when", "where", "which", "who", "since", "unless", "until", "if",
+))
+
+
+def _word_is_conj(word):
+    return _bare_last(getattr(word, "text", word)) in _CONJ_START
+
+
+def _ends_clause(word):
+    """True if the word ends with clause punctuation (a natural break point)."""
+    t = str(getattr(word, "text", word)).rstrip("\"'”’)]}»")
+    return bool(t) and t[-1] in _CLAUSE_END
 # Comfortable reading measure: lines longer than this (in characters) are
 # penalised even when they still fit the box, the way a letterer caps line
 # length for legibility (cf. the PSD TextShapeR's per-mode maxLineWidth).
@@ -1033,6 +1090,13 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
         last_frac = line_ws[-1] / block_w
         if last_frac < 0.5:
             last_term = min(1.0, 0.6 + 0.8 * last_frac)
+    # a very short FIRST line (an orphan) reads as badly as a short last line;
+    # penalise it symmetrically once there are enough lines for it to look odd.
+    first_term = 1.0
+    if k >= 3:
+        first_frac = line_ws[0] / block_w
+        if first_frac < 0.5:
+            first_term = min(1.0, 0.6 + 0.8 * first_frac)
 
     # break quality: fraction of the internal breaks (all lines but the last)
     # that land right after clause punctuation, minus lines of only punctuation.
@@ -1070,16 +1134,25 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
     # — a clean N-line block beats a hyphenated N-line block.
     hyph_pen = sum(1 for t in texts[:-1] if t.endswith("-"))
 
+    # dangling function words: an interior line that ends on a short article/
+    # preposition/conjunction reads worse than one that keeps it with its noun.
+    stop_pen = 0
+    for t in texts[:-1]:
+        parts = t.split()
+        if parts and _bare_last(parts[-1]) in _LINE_END_STOPS:
+            stop_pen += 1
+
     quality = (1.3 * size_term          # give the chosen size real pull
                + 1.4 * fill_term
                + 1.1 * aspect_term
                + 0.8 * balance_term
-               + 0.5 * punct_term) * last_term
+               + 0.5 * punct_term) * last_term * first_term
     return (quality
             - 0.6 * over
             - 0.5 * punct_only
             - 0.6 * short
             - 0.5 * hyph_pen
+            - 0.3 * stop_pen
             - _LINE_TARGET_WEIGHT * target_pen)
 
 
@@ -1104,7 +1177,7 @@ def _dedup_similar(cands, measurer):
 
 def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
                      mode="balanced", hyphenate=False, lang="en", mask=None,
-                     limit=10, dehyphenate=False):
+                     limit=10, dehyphenate=False, inset=0.0):
     """Generate candidate arrangements of `text` for the TextShapR picker.
 
     mode: 'balanced' (evenly balanced lines, biggest size first),
@@ -1129,8 +1202,11 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     words = make_words(flat, list(mask))
     if not words:
         return []
-    usable_w = box_w * (1.0 - pad_frac)
-    usable_h = box_h * (1.0 - pad_frac)
+    # `inset` (px per side) leaves room for a fixed-width outline/stroke so
+    # outlined text doesn't overflow the bubble — the outline adds the same px
+    # margin at any font size, so it's subtracted as a constant, not scaled.
+    usable_w = box_w * (1.0 - pad_frac) - 2.0 * max(0.0, inset)
+    usable_h = box_h * (1.0 - pad_frac) - 2.0 * max(0.0, inset)
     if usable_w <= 0 or usable_h <= 0:
         return []
 
@@ -1168,9 +1244,22 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
             add(fit_lines_width(words, measurer, usable_w, usable_h,
                                 max_px, min_px, f, hyph_fn))
     else:
+        # (a) the width-balanced shape for each line count
         for k in range(1, min(len(words), 12) + 1):
             add(fit_lines_k(words, measurer, usable_w, usable_h,
                             max_px, min_px, k))
+        # (b) a sweep of narrower target widths -> alternative proportions the
+        # k-balancer alone never produces (some top-heavy, some tighter);
+        for f in _WIDTH_FRACS:
+            add(fit_lines_width(words, measurer, usable_w, usable_h,
+                                max_px, min_px, f, None))
+        # (c) a few lens/oval shapes (short-long-short) that fill round-ish
+        # bubbles more naturally than a rectangle. Duplicates collapse in
+        # `add`/`_dedup_similar`, and the score decides which actually surface.
+        _a, _b = usable_w / 2.0, usable_h / 2.0
+        for fw, fh in _ROUND_BOXES[:4]:
+            add(fit_lines_ellipse(words, measurer, _a * fw, _b * fh,
+                                  max_px, min_px, None))
 
     if not cands:
         return []

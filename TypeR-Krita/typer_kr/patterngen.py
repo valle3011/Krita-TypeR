@@ -29,7 +29,13 @@ _FALLBACK = {
     "patgen_dots": "Dots (screentone)",
     "patgen_grid": "Grid",
     "patgen_crosshatch": "Cross-hatch",
+    "patgen_diagonal": "Diagonal lines",
+    "patgen_noise": "Sand / noise (grain)",
+    "patgen_sparkle": "Sparkles (stars)",
     "patgen_save": "★ Save to library…",
+    "patgen_apply_sel": "▣ Fill the current selection",
+    "patgen_gradient": "Gradient / screentone fade (dense → sparse)",
+    "patgen_smooth": "Smooth colour",
 }
 
 
@@ -39,6 +45,8 @@ class PatternGeneratorDialog(QDialog):
     previewChanged = pyqtSignal(object)
     #: emitted with the current tile when the user clicks 'Save to library'.
     saveRequested = pyqtSignal(object)
+    #: emitted with the current tile to fill the canvas selection with it.
+    applyToSelectionRequested = pyqtSignal(object)
 
     def __init__(self, parent=None, tr=None, fg=None, bg=None):
         super().__init__(parent)
@@ -63,7 +71,9 @@ class PatternGeneratorDialog(QDialog):
         self.kind = QComboBox()
         for k in IMG.PATTERN_KINDS:
             self.kind.addItem(self.t("patgen_" + k), k)
-        self.kind.currentIndexChanged.connect(lambda _i: self._update_preview())
+        self.kind.addItem(self.t("patgen_smooth"), "smooth")   # gradient-only
+        self.kind.currentIndexChanged.connect(
+            lambda _i: (self._sync_gradient(), self._update_preview()))
         row.addWidget(self.kind, 1)
         lay.addLayout(row)
 
@@ -95,11 +105,32 @@ class PatternGeneratorDialog(QDialog):
         srow.addWidget(self.gap)
         lay.addLayout(srow)
 
+        # gradient: dark→light across the fill, in a chosen direction (great for
+        # a screentone-free tonal SFX). Uses the two colours above as the stops.
+        grow = QHBoxLayout()
+        self.gradient_chk = QCheckBox(self.t("patgen_gradient"))
+        self.gradient_chk.toggled.connect(
+            lambda _v: (self._sync_gradient(), self._update_preview()))
+        grow.addWidget(self.gradient_chk)
+        self.grad_dir = QComboBox()
+        for _lab, _ang in (("→", 0), ("↘", 45), ("↓", 90), ("↙", 135),
+                           ("←", 180), ("↖", 225), ("↑", 270), ("↗", 315)):
+            self.grad_dir.addItem(_lab, _ang)
+        self.grad_dir.currentIndexChanged.connect(
+            lambda _i: self._update_preview())
+        grow.addWidget(self.grad_dir, 1)
+        lay.addLayout(grow)
+
         self.preview = QLabel()
         self.preview.setFrameShape(QFrame.StyledPanel)
         self.preview.setMinimumSize(220, 120)
         self.preview.setAlignment(Qt.AlignCenter)
         lay.addWidget(self.preview)
+
+        self.apply_sel_btn = QPushButton(self.t("patgen_apply_sel"))
+        self.apply_sel_btn.clicked.connect(
+            lambda: self.applyToSelectionRequested.emit(self._current_tile()))
+        lay.addWidget(self.apply_sel_btn)
 
         self.save_btn = QPushButton(self.t("patgen_save"))
         self.save_btn.clicked.connect(
@@ -111,6 +142,7 @@ class PatternGeneratorDialog(QDialog):
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
         self._paint_color_btns()
+        self._sync_gradient()
 
     # -- colours --
     def _pick_fg(self):
@@ -136,8 +168,44 @@ class PatternGeneratorDialog(QDialog):
     def _sync_bg_enabled(self):
         self.bg_btn.setEnabled(not self.transparent.isChecked())
 
+    def _sync_gradient(self):
+        """Gradient mode now builds a *screentone-density* fade of the chosen
+        pattern, so the pattern kind/size/gap stay live (they shape the tone).
+        Only the direction picker is gradient-specific, and a 'smooth' colour
+        gradient ignores the dot size/gap."""
+        grad = self.gradient_chk.isChecked()
+        self.grad_dir.setEnabled(grad)
+        smooth = grad and self.kind.currentData() == "smooth"
+        for w in (self.size, self.gap):
+            w.setEnabled(not smooth)
+        self._sync_bg_enabled()
+
+    def is_gradient(self):
+        return self.gradient_chk.isChecked()
+
+    def gradient_spec(self):
+        """The parameters of the current gradient (or None if not in gradient
+        mode), so the host can re-render it at the exact selection size — that
+        keeps screentone dots round instead of stretched into ovals."""
+        if not self.gradient_chk.isChecked():
+            return None
+        return {
+            "kind": self.kind.currentData(),
+            "fg": QColor(self._fg),
+            "bg": None if self.transparent.isChecked() else QColor(self._bg),
+            "size": self.size.value(),
+            "gap": self.gap.value(),
+            "angle_deg": self.grad_dir.currentData() or 0,
+        }
+
     # -- preview / result --
     def _current_tile(self):
+        if self.gradient_chk.isChecked():
+            return IMG.make_pattern_gradient(
+                self.kind.currentData(), self._fg,
+                None if self.transparent.isChecked() else self._bg,
+                self.size.value(), self.gap.value(),
+                self.grad_dir.currentData() or 0)
         bg = None if self.transparent.isChecked() else self._bg
         return IMG.make_pattern(self.kind.currentData(), self._fg, bg,
                                 self.size.value(), self.gap.value())
@@ -149,7 +217,12 @@ class PatternGeneratorDialog(QDialog):
         pm = QPixmap(w, h)
         pm.fill(QColor(235, 235, 235))          # backdrop shows transparency
         p = QPainter(pm)
-        p.fillRect(0, 0, w, h, QBrush(QPixmap.fromImage(tile)))
+        if self.gradient_chk.isChecked():       # one span across (it's a fade)
+            from PyQt5.QtCore import QRectF
+            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            p.drawImage(QRectF(0, 0, w, h), tile, QRectF(tile.rect()))
+        else:                                    # tiled repeat
+            p.fillRect(0, 0, w, h, QBrush(QPixmap.fromImage(tile)))
         p.end()
         self.preview.setPixmap(pm)
         self.previewChanged.emit(tile)          # let the host live-apply it
