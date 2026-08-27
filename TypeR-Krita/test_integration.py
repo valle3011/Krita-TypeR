@@ -7,6 +7,7 @@ captured and inspected; the font picker and the Excel importer are tested too.
 
 Run:  python test_integration.py     (PyQt5 required; no real Krita needed)
 """
+import json
 import os
 import sys
 import types
@@ -33,12 +34,18 @@ def check(name, cond):
 
 
 # --- offscreen Qt + a fake `krita` module -----------------------------------
+# binding-agnostic + must NOT import the typer_kr package yet (that pulls in
+# `krita`, which is faked further down) — so import straight from PyQt6/PyQt5.
 try:
-    from PyQt5.QtWidgets import QApplication, QWidget, QDockWidget
-    from PyQt5.QtGui import QColor
+    try:
+        from PyQt6.QtWidgets import QApplication, QWidget, QDockWidget
+        from PyQt6.QtGui import QColor
+    except ImportError:
+        from PyQt5.QtWidgets import QApplication, QWidget, QDockWidget
+        from PyQt5.QtGui import QColor
     _app = QApplication.instance() or QApplication([])
 except Exception as e:                          # pragma: no cover
-    print("PyQt5 unavailable, skipping integration tests:", e)
+    print("Qt unavailable, skipping integration tests:", e)
     sys.exit(0)
 
 
@@ -265,7 +272,7 @@ check("outline OFF drops the 2nd outline too (only the fill remains)",
 # A pattern-filled or soft/blurred outline can't be a Krita vector paint, so
 # those styles must route the insert onto a RASTER (paint) layer instead; a
 # plain outline stays a vector text layer.
-from PyQt5.QtGui import QImage as _QImage
+from typer_kr._qt import QImage as _QImage
 
 
 def insert_node(**kw):
@@ -283,7 +290,7 @@ def insert_node(**kw):
     return ok, doc.last
 
 
-_pat = _QImage(8, 8, _QImage.Format_ARGB32)
+_pat = _QImage(8, 8, _QImage.Format.Format_ARGB32)
 _pat.fill(QColor(200, 50, 50).rgb())
 ok, node = insert_node(outline=True, outline_color=QColor(255, 255, 255),
                        outline_px=8, pattern_img=_pat)
@@ -388,7 +395,7 @@ else:
 # Session persistence: save open tabs + progress, reopen them next start
 # =====================================================================
 print("--- session persistence ---")
-from PyQt5.QtWidgets import QTabBar
+from typer_kr._qt import QTabBar
 
 
 class _FakeDocker:
@@ -537,7 +544,7 @@ try:
     check("a new panel restores the chosen preview size",
           _ff_panel3._face_px == 44)
     # perf: a tinted face is cached per (family, colour) — same colour reuses it
-    from PyQt5.QtGui import QColor as _QC
+    from typer_kr._qt import QColor as _QC
     _c1, _c2 = _QC(200, 200, 200), _QC(255, 255, 255)
     check("tinting a face caches the result (reused on the next repaint)",
           _ff_panel3._tinted_face("Arial", _c1)
@@ -654,6 +661,99 @@ if imported:
         _md.deleteLater()
     except Exception:                               # pragma: no cover
         check("missing-fonts report ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- main characters head the character + preset dropdowns -----------------
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _KR_APP._settings.pop(("typer_kr", "mainChars"), None)
+        _mc = TK.TyperDocker()
+        _mc._groups = {"Serie": {
+            "Zenitsu": {"Normal": {"size": 10}},
+            "Denji": {"Normal": {"size": 11}, "Shout": {"size": 30}},
+            "aoi": {"Normal": {"size": 12}},
+            "Makima": {"Calm": {"size": 13}},
+        }}
+        _mc._group = "Serie"
+        _mc._main_chars_map = {}
+        _mc._refresh_chars_combo()
+        _plain = [_mc.char_combo.itemText(i)
+                  for i in range(_mc.char_combo.count())]
+        check("character dropdown is plain alphabetical without main characters",
+              _plain == ["aoi", "Denji", "Makima", "Zenitsu"])
+
+        _mc._toggle_main_char("Denji")
+        _mc._toggle_main_char("Makima")
+        _mc._refresh_chars_combo()
+        _texts = [_mc.char_combo.itemText(i)
+                  for i in range(_mc.char_combo.count())]
+        _datas = [_mc.char_combo.itemData(i)
+                  for i in range(_mc.char_combo.count())]
+        check("main characters are starred and listed first",
+              _texts[:2] == ["★ Denji", "★ Makima"] and _texts[-2:] == ["aoi", "Zenitsu"])
+        check("a separator divides main characters from the rest",
+              _datas.count(None) == 1 and _datas[2] is None)
+        check("item data stays the plain character name",
+              [d for d in _datas if d]
+              == ["Denji", "Makima", "aoi", "Zenitsu"])
+        check("selecting by name still finds the character",
+              _mc.char_combo.findData("Zenitsu") == len(_datas) - 1)
+
+        # the flat (simple-mode) preset list floats their presets up too
+        _mc.by_char_chk.setChecked(False)
+        _mc._refresh_presets_combo()
+        _ptexts = [_mc.preset_combo.itemText(i)
+                   for i in range(_mc.preset_combo.count())]
+        check("main characters' presets head the flat preset list",
+              _ptexts[1:4] == ["★ Calm", "★ Normal (Denji)", "★ Shout"],
+              )
+        check("the rest follows after a separator",
+              _ptexts[-2:] == ["Normal (Zenitsu)", "Normal (aoi)"]
+              or _ptexts[-2:] == ["Normal (aoi)", "Normal (Zenitsu)"])
+        _pdata = [_mc.preset_combo.itemData(i)
+                  for i in range(_mc.preset_combo.count())]
+        check("preset items keep their (character, name) data",
+              ("Denji", "Shout") in _pdata and ("aoi", "Normal") in _pdata)
+        _mc.by_char_chk.setChecked(True)
+
+        # toggling off, persistence, and cleanup when a character is deleted
+        check("toggling a main character off reports the new state",
+              _mc._toggle_main_char("Makima") is False
+              and not _mc._is_main_char("Makima"))
+        check("main characters are written to the Krita settings",
+              json.loads(_KR_APP._settings[("typer_kr", "mainChars")])
+              == {"Serie": ["Denji"]})
+        _mc2 = TK.TyperDocker()
+        check("they are read back on the next start",
+              _mc2._load_main_chars() == {"Serie": ["Denji"]})
+        _mc.char_combo.setCurrentIndex(_mc.char_combo.findData("Denji"))
+        _mc.on_char_delete()
+        check("deleting a character drops it from the main list",
+              not _mc._is_main_char("Denji")
+              and json.loads(_KR_APP._settings[("typer_kr", "mainChars")]) == {})
+
+        # the Setup dialog edits a working copy and hands back the whole map
+        _dlg = TK.MainCharsDialog(None, _mc._tr, {"Serie": {"Denji": {}, "aoi": {}},
+                                                  "Andere": {"Bob": {}}},
+                                  {"Andere": ["Bob"]}, "Serie")
+        _dlg._boxes["aoi"].setChecked(True)
+        check("the dialog stars a character of the selected manga",
+              _dlg.result_map() == {"Andere": ["Bob"], "Serie": ["aoi"]})
+        _dlg.manga_combo.setCurrentIndex(_dlg.manga_combo.findData("Andere"))
+        check("switching manga rebuilds the list without losing the other one",
+              sorted(_dlg._boxes) == ["Bob"] and _dlg._boxes["Bob"].isChecked()
+              and _dlg.result_map()["Serie"] == ["aoi"])
+        _dlg._clear()
+        check("'none of them' clears only the manga on screen",
+              _dlg.result_map() == {"Serie": ["aoi"]})
+        _dlg.deleteLater()
+        _mc.deleteLater()
+        _mc2.deleteLater()
+        _KR_APP._settings.pop(("typer_kr", "mainChars"), None)
+    except Exception:                               # pragma: no cover
+        check("main-character suite ran", False)
         import traceback
         traceback.print_exc()
 
@@ -863,7 +963,7 @@ if imported:
     try:
         import zipfile as _zip
         import tempfile as _tf
-        from PyQt5.QtWidgets import QFileDialog as _QFD, QMessageBox as _QMB
+        from typer_kr._qt import QFileDialog as _QFD, QMessageBox as _QMB
         from typer_kr.fontfav_ui import FontFavoritesPanel as _FP
         from typer_kr import fontfiles as _FFILES
         _QMB.information = staticmethod(lambda *a, **k: None)
@@ -900,12 +1000,127 @@ if imported:
         _pan2._import_favorites()
         check("import merges favourites AND installs the bundled font",
               _pan2._store.is_favorite("MyFont") and _inst["paths"] == ["MyFont.ttf"])
+        # export bundles EVERY cut of a family, not just the file that matched
+        _many = {"MyFont": [_ff, os.path.join(_fdir, "MyFont-Bold.ttf")]}
+        with open(_many["MyFont"][1], "wb") as _fh:
+            _fh.write(b"dummy-bold")
+        _pan3 = _FP(families_fn=lambda: [], apply_fn=lambda f: None,
+                    load_fn=lambda: _b1["v"], save_fn=lambda t: None,
+                    tr=lambda k: k, find_fonts_fn=lambda fams: _many)
+        _zp3 = os.path.join(_fdir, "bundle3.zip")
+        _QFD.getSaveFileName = staticmethod(lambda *a, **k: (_zp3, ""))
+        _pan3._export_favorites()
+        _n3 = [n for n in _zip.ZipFile(_zp3).namelist() if n.startswith("fonts/")]
+        check("export carries every cut of a family (regular + bold)",
+              sorted(_n3) == ["fonts/MyFont-Bold.ttf", "fonts/MyFont.ttf"])
         # read-only: locating font files omits a font that isn't installed
         _fres = _FFILES.find_font_files(["Zzz Not A Real Font 9999"])
         check("find_font_files omits a font that isn't installed",
               isinstance(_fres, dict) and "Zzz Not A Real Font 9999" not in _fres)
     except Exception:                               # pragma: no cover
         check("font-bundle suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- Font-file index: one family, all its files, tolerant spelling ----------
+if imported:
+    try:
+        from typer_kr import fontfiles as _FI
+        _decl = {
+            r"C:\F\MyComicBB-Regular.otf": ({"My Comic BB"},
+                                            {"My Comic BB Regular"}),
+            r"C:\F\MyComicBB-Bold.otf": ({"My Comic BB"}, {"My Comic BB Bold"}),
+            r"C:\F\MyComicBB-Ital.otf": ({"My Comic BB Italic"},
+                                         {"My Comic BB Italic"}),
+            r"C:\F\Unrelated.ttf": ({"Something Else"}, {"Something Else"}),
+            r"C:\F\Vari.ttf": ({"Bahnschrift"}, {"Bahnschrift Regular"}),
+        }
+        _ix = _FI.FontFileIndex(list(_decl), names_fn=lambda p: _decl[p])
+        _base = sorted(os.path.basename(p) for p in _ix.files_for("My Comic BB"))
+        check("index returns every file of a family, cuts included",
+              _base == ["MyComicBB-Bold.otf", "MyComicBB-Ital.otf",
+                        "MyComicBB-Regular.otf"])
+        check("index matches a squashed spelling",
+              len(_ix.files_for("MyComicBB")) == 3)
+        check("index matches a full name with the cut baked in",
+              len(_ix.files_for("My Comic BB Regular")) == 3)
+        check("index falls back to the base family of a named instance",
+              [os.path.basename(p)
+               for p in _ix.files_for("Bahnschrift SemiBold Condensed")]
+              == ["Vari.ttf"])
+        check("index reports nothing for a font it doesn't have",
+              _ix.files_for("Zzz Nothing Here 9999") == [])
+        check("a file that isn't a font parses to no names",
+              _FI.font_file_names(os.path.join(_HERE, "run_tests.py"))
+              == (set(), set()))
+    except Exception:                               # pragma: no cover
+        check("font-index suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- Presets export as a self-installing bundle (presets + their fonts) -----
+if imported:
+    try:
+        import zipfile as _z2
+        import tempfile as _t2
+        from typer_kr._qt import QFileDialog as _QFD2, QMessageBox as _QMB2
+        from typer_kr import fontfiles as _FF2
+        _QMB2.information = staticmethod(lambda *a, **k: None)
+        _pdir = _t2.mkdtemp()
+        _pfont = os.path.join(_pdir, "PresetFont.otf")
+        with open(_pfont, "wb") as _fh:
+            _fh.write(b"dummy-font")
+        _orig_collect = _FF2.collect_font_files
+        _FF2.collect_font_files = lambda fams, **kw: (
+            {f: [_pfont] for f in fams if f == "PresetFont"},
+            [f for f in fams if f != "PresetFont"])
+        _pd2 = TK.TyperDocker()
+        _pd2._groups = {"Manga": {"Bob": {"Dialog": {"font": "PresetFont",
+                                                     "size": 12},
+                                          "SFX": {"font": "Not Installed X"}}}}
+        _pz = os.path.join(_pdir, "presets.zip")
+        _pd2._export_presets_bundle(_pz)
+        _pn = _z2.ZipFile(_pz).namelist()
+        check("preset export writes presets.json + the fonts they name",
+              "presets.json" in _pn and "fonts/PresetFont.otf" in _pn)
+        check("preset export lists the fonts it could not bundle",
+              _pd2.preset_font_names() == ["PresetFont", "Not Installed X"])
+        # importing the bundle merges the presets AND installs the fonts
+        _got = {"paths": None}
+        _pd3 = TK.TyperDocker()
+        _pd3._groups = {}
+        _pd3._install_fonts_and_refresh = lambda ps: (
+            _got.update(paths=[os.path.basename(p) for p in ps]),
+            {"installed": [os.path.basename(p) for p in ps],
+             "skipped": [], "failed": []})[1]
+        _QFD2.getOpenFileName = staticmethod(lambda *a, **k: (_pz, ""))
+        _pd3.on_preset_import()
+        check("preset import restores the presets from a bundle",
+              _pd3._groups.get("Manga", {}).get("Bob", {})
+              .get("Dialog", {}).get("font") == "PresetFont")
+        check("preset import installs the bundled fonts",
+              _got["paths"] == ["PresetFont.otf"])
+        # the SFX docker's own presets/rules export travels with its fonts too
+        _sfxd = getattr(_pd2, "_sfx_docker", None)
+        if _sfxd is not None:
+            _sfxd._user_presets = [{"name": "Boom", "font": "PresetFont"}]
+            _sfxd._font_rules = [{"keywords": ["bang"], "fonts": ["PresetFont"]}]
+            check("SFX bundle collects the fonts of own presets + rules",
+                  _sfxd._exported_fonts() == ["PresetFont"])
+            _sz = os.path.join(_pdir, "sfx.zip")
+            _sfxd._write_sfx_bundle(_sz, '{"manga_sfx": 1, "presets": [], '
+                                         '"font_rules": []}')
+            check("SFX bundle holds the json + the font files",
+                  "manga_sfx_presets.json" in _z2.ZipFile(_sz).namelist()
+                  and "fonts/PresetFont.otf" in _z2.ZipFile(_sz).namelist())
+            _sdata, _sfonts = _sfxd._read_sfx_bundle(_sz)
+            check("SFX bundle reads back its data and fonts",
+                  _sdata.get("manga_sfx") == 1
+                  and [os.path.basename(p) for p in _sfonts]
+                  == ["PresetFont.otf"])
+        _FF2.collect_font_files = _orig_collect
+    except Exception:                               # pragma: no cover
+        check("preset-bundle suite ran", False)
         import traceback
         traceback.print_exc()
 
@@ -943,6 +1158,69 @@ if imported:
         _sd.deleteLater()
     except Exception:                               # pragma: no cover
         check("shape-lock suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- Preset export: readable + reusable Excel table ------------------------
+if imported:
+    try:
+        import zipfile as _zf2
+        import tempfile as _tf2
+        from typer_kr import xlsx as _XL
+        # ONE manga -> a MATRIX: characters as rows, purposes as columns
+        _chars = {
+            "Luffy": {"Shout": {"font": "CC Wild Words"},
+                      "Talk": {"font": "Anime Ace"}},
+            "Nami": {"Talk": {"font": "Manga Temple"}},
+            "": {"Narrator": {"font": "Times"}},   # simple-mode bucket char
+        }
+        _hdr, _rows = TK.presets_to_table(_chars, lambda k: k,
+                                          default_char="(default)")
+        check("matrix: character is the first column",
+              _hdr[0] == "col_character")
+        check("matrix: purposes become columns (most-used first -> Talk)",
+              _hdr[1] == "Talk"
+              and set(_hdr[1:]) == {"Talk", "Shout", "Narrator"})
+        check("matrix: one row per character", len(_rows) == 3)
+        _luffy = next(r for r in _rows if r[0] == "Luffy")
+        _ti, _si, _ni = (_hdr.index("Talk"), _hdr.index("Shout"),
+                         _hdr.index("Narrator"))
+        check("matrix: fonts land in the right character x purpose cell",
+              _luffy[_ti] == "Anime Ace" and _luffy[_si] == "CC Wild Words"
+              and _luffy[_ni] == "")
+        check("matrix: blank character shows the default label",
+              any(r[0] == "(default)" for r in _rows))
+        # a legacy bare-string preset (font name only) must not crash it
+        _h2, _r2 = TK.presets_to_table({"C": {"P": "SomeFont"}}, lambda k: k)
+        check("matrix: tolerates a legacy bare-font preset",
+              _h2 == ["col_character", "P"] and _r2 == [["C", "SomeFont"]])
+        # write a real .xlsx and read it back (valid zip + data present)
+        _p = os.path.join(_tf2.mkdtemp(), "presets.xlsx")
+        _XL.write_xlsx(_p, "Manga", _hdr, _rows, widths=[16] * len(_hdr),
+                       freeze_rows=1, freeze_cols=1)
+        _z = _zf2.ZipFile(_p)
+        check("xlsx export is a zip with the expected parts",
+              "xl/worksheets/sheet1.xml" in _z.namelist()
+              and "xl/styles.xml" in _z.namelist()
+              and "[Content_Types].xml" in _z.namelist())
+        _sheet = _z.read("xl/worksheets/sheet1.xml")
+        check("xlsx export carries the fonts matrix data",
+              b"Luffy" in _sheet and b"CC Wild Words" in _sheet
+              and b"Talk" in _sheet)
+        check("xlsx export freezes the header row AND character column",
+              b'xSplit="1"' in _sheet and b'ySplit="1"' in _sheet
+              and b'state="frozen"' in _sheet)
+        # every part is well-formed XML
+        import xml.etree.ElementTree as _ET
+        _wf = True
+        for _n in _z.namelist():
+            try:
+                _ET.fromstring(_z.read(_n))
+            except Exception:
+                _wf = False
+        check("xlsx export: all parts are well-formed XML", _wf)
+    except Exception:                               # pragma: no cover
+        check("preset Excel export suite ran", False)
         import traceback
         traceback.print_exc()
 

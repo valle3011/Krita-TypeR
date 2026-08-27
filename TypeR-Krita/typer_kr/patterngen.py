@@ -6,9 +6,9 @@ the caller gets a seamless QImage tile it can use as a text or outline fill.
 Qt UI only; the actual tile is built by ``imgfx.make_pattern`` (testable).
 """
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPixmap, QPainter, QBrush
-from PyQt5.QtWidgets import (
+from ._qt import Qt, pyqtSignal
+from ._qt import QColor, QPixmap, QPainter, QBrush
+from ._qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton,
     QCheckBox, QSpinBox, QColorDialog, QDialogButtonBox, QFrame,
 )
@@ -122,9 +122,9 @@ class PatternGeneratorDialog(QDialog):
         lay.addLayout(grow)
 
         self.preview = QLabel()
-        self.preview.setFrameShape(QFrame.StyledPanel)
+        self.preview.setFrameShape(QFrame.Shape.StyledPanel)
         self.preview.setMinimumSize(220, 120)
-        self.preview.setAlignment(Qt.AlignCenter)
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.preview)
 
         self.apply_sel_btn = QPushButton(self.t("patgen_apply_sel"))
@@ -137,7 +137,7 @@ class PatternGeneratorDialog(QDialog):
             lambda: self.saveRequested.emit(self._current_tile()))
         lay.addWidget(self.save_btn)
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
@@ -218,8 +218,8 @@ class PatternGeneratorDialog(QDialog):
         pm.fill(QColor(235, 235, 235))          # backdrop shows transparency
         p = QPainter(pm)
         if self.gradient_chk.isChecked():       # one span across (it's a fade)
-            from PyQt5.QtCore import QRectF
-            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            from ._qt import QRectF
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             p.drawImage(QRectF(0, 0, w, h), tile, QRectF(tile.rect()))
         else:                                    # tiled repeat
             p.fillRect(0, 0, w, h, QBrush(QPixmap.fromImage(tile)))
@@ -233,7 +233,7 @@ class PatternGeneratorDialog(QDialog):
 
     def run(self):
         """Show modally; return the QImage tile on OK, else None."""
-        if self.exec_() != QDialog.Accepted:
+        if self.exec() != QDialog.DialogCode.Accepted:
             return None
         self._image = self._current_tile()
         return self._image

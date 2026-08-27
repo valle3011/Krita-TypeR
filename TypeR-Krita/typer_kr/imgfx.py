@@ -5,8 +5,8 @@ Kept out of layout.py (which must stay Qt-free) — this needs Qt. Only used on
 the raster insert paths (a blurred, pattern- or colour-filled soft outline can't
 be a Krita vector paint, so it is rendered to pixels)."""
 
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QBrush, QColor, QPen
-from PyQt5.QtCore import QRectF, Qt
+from ._qt import QImage, QPixmap, QPainter, QBrush, QColor, QPen
+from ._qt import QRectF, Qt
 
 
 #: Pattern kinds the generator can make (stable ids used by the UI + persistence).
@@ -19,8 +19,8 @@ PATTERN_KINDS = ("dots", "hstripes", "vstripes", "diagonal", "crosshatch",
 
 def _star4_path(cx, cy, r):
     """A 4-point sparkle star (sharp diamond points) centred at (cx, cy)."""
-    from PyQt5.QtGui import QPainterPath, QPolygonF
-    from PyQt5.QtCore import QPointF
+    from ._qt import QPainterPath, QPolygonF
+    from ._qt import QPointF
     ri = r * 0.2
     pts = [(cx, cy - r), (cx + ri, cy - ri), (cx + r, cy), (cx + ri, cy + ri),
            (cx, cy + r), (cx - ri, cy + ri), (cx - r, cy), (cx - ri, cy - ri)]
@@ -68,9 +68,9 @@ def make_pattern(kind, fg=None, bg=None, size=8, gap=8):
         period = max(2 * r + 1, 2 * r + g)
         img = _tile(period, period, bg_col)
         p = QPainter(img)
-        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         p.setBrush(QBrush(fg))
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         c = period / 2.0
         # centre dot + wrapped quarters at the corners keep the grid seamless
         for cx, cy in ((c, c), (0, 0), (period, 0), (0, period),
@@ -103,9 +103,9 @@ def make_pattern(kind, fg=None, bg=None, size=8, gap=8):
         period = max(16, (s + g) * 4)
         img = _tile(period, period, bg_col)
         p = QPainter(img)
-        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         p.setBrush(QBrush(fg))
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         r = max(0.6, s / 3.0)
         dens = s / float(s + g)              # more ink as size grows vs the gap
         count = max(1, int(period * period * dens * 0.12 / (r * r)))
@@ -125,7 +125,7 @@ def make_pattern(kind, fg=None, bg=None, size=8, gap=8):
         period = max(6, s + g)
         img = _tile(period, period, bg_col)
         p = QPainter(img)
-        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         r = max(1.5, s * 0.9)
         c = period / 2.0                     # one star centred, quarters wrapped
         for cx, cy in ((c, c), (0, 0), (period, 0), (0, period),
@@ -142,12 +142,12 @@ def make_gradient(c1, c2, angle_deg=0.0, size=256):
     Meant to be STRETCHED over a selection (dark on one side, light on the
     other), not tiled."""
     import math
-    from PyQt5.QtGui import QLinearGradient
-    from PyQt5.QtCore import QPointF
+    from ._qt import QLinearGradient
+    from ._qt import QPointF
     c1 = c1 if isinstance(c1, QColor) else QColor(c1) if c1 else QColor(0, 0, 0)
     c2 = c2 if isinstance(c2, QColor) else QColor(c2) if c2 else QColor(255, 255, 255)
     s = max(2, int(size))
-    img = QImage(s, s, QImage.Format_ARGB32)
+    img = QImage(s, s, QImage.Format.Format_ARGB32)
     a = math.radians(angle_deg)
     dx, dy, half = math.cos(a), math.sin(a), s / 2.0
     g = QLinearGradient(QPointF(half - dx * half, half - dy * half),
@@ -178,7 +178,7 @@ def make_pattern_gradient(kind, fg=None, bg=None, size=6, gap=8,
     has_bg = isinstance(bg, QColor) or (bg is not None and bg != "")
     bg_col = bg if isinstance(bg, QColor) else (QColor(bg) if has_bg else None)
     W, H = max(2, int(width)), max(2, int(height))
-    img = QImage(W, H, QImage.Format_ARGB32)
+    img = QImage(W, H, QImage.Format.Format_ARGB32)
     img.fill(bg_col if isinstance(bg_col, QColor) else QColor(0, 0, 0, 0))
 
     if kind == "smooth":                     # plain dark->light(/transparent) fade
@@ -202,14 +202,14 @@ def make_pattern_gradient(kind, fg=None, bg=None, size=6, gap=8,
     s = max(1, int(size))
     g = max(0, int(gap))
     p = QPainter(img)
-    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     if kind in ("dots", "checker", "sparkle"):
         step = max(2, s + g)
         max_feat = step * (0.72 if kind == "dots"
                            else 1.15 if kind == "sparkle" else 1.0)
         p.setBrush(QBrush(fg))
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         cy = step / 2.0
         while cy < H + step:
             cx = step / 2.0
@@ -235,12 +235,12 @@ def make_pattern_gradient(kind, fg=None, bg=None, size=6, gap=8,
             while gx < W:
                 if rng.random() < coverage(gx, gy):    # ink prob ramps down
                     p.setBrush(QBrush(fg))
-                    p.setPen(Qt.NoPen)
+                    p.setPen(Qt.PenStyle.NoPen)
                     p.drawEllipse(QRectF(gx - r, gy - r, 2 * r, 2 * r))
                 gx += step
             gy += step
     elif kind == "diagonal":                  # 45° line tone, thickness ramp
-        from PyQt5.QtCore import QPointF
+        from ._qt import QPointF
         step = max(2, s + g)
         # walk bands by their (x+y) offset; sample coverage on the band centre
         k = -H
@@ -289,8 +289,8 @@ def make_pattern_gradient(kind, fg=None, bg=None, size=6, gap=8,
 def _linear_fill(img, c1, c2, angle_deg):
     """Fill `img` in place with a linear c1->c2 gradient at `angle_deg`."""
     import math
-    from PyQt5.QtGui import QLinearGradient
-    from PyQt5.QtCore import QPointF
+    from ._qt import QLinearGradient
+    from ._qt import QPointF
     W, H = img.width(), img.height()
     a = math.radians(angle_deg)
     dx, dy = math.cos(a), math.sin(a)
@@ -307,7 +307,7 @@ def _linear_fill(img, c1, c2, angle_deg):
 
 
 def _tile(w, h, bg_col):
-    img = QImage(max(1, int(w)), max(1, int(h)), QImage.Format_ARGB32)
+    img = QImage(max(1, int(w)), max(1, int(h)), QImage.Format.Format_ARGB32)
     img.fill(bg_col if isinstance(bg_col, QColor) else QColor(0, 0, 0, 0))
     return img
 
@@ -319,19 +319,19 @@ def blur_argb(img, radius):
     if img is None or img.isNull() or radius <= 0:
         return img
     # imported lazily so the module imports without a QApplication present
-    from PyQt5.QtWidgets import (QGraphicsScene, QGraphicsPixmapItem,
+    from ._qt import (QGraphicsScene, QGraphicsPixmapItem,
                                  QGraphicsBlurEffect)
     eff = QGraphicsBlurEffect()
     eff.setBlurRadius(float(radius))
     try:
-        eff.setBlurHints(QGraphicsBlurEffect.QualityHint)
+        eff.setBlurHints(QGraphicsBlurEffect.BlurHint.QualityHint)
     except Exception:
         pass
     item = QGraphicsPixmapItem(QPixmap.fromImage(img))
     item.setGraphicsEffect(eff)
     scene = QGraphicsScene()
     scene.addItem(item)
-    out = QImage(img.size(), QImage.Format_ARGB32_Premultiplied)
+    out = QImage(img.size(), QImage.Format.Format_ARGB32_Premultiplied)
     out.fill(0)
     p = QPainter(out)
     scene.render(p, QRectF(out.rect()), QRectF(img.rect()))
@@ -349,24 +349,24 @@ def soft_outline_image(path, size, blur, expand, fill, tile=None):
 
     The result is the blurred silhouette on transparent; drawn UNDER the crisp
     text it reads as a soft coloured/patterned outline around the letters."""
-    layer = QImage(size, QImage.Format_ARGB32)
+    layer = QImage(size, QImage.Format.Format_ARGB32)
     layer.fill(0)
     p = QPainter(layer)
-    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     if isinstance(fill, QImage) and not fill.isNull():
         tw, th = (tile if tile else (fill.width(), fill.height()))
         pm = QPixmap.fromImage(fill).scaled(
             max(1, int(tw)), max(1, int(th)),
-            Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
         brush = QBrush(pm)
     else:
         brush = QBrush(fill if isinstance(fill, QColor) else QColor(fill))
     if expand and expand > 0:
         # widen the silhouette with a stroke of the same brush before the fill
-        from PyQt5.QtGui import QPen
+        from ._qt import QPen
         pen = QPen(brush, float(expand) * 2.0)
-        pen.setJoinStyle(Qt.RoundJoin)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.strokePath(path, pen)
     p.fillPath(path, brush)
     p.end()

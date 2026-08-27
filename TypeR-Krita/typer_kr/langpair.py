@@ -650,16 +650,44 @@ def unique_untitled(existing, base="Untitled"):
     return "%s %d" % (base, n)
 
 
-def flatten_presets(chars):
+def _fav_set(favorites):
+    """Lower-cased set of the given character names (None/junk -> empty)."""
+    if not favorites:
+        return set()
+    return set(str(f).strip().lower() for f in favorites if str(f).strip())
+
+
+def sort_characters(names, favorites=None):
+    """Character names ordered for a dropdown: the main characters first (in
+    their own alphabetical block), then everybody else.
+
+    A long-running series collects dozens of characters, and the handful that
+    actually speak on most pages should not be hunted for in an alphabetical
+    list. Returns ``(main, rest)`` so the caller can draw a separator between
+    the two blocks; both are sorted case-insensitively.
+    """
+    favs = _fav_set(favorites)
+    main, rest = [], []
+    for n in (names or []):
+        s = str(n)
+        (main if s.lower() in favs else rest).append(s)
+    key = lambda s: s.lower()                           # noqa: E731
+    return sorted(main, key=key), sorted(rest, key=key)
+
+
+def flatten_presets(chars, favorites=None):
     """Flatten a manga's ``{character: {preset_name: cfg}}`` dict into one
     sorted list of ``(label, character, name)`` for the 'simple' preset mode
     (no character level in the UI).
 
     The label is the preset name; when the same name exists under several
     characters each occurrence is disambiguated as ``'Name (Character)'``.
-    Sorted case-insensitively by label (then character)."""
+    Sorted case-insensitively by label (then character) — except that presets
+    of the *main* characters in ``favorites`` come first, so the styles used on
+    every page stay at the top of a long list."""
     if not isinstance(chars, dict):
         return []
+    favs = _fav_set(favorites)
     entries = []
     counts = {}
     for ch, presets in chars.items():
@@ -673,7 +701,8 @@ def flatten_presets(chars):
     for ch, name in entries:
         label = name if counts[name.lower()] == 1 else "%s (%s)" % (name, ch)
         out.append((label, ch, name))
-    out.sort(key=lambda e: (e[0].lower(), e[1].lower()))
+    out.sort(key=lambda e: (0 if e[1].lower() in favs else 1,
+                            e[0].lower(), e[1].lower()))
     return out
 
 

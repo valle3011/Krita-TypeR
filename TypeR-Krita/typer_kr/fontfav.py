@@ -253,10 +253,19 @@ class FavoritesStore:
         pool = [f for f in pool if _match(f, search)]
         return sorted(pool, key=lambda f: f.lower())
 
-    def missing_fonts(self, installed):
-        """Favourite families that are NOT in *installed* (compared
-        case-insensitively), case-insensitively sorted. Used to warn that a
-        favourite's font isn't available on this machine."""
+    def missing_fonts(self, installed, resolve=None):
+        """Favourite families that are NOT available, case-insensitively sorted.
+
+        By default a favourite counts as available when its name appears in
+        *installed* (compared case-insensitively). Pass *resolve* -- any
+        callable mapping a wanted name to an installed one, or to None -- to
+        accept spelling variants as well; the UI hands in `fontmatch` so a
+        favourite saved as "CCWildWords" is not reported missing on a machine
+        that calls the same face "CC Wild Words". This module stays free of the
+        dependency so it can still be tested standalone."""
+        if resolve is not None:
+            return sorted((f for f in self._fonts if not resolve(f)),
+                          key=lambda f: f.lower())
         inst = {(f or "").lower() for f in (installed or [])}
         return sorted((f for f in self._fonts if f.lower() not in inst),
                       key=lambda f: f.lower())

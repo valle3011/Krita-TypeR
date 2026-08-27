@@ -21,7 +21,13 @@ Fonts are *named, not shipped*. Most comic fonts are licensed, so each entry
 lists candidates best-first and `resolve_font()` picks the first family that
 is actually installed, falling back to something that always exists. Use
 `missing_font()` to tell the user which face a type really wants.
+
+Candidates are matched through `fontmatch`, not by string equality: the same
+face is called "CC Wild Words" here and "CCWildWords" by Windows, and a type
+would otherwise skip past its canonical font to a stand-in for no reason.
 """
+
+from . import fontmatch
 
 # --- font candidate lists ------------------------------------------------
 # Best first: the canonical comic faces, then broadly available stand-ins so a
@@ -239,20 +245,33 @@ def get(type_id):
     return _BY_ID.get(type_id)
 
 
-def _norm(name):
-    return (name or "").strip().lower()
+# Building the index tokenises every installed family, so it is worth keeping
+# across the many resolve/style calls a docker makes for one repaint. The
+# family list only changes when fonts are installed, so keying on it is safe.
+_INDEX_CACHE = (None, None)
+
+
+def _index(installed):
+    global _INDEX_CACHE
+    key = tuple(installed or ())
+    if _INDEX_CACHE[0] != key:
+        _INDEX_CACHE = (key, fontmatch.FontIndex(key))
+    return _INDEX_CACHE[1]
 
 
 def resolve_font(candidates, installed):
     """First candidate that is actually installed.
 
     `installed` is any iterable of family names (QFontDatabase().families()).
-    Falls back to the last candidate so a type always names *something*.
+    Returns the family under its *installed* spelling, so the result can be
+    handed to Qt verbatim. Falls back to the last candidate so a type always
+    names *something*.
     """
-    have = {_norm(f) for f in (installed or ())}
+    idx = _index(installed)
     for fam in candidates:
-        if _norm(fam) in have:
-            return fam
+        m = idx.resolve(fam)
+        if m is not None:
+            return m.family
     return candidates[-1] if candidates else ""
 
 
@@ -268,8 +287,9 @@ def missing_font(type_id, installed, overrides=None):
     t = _BY_ID.get(type_id)
     if not t or not t["fonts"]:
         return None
-    have = {_norm(f) for f in (installed or ())}
-    if _norm(t["fonts"][0]) in have:
+    # A spelling variant is not a missing font: only warn when the preferred
+    # face resolves to nothing at all.
+    if _index(installed).resolve(t["fonts"][0]) is not None:
         return None
     return t["fonts"][0] if resolve_font(t["fonts"], installed) != t["fonts"][0] else None
 

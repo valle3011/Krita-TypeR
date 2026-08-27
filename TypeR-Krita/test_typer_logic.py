@@ -101,6 +101,33 @@ check("flatten_presets: empty/invalid input -> empty list",
       LP.flatten_presets({}) == [] and LP.flatten_presets(None) == [] and
       LP.flatten_presets({"X": "not a dict"}) == [])
 
+# --- main characters head the dropdowns ------------------------------------
+_names = ["Zenitsu", "aoi", "Makima", "Denji"]
+check("sort_characters puts the main ones in their own block first",
+      LP.sort_characters(_names, ["Denji", "Makima"])
+      == (["Denji", "Makima"], ["aoi", "Zenitsu"]))
+check("sort_characters sorts both blocks case-insensitively",
+      LP.sort_characters(["b", "A"], ["b"]) == (["b"], ["A"]))
+check("sort_characters matches a main character case-insensitively",
+      LP.sort_characters(["Denji"], ["denji"]) == (["Denji"], []))
+check("sort_characters without favourites keeps everyone in one block",
+      LP.sort_characters(_names) == ([], sorted(_names, key=str.lower))
+      and LP.sort_characters(_names, []) == ([], sorted(_names, key=str.lower)))
+check("sort_characters survives junk",
+      LP.sort_characters(None) == ([], []) and
+      LP.sort_characters(["A"], [None, "", "  "]) == ([], ["A"]))
+_favflat = LP.flatten_presets(_chars, ["Shin"])
+check("flatten_presets floats a main character's presets to the top",
+      [e[1] for e in _favflat] == ["Shin", "Shin", "Sakamoto", "Sakamoto"])
+check("flatten_presets keeps each block alphabetical",
+      [e[0] for e in _favflat]
+      == ["Normal (Shin)", "Whisper", "Normal (Sakamoto)", "Shout"])
+check("flatten_presets without favourites is unchanged",
+      LP.flatten_presets(_chars, []) == _flat
+      and LP.flatten_presets(_chars, None) == _flat)
+check("flatten_presets still labels duplicates when favourites are set",
+      ("Normal (Shin)", "Shin", "Normal") in _favflat)
+
 # --- script-tab helpers ----------------------------------------------------
 import os as _os
 check("default_tab_label strips dir + extension",
@@ -371,11 +398,12 @@ check("balanced candidates exist", len(_cb) >= 3)
 check("balanced candidates ranked by quality score (best first)",
       [c["score"] for c in _cb] == sorted((c["score"] for c in _cb),
                                           reverse=True))
-# The biggest font that fits ('aa bb' / 'cc dd', edge-to-edge in the 100x100
-# box) is no longer the recommendation: a calmer, better-filling shape scores
-# higher, so the top card is not simply the largest.
+# The largest font that fits is not automatically the recommendation: where a
+# calmer shape exists, it outranks the bigger, more cramped one.
+_cq = LO.shape_candidates("stop right there criminal scum", _measurer,
+                          200, 150, 200, 1, 0.0)
 check("recommendation is quality-based, not merely the largest font",
-      _cb and _cb[0]["px"] != max(c["px"] for c in _cb))
+      _cq and _cq[0]["px"] != max(c["px"] for c in _cq))
 check("candidates are deduplicated",
       len({tuple(_texts(c)) for c in _cb}) == len(_cb))
 
@@ -435,6 +463,164 @@ check("lineTarget rewards arrangements near the target line count",
       LO.score_arrangement(_four, _measurer, 100, 100, line_target=4) >
       LO.score_arrangement(_four, _measurer, 100, 100, line_target=1))
 
+# --- the ideal line count comes from the bubble, not from a constant --------
+# A tall box wants a tall stack, a wide one a flat block. Both from the same
+# text, so this is purely the geometry talking.
+_ideal_tall = LO.ideal_line_count(1000, 20, 0.4)      # narrow, tall box
+_ideal_wide = LO.ideal_line_count(1000, 20, 3.5)      # wide, flat box
+check("a tall bubble asks for more lines than a wide one",
+      _ideal_tall > _ideal_wide + 1)
+# scale-free: doubling the font doubles both the text width and the line height
+check("the ideal line count does not move with the font size",
+      abs(LO.ideal_line_count(2000, 40, 1.0)
+          - LO.ideal_line_count(1000, 20, 1.0)) < 1e-9)
+check("the ideal line count stays inside the mode's band",
+      LO.ideal_line_count(10 ** 6, 20, 0.2, LO.profile_for("wide"))
+      <= LO.profile_for("wide")["lines"][1])
+check("what physically fits caps the ideal",
+      LO.ideal_line_count(10 ** 6, 20, 0.2, LO.profile_for("tall"), max_fit=3)
+      <= 3)
+check("profile_for falls back to balanced for an unknown mode",
+      LO.profile_for("nonsense") is LO.profile_for("balanced")
+      and LO.profile_for("tall") is not LO.profile_for("balanced"))
+
+# A tall narrow bubble must not be left three-quarters empty: the old absolute
+# 4-line target charged a well-filling 9-line block so hard that a 25%-full
+# 5-line block won. Property: the top pick actually uses the bubble.
+_tallcands = LO.shape_candidates(
+    "you really think you can beat me with a stunt like that", _measurer,
+    150, 380, 40, 6, 0.12, mode="balanced")
+_tw, _tk, _tlw, _tbw, _tbh, _tlh = LO._arr_metrics(_tallcands[0], _measurer)
+check("a tall bubble gets a block that fills it",
+      (_tbw * _tbh) / (150 * 0.88 * 380 * 0.88) > 0.55)
+# ...and Tall mode does not answer with a ladder of one-word lines
+_ladder = LO.shape_candidates(
+    "you really think you can beat me with a stunt like that", _measurer,
+    150, 380, 40, 6, 0.12, mode="tall")
+check("tall mode stays inside its line band",
+      _ladder[0]["k"] <= LO.profile_for("tall")["lines"][1])
+# The old tall bias was a linear reward for line count, so splitting the
+# two-word lines of a good stack into single words won on line count alone.
+# Same text, same size: the sensible grouping must score higher.
+_sane = _arr(30, "you", "really", "think", "you can", "beat me", "with a",
+             "stunt", "like", "that")
+_ladder_arr = _arr(30, "you", "really", "think", "you", "can", "beat", "me",
+                   "with a", "stunt", "like", "that")
+check("tall mode does not reward a ladder of one-word lines",
+      LO.score_arrangement(_sane, _measurer, 132, 334, 30, mode="tall") >
+      LO.score_arrangement(_ladder_arr, _measurer, 132, 334, 30, mode="tall"))
+
+# --- smoothness, sentence breaks, phrase integrity -------------------------
+# Same line count and same total width: an even stack beats one that tapers
+# away line by line. Global variance alone barely told these apart.
+_even = _arr(20, "aaaaaaa", "aaaaaaa", "aaaaaaa")
+_taper = _arr(20, "aaaaaaaaaaa", "aaaaaaa", "aaa")
+check("score prefers an even stack over a tapering one",
+      LO.score_arrangement(_even, _measurer, 200, 200) >
+      LO.score_arrangement(_taper, _measurer, 200, 200))
+
+# A line that carries a sentence end with more words behind it ('trap. Now')
+# reads worse than the same shape breaking at the full stop.
+_midsent = _arr(20, "it was a trap. Now", "we have to run")
+_atstop = _arr(20, "it was a trap.", "Now we have to run")
+check("score penalises a sentence starting at the end of a line",
+      LO.score_arrangement(_atstop, _measurer, 200, 200)
+      > LO.score_arrangement(_midsent, _measurer, 200, 200))
+check("the charge is on the mid-line sentence end itself",
+      LO._sentence_break_penalty(["it was a trap. Now", "we have to run"]) == 1
+      and LO._sentence_break_penalty(["it was a trap.", "Now we have to run"]) == 0)
+
+# A two-word phrase torn across lines when it would have fitted is charged;
+# the identical split is NOT charged when the words could not have shared a
+# line (a narrow bubble forces it).
+_split = _arr(20, "what", "no", "way", "there")
+_wide_box = LO.score_arrangement(_split, _measurer, 400, 400)
+_narrow_box = LO.score_arrangement(_split, _measurer, 45, 400)
+check("an avoidable phrase split is charged, a forced one is not",
+      LO._phrase_break_penalty(["what", "no", "way"], [40, 20, 30], 5, 400) > 0
+      and LO._phrase_break_penalty(["what", "no", "way"], [40, 20, 30], 5, 45) == 0)
+check("a clause end is always a fine place to break",
+      LO._phrase_break_penalty(["what?", "no", "way"], [40, 20, 30], 5, 400)
+      < LO._phrase_break_penalty(["what", "no", "way"], [40, 20, 30], 5, 400))
+
+# Rim clearance: an area ratio cannot see a block that runs edge to edge in one
+# direction only, so a block touching the rim loses to one that clears it.
+_touch = _arr(40, "aaaaa", "aaaaa")        # 100 wide in a 100-wide box
+_clear = _arr(34, "aaaaa", "aaaaa")
+check("score penalises a block that touches the bubble rim",
+      LO.score_arrangement(_clear, _measurer, 100, 120, 40) >
+      LO.score_arrangement(_touch, _measurer, 100, 120, 40))
+
+# --- the sampled bubble outline --------------------------------------------
+_ellipse = [0.3, 0.7, 0.95, 1.0, 0.95, 0.7, 0.3]
+check("shape_row_width interpolates between samples",
+      0.7 < LO.shape_row_width(_ellipse, 0.5) <= 1.0
+      and LO.shape_row_width(_ellipse, 0.0) < 0.5)
+check("shape_row_width answers 1.0 without an outline",
+      LO.shape_row_width(None, 0.5) == 1.0 and LO.shape_row_width([], 0.2) == 1.0)
+check("shape_row_width never returns a zero target",
+      LO.shape_row_width([0.0, 0.0], 0.5) >= LO._ROW_FLOOR)
+check("line_row_targets samples one width per line",
+      len(LO.line_row_targets(_ellipse, 4)) == 4
+      and LO.line_row_targets(None, 3) == [1.0, 1.0, 1.0])
+# The block sits in the MIDDLE of the bubble, so a short block is measured
+# against the balloon's widest part — not against its tapering top and bottom.
+_centred = LO.line_row_targets(_ellipse, 3, block_h=30, usable_h=300)
+_spread = LO.line_row_targets(_ellipse, 3)
+check("a short block is measured against the middle of the bubble",
+      min(_centred) > 0.9 and min(_spread) < 0.8)
+check("a block filling the bubble is measured across its whole height",
+      LO.line_row_targets(_ellipse, 3, block_h=300, usable_h=300) == _spread)
+# In a round bubble a block that SPANS it wants a lens shape (short-long-short)
+# where a rectangle would crowd the rim, so the outline flips the ranking.
+# The lens follows the outline's own proportions (~0.7 / 1.0 / 0.7).
+_lens = _arr(20, "aaaaaa", "aaaaaaaa", "aaaaaa")     # block is 3 * 24 = 72 tall
+_rect = _arr(20, "aaaaaaa", "aaaaaaa", "aaaaaaa")
+check("with an outline, a lens beats a rectangle in a round bubble",
+      LO.score_arrangement(_lens, _measurer, 200, 90, shape_rows=_ellipse) >
+      LO.score_arrangement(_rect, _measurer, 200, 90, shape_rows=_ellipse))
+check("without an outline the rectangle is still the even shape",
+      LO.score_arrangement(_rect, _measurer, 200, 90) >
+      LO.score_arrangement(_lens, _measurer, 200, 90))
+# ...but a small block centred in a big balloon sits in its widest band, where
+# the bubble is effectively rectangular — so there the rectangle is right again.
+check("a small block in a big round bubble is judged rectangular",
+      LO.score_arrangement(_rect, _measurer, 200, 260, shape_rows=_ellipse) >
+      LO.score_arrangement(_lens, _measurer, 200, 260, shape_rows=_ellipse))
+# An outline says the bubble holds less than its bounding box, so the same
+# block reads as fuller — a comfortable block no longer looks half empty.
+_blk = _arr(20, "aaaaaa", "aaaaaa")
+check("fill is judged against the outline, not the bounding box",
+      LO.score_arrangement(_blk, _measurer, 300, 300, shape_rows=_ellipse) !=
+      LO.score_arrangement(_blk, _measurer, 300, 300))
+check("shape_candidates accepts an outline and still ranks by score",
+      [c["score"] for c in LO.shape_candidates(
+          "aa bb cc dd ee", _measurer, 120, 120, 40, 6, 0.1,
+          shape_rows=_ellipse)] ==
+      sorted((c["score"] for c in LO.shape_candidates(
+          "aa bb cc dd ee", _measurer, 120, 120, 40, 6, 0.1,
+          shape_rows=_ellipse)), reverse=True))
+
+# Round mode ranks by quality too: it used to sort by size first, which put a
+# lower-scoring card in the ★ slot.
+_rc = LO.shape_candidates("aa bb cc dd ee ff", _measurer, 140, 140, 40, 6, 0.1,
+                          mode="round")
+check("round mode ranks by score, not by size",
+      [c["score"] for c in _rc] == sorted((c["score"] for c in _rc),
+                                          reverse=True))
+
+# Starved set: one unbreakable long word leaves the bubble nearly empty, so the
+# shaper retries with syllable breaks by itself even though hyphenation is off.
+_starved = LO.shape_candidates("Unbelievable", _measurer, 60, 200, 40, 6, 0.1)
+check("a starved set is rescued with hyphenated alternatives",
+      len(_starved) > 1
+      and any("-" in LO.runs_text(c["lines"][0]) for c in _starved))
+check("a healthy set is not hyphenated behind the user's back",
+      not any("-" in LO.runs_text(r)
+              for c in LO.shape_candidates("aa bb cc dd", _measurer, 200, 200,
+                                           40, 6, 0.1)
+              for r in c["lines"]))
+
 # De-hyphenation: rejoin a word the source split across a line, but keep a
 # capitalised compound hyphenated.
 _dh1, _ = LO.dehyphenate("embar- rassing")
@@ -443,6 +629,47 @@ _dh2, _ = LO.dehyphenate("Spider- Man")
 check("dehyphenate keeps a capitalised compound hyphenated", _dh2 == "Spider-Man")
 check("dehyphenate leaves an ordinary in-word hyphen alone",
       LO.dehyphenate("X-ray vision")[0] == "X-ray vision")
+# A Japanese honorific is lowercase, so the capitalisation rule cannot see it:
+# without its own rule "Yagi- kun" would come back as "Yagikun".
+check("dehyphenate keeps a name + honorific hyphenated",
+      LO.dehyphenate("Yagi- kun")[0] == "Yagi-kun"
+      and LO.dehyphenate("Tanaka- senpai")[0] == "Tanaka-senpai"
+      and LO.dehyphenate("onii- chan!")[0] == "onii-chan!")
+check("dehyphenate still rejoins an ordinary broken word",
+      LO.dehyphenate("trans- lation")[0] == "translation")
+
+# --- a word that already has a hyphen breaks AT it --------------------------
+# "Yagi-kun" used to be fed to the syllable patterns whole, which both missed
+# the obvious break and let one land right after the hyphen, so `split_word`
+# appended a second one: "Yagi--" / "kun".
+_yk = LO.make_words("Yagi-kun", [False] * 8)[0]
+check("an existing hyphen is offered as the break point",
+      LO.hyphenate("Yagi-kun", "en") == [5])
+_yl, _yr = LO.split_word(_yk, 5)
+check("breaking at an existing hyphen adds no second hyphen",
+      (_yl.text, _yr.text) == ("Yagi-", "kun"))
+check("no double hyphen for any compound",
+      all(not LO.split_word(LO.make_words(w, [False] * len(w))[0], i)[0]
+          .text.endswith("--")
+          for w in ("well-known", "Spider-Man", "part-time-job", "mother-in-law")
+          for i in LO.hyphenate(w, "en")))
+# the parts are hyphenated on their own, so a long compound still offers the
+# syllable breaks inside its parts — but never a break that ignores the hyphen
+check("both the hyphen and the parts' own breaks are offered",
+      LO.hyphenate("Spider-Man", "en") == [3, 7])
+check("a plain word hyphenates exactly as before",
+      LO.hyphenate("embarrassing", "en") == [2, 5, 9])
+check("punctuation after a compound does not move the break",
+      LO.hyphenate("Yagi-kun!", "en") == [5]
+      and LO.hyphenate("Yagi-kun's", "en") == [5])
+check("the minimum letters still apply across the hyphen",
+      LO.hyphenate("a-b", "en") == [])
+# end to end: the shaper's own output for a compound is a clean single hyphen
+_hy = LO.shape_candidates("Yagi-kun is waiting outside", _measurer, 90, 260,
+                          40, 6, 0.1, hyphenate=True)
+check("the shaper never emits a doubled hyphen",
+      _hy and not any("--" in LO.runs_text(r)
+                      for c in _hy for r in c["lines"]))
 # the bold mask follows the shortened text ('big-Bang', 'Bang' stays bold)
 _ht, _hm = LO.dehyphenate("big- Bang",
                           [False, False, False, False, False, True, True, True, True])

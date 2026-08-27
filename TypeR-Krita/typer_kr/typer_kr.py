@@ -33,12 +33,12 @@ import zipfile
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 
-from PyQt5.QtCore import (Qt, pyqtSignal, QRectF, QEvent, QPoint, QPointF,
+from ._qt import (Qt, pyqtSignal, QRectF, QEvent, QPoint, QPointF,
                           QMimeData, QTimer, QRect, QSize)
-from PyQt5.QtGui import (QColor, QFont, QFontMetricsF, QImage, QPainter,
+from ._qt import (QColor, QFont, QFontMetricsF, QImage, QPainter,
                          QPainterPath, QBrush, QPen, QPixmap, QTextCursor, QDrag,
                          QCursor, QKeySequence, QPolygonF, QIcon)
-from PyQt5.QtWidgets import (
+from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QPlainTextEdit, QSpinBox, QCheckBox, QFileDialog, QColorDialog,
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
@@ -60,15 +60,17 @@ MAX_DETACH_SLOTS = 3
 # slot index -> live TyperExtraHost instance. Filled as Krita constructs the
 # pre-registered host dockers; read by the main docker when detaching a panel.
 _EXTRA_HOSTS = {}
-from PyQt5.QtGui import QFontDatabase
+from ._qt import font_families, binding_info
 
 from krita import (DockWidget, DockWidgetFactory, DockWidgetFactoryBase,
                    Krita, Selection)
 
 from . import layout as L
 from . import imgfx as IMG
+from . import xlsx as XLSX
 from . import langpair as LP
 from . import texttypes as TT
+from . import fontmatch as FM
 from . import gauth as GA
 from . import gdocs as GD
 from . import comments as CM
@@ -80,7 +82,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.9"
+VERSION = "1.11"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -112,7 +114,7 @@ except Exception:
 class NoScrollComboBox(QComboBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, event):
         if self.hasFocus():
@@ -124,7 +126,7 @@ class NoScrollComboBox(QComboBox):
 class NoScrollSpinBox(QSpinBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, event):
         if self.hasFocus():
@@ -138,7 +140,7 @@ class ScriptTabBar(QTabBar):
     on top of the normal close button."""
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MiddleButton:
+        if event.button() == Qt.MouseButton.MiddleButton:
             idx = self.tabAt(event.pos())
             if idx >= 0:
                 self.tabCloseRequested.emit(idx)
@@ -365,6 +367,29 @@ LANG = {
         "preset_file_save": "Export presets",
         "preset_file_open": "Import presets",
         "preset_filter": "TypeR presets (*.json);;All files (*.*)",
+        "preset_bundle_filter": "TypeR preset bundle (*.zip)",
+        "preset_open_filter": "TypeR presets (*.zip *.json);;Preset bundle (*.zip);;"
+                              "JSON (*.json);;All files (*.*)",
+        "xlsx_filter": "Excel spreadsheet (*.xlsx)",
+        "preset_export_fmt_title": "Export presets",
+        "preset_export_fmt_prompt": "Export as:",
+        "preset_fmt_bundle": "Presets + fonts (.zip) — installs itself elsewhere",
+        "preset_fmt_json": "TypeR presets (JSON) — presets only, no fonts",
+        "preset_fmt_xlsx": "Excel spreadsheet (.xlsx) — fonts of this manga",
+        "st_preset_exported_bundle": "Exported {n} preset(s) with {fonts} font "
+                                     "files ({missing} font(s) not installed "
+                                     "here).",
+        "st_preset_imported_bundle": "Imported {n} preset(s). Fonts: {inst} "
+                                     "installed, {skip} already there, {fail} "
+                                     "failed.",
+        "font_scan": "Reading the installed fonts once — this can take a "
+                     "moment with a large collection…",
+        "st_preset_exported_xlsx": "Exported {n} fonts to an Excel table.",
+        "xls_sheet_presets": "Fonts",
+        "xls_default_char": "(default)",
+        "col_character": "Character",
+        "col_font": "Font",
+        "col_purpose": "Used for",
         "st_preset_saved": "Preset ‘{name}’ saved.",
         "st_preset_applied": "Preset ‘{name}’ applied.",
         "st_preset_deleted": "Preset ‘{name}’ deleted.",
@@ -567,6 +592,24 @@ LANG = {
         "st_replaced": "Replaced previous layer.",
         # optional character level for presets
         "presets_by_char": "Organize presets by character",
+        "mainchar_btn": "Main characters …",
+        "mainchar_hint": "Main characters sit at the top of the character and "
+                         "preset dropdowns — handy once a series has more names "
+                         "than fit on screen. Right-clicking the character "
+                         "dropdown stars one straight away.",
+        "mainchar_title": "Main characters",
+        "mainchar_intro": "Star the characters you typeset most. They are "
+                          "listed first (★) in the character dropdown and, in "
+                          "simple mode, their presets head the preset list. "
+                          "Nothing else changes — no preset is moved or lost.",
+        "mainchar_manga": "Manga:",
+        "mainchar_none": "This manga has no characters yet.",
+        "mainchar_clear": "None of them",
+        "mainchar_ctx_add": "★ Mark as main character",
+        "mainchar_ctx_remove": "Remove from main characters",
+        "st_mainchar_saved": "{n} main character(s) for “{manga}”.",
+        "st_mainchar_on": "“{name}” is now a main character.",
+        "st_mainchar_off": "“{name}” is no longer a main character.",
         "presets_by_char_tip": ("On: pick Manga → Character → preset – each "
                                 "character can have its own font and style. "
                                 "Off: pick Manga → preset – one flat list of "
@@ -1001,6 +1044,29 @@ LANG = {
         "preset_file_save": "Presets exportieren",
         "preset_file_open": "Presets importieren",
         "preset_filter": "TypeR-Presets (*.json);;Alle Dateien (*.*)",
+        "preset_bundle_filter": "TypeR-Preset-Paket (*.zip)",
+        "preset_open_filter": "TypeR-Presets (*.zip *.json);;Preset-Paket (*.zip);;"
+                              "JSON (*.json);;Alle Dateien (*.*)",
+        "xlsx_filter": "Excel-Tabelle (*.xlsx)",
+        "preset_export_fmt_title": "Presets exportieren",
+        "preset_export_fmt_prompt": "Exportieren als:",
+        "preset_fmt_bundle": "Presets + Schriften (.zip) – installiert sich selbst",
+        "preset_fmt_json": "TypeR-Presets (JSON) – nur Presets, ohne Schriften",
+        "preset_fmt_xlsx": "Excel-Tabelle (.xlsx) – Schriften dieses Mangas",
+        "st_preset_exported_bundle": "{n} Preset(s) mit {fonts} Schriftdateien "
+                                     "exportiert ({missing} Schrift(en) hier "
+                                     "nicht installiert).",
+        "st_preset_imported_bundle": "{n} Preset(s) importiert. Schriften: "
+                                     "{inst} installiert, {skip} schon "
+                                     "vorhanden, {fail} fehlgeschlagen.",
+        "font_scan": "Installierte Schriften werden einmalig eingelesen – bei "
+                     "vielen Fonts dauert das einen Moment …",
+        "st_preset_exported_xlsx": "{n} Schriften als Excel-Tabelle exportiert.",
+        "xls_sheet_presets": "Schriften",
+        "xls_default_char": "(Standard)",
+        "col_character": "Charakter",
+        "col_font": "Schrift",
+        "col_purpose": "Wofür",
         "st_preset_saved": "Preset ‚{name}‘ gespeichert.",
         "st_preset_applied": "Preset ‚{name}‘ angewendet.",
         "st_preset_deleted": "Preset ‚{name}‘ gelöscht.",
@@ -1271,6 +1337,25 @@ LANG = {
         "st_replaced": "Vorherige Ebene ersetzt.",
         # optional character level for presets
         "presets_by_char": "Presets nach Charakteren gliedern",
+        "mainchar_btn": "Hauptcharaktere …",
+        "mainchar_hint": "Hauptcharaktere stehen ganz oben in der Charakter- "
+                         "und der Preset-Liste – praktisch, sobald eine Serie "
+                         "mehr Namen hat, als auf den Schirm passen. Ein "
+                         "Rechtsklick auf die Charakter-Liste markiert direkt.",
+        "mainchar_title": "Hauptcharaktere",
+        "mainchar_intro": "Markiere die Charaktere, die du am häufigsten "
+                          "setzt. Sie stehen dann mit ★ ganz oben in der "
+                          "Charakter-Liste, und im einfachen Modus stehen ihre "
+                          "Presets oben in der Preset-Liste. Sonst ändert sich "
+                          "nichts – kein Preset wird verschoben oder gelöscht.",
+        "mainchar_manga": "Manga:",
+        "mainchar_none": "Dieses Manga hat noch keine Charaktere.",
+        "mainchar_clear": "Keiner davon",
+        "mainchar_ctx_add": "★ Als Hauptcharakter markieren",
+        "mainchar_ctx_remove": "Nicht mehr als Hauptcharakter",
+        "st_mainchar_saved": "{n} Hauptcharakter(e) für „{manga}“.",
+        "st_mainchar_on": "„{name}“ ist jetzt Hauptcharakter.",
+        "st_mainchar_off": "„{name}“ ist kein Hauptcharakter mehr.",
         "presets_by_char_tip": ("An: Manga → Charakter → Preset wählen – jeder "
                                 "Charakter kann eigene Schrift und eigenen Stil "
                                 "haben. Aus: Manga → Preset wählen – eine "
@@ -2213,8 +2298,35 @@ def _scaled_pattern_brush(pattern_img, scale):
     w = max(1, int(round(pattern_img.width() * s)))
     h = max(1, int(round(pattern_img.height() * s)))
     pm = QPixmap.fromImage(pattern_img).scaled(
-        w, h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        w, h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
     return QBrush(pm)
+
+
+def presets_to_table(chars, header_of, default_char="(default)"):
+    """Build a fonts MATRIX for ONE manga, like the user's own sheet: the first
+    column is the character, then one column per purpose (preset name) used in
+    the manga, and each cell holds the font that character uses for that purpose
+    (blank if none). Purpose columns are ordered most-used first. Pure (no Qt),
+    so it is unit-testable. Returns (headers, rows)."""
+    counts = {}
+    for presets in (chars or {}).values():
+        for name in (presets or {}):
+            counts[name] = counts.get(name, 0) + 1
+    purposes = sorted(counts, key=lambda n: (-counts[n], str(n).lower()))
+    headers = [header_of("col_character")] + purposes
+    rows = []
+    for char in sorted(chars or {}, key=lambda s: str(s).lower()):
+        presets = chars[char] or {}
+        row = [char if str(char).strip() else default_char]
+        for p in purposes:
+            cfg = presets.get(p)
+            if cfg is None:
+                row.append("")
+            else:
+                font = cfg.get("font", "") if isinstance(cfg, dict) else cfg
+                row.append(font or "")
+        rows.append(row)
+    return headers, rows
 
 
 def _render_text_raster(text_lines, line_pos, block_start, font_px, family,
@@ -2272,11 +2384,11 @@ def _render_text_raster(text_lines, line_pos, block_start, font_px, family,
                 else QBrush(QColor(outline2_color) if outline2_color is not None
                             else QColor(0, 0, 0)))
 
-    img = QImage(w, h, QImage.Format_ARGB32)
+    img = QImage(w, h, QImage.Format.Format_ARGB32)
     img.fill(0)
     p = QPainter(img)
-    p.setRenderHint(QPainter.Antialiasing, True)
-    p.setRenderHint(QPainter.TextAntialiasing, True)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
     p.translate(-ox, -oy)
 
     # soft halo: rendered isolated + blurred so the crisp text above stays sharp
@@ -2296,13 +2408,13 @@ def _render_text_raster(text_lines, line_pos, block_start, font_px, family,
                               else QColor(0, 0, 0)))
     if o2 > 0:
         pen2 = QPen(o2_brush, o2)
-        pen2.setJoinStyle(Qt.RoundJoin)
-        pen2.setCapStyle(Qt.RoundCap)
+        pen2.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen2.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.strokePath(path, pen2)
     if o1 > 0:
         pen = QPen(o1_brush, o1)
-        pen.setJoinStyle(Qt.RoundJoin)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.strokePath(path, pen)
     if fill_pattern is not None and not fill_pattern.isNull():
         p.fillPath(path, _scaled_pattern_brush(fill_pattern, fill_scale))
@@ -2326,7 +2438,7 @@ def _paint_layer_from_image(doc, img, ox, oy, label):
         return None
     if (cx0, cy0, cx1, cy1) != (px, py, px + img.width(), py + img.height()):
         img = img.copy(cx0 - px, cy0 - py, cx1 - cx0, cy1 - cy0)
-    img = img.convertToFormat(QImage.Format_ARGB32)     # memory layout = BGRA
+    img = img.convertToFormat(QImage.Format.Format_ARGB32)     # memory layout = BGRA
     node = doc.createNode(label, "paintlayer")
     root = doc.rootNode()
     kids = root.childNodes()
@@ -2367,7 +2479,7 @@ def _insert_vector_clip_pattern(doc, svg, label, text_lines, line_pos,
     oy = int(math.floor(rect.top() - m))
     w = max(1, int(math.ceil(rect.right() + m)) - ox)
     h = max(1, int(math.ceil(rect.bottom() + m)) - oy)
-    img = QImage(w, h, QImage.Format_ARGB32)
+    img = QImage(w, h, QImage.Format.Format_ARGB32)
     img.fill(0)
     p = QPainter(img)
     p.fillRect(0, 0, w, h, _scaled_pattern_brush(fill_pattern, fill_scale))
@@ -2380,7 +2492,7 @@ def _insert_vector_clip_pattern(doc, svg, label, text_lines, line_pos,
         return None
     if (cx0, cy0, cx1, cy1) != (ox, oy, ox + w, oy + h):
         img = img.copy(cx0 - ox, cy0 - oy, cx1 - cx0, cy1 - cy0)
-    img = img.convertToFormat(QImage.Format_ARGB32)
+    img = img.convertToFormat(QImage.Format.Format_ARGB32)
     try:
         group = doc.createGroupLayer(label)
         vlayer = doc.createVectorLayer(label)
@@ -2907,12 +3019,12 @@ class BubbleOverlay(QWidget):
         self._edit = False        # draw/resize mode
         self._drag = None         # active draw/move/resize gesture
         self.setMinimumHeight(120)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_edit_mode(self, on):
         self._edit = bool(on)
         self._drag = None
-        self.setCursor(Qt.CrossCursor if on else Qt.ArrowCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor if on else Qt.CursorShape.ArrowCursor)
         self.update()
 
     def set_page(self, img, doc_w, doc_h):
@@ -2959,7 +3071,7 @@ class BubbleOverlay(QWidget):
             else:
                 color = QColor(230, 60, 60)         # bubble
             p.setPen(QPen(color, 4 if k == self._current else 2))
-            p.setBrush(Qt.NoBrush)      # outlines only — never fill the box
+            p.setBrush(Qt.BrushStyle.NoBrush)      # outlines only — never fill the box
             # Always the plain detection rectangle: the preview shows exactly
             # the box the detector produced. Traced outlines/ellipses are still
             # used for fitting, but drawing them here only obscured what the AI
@@ -2969,7 +3081,7 @@ class BubbleOverlay(QWidget):
             badge = QRectF(r.x(), r.y(), 22, 18)
             p.fillRect(badge, color)
             p.setPen(QPen(QColor(255, 255, 255)))
-            p.drawText(badge, Qt.AlignCenter, label)
+            p.drawText(badge, Qt.AlignmentFlag.AlignCenter, label)
             # small corner handles while in draw/edit mode
             if self._edit:
                 p.setBrush(QBrush(QColor(255, 255, 255)))
@@ -2983,9 +3095,9 @@ class BubbleOverlay(QWidget):
             x, y, w, h = rect
             pr = QRectF(t.x() + x * scale, t.y() + y * scale,
                         w * scale, h * scale)
-            pen = QPen(QColor(60, 200, 90), 2, Qt.DashLine)
+            pen = QPen(QColor(60, 200, 90), 2, Qt.PenStyle.DashLine)
             p.setPen(pen)
-            p.setBrush(QBrush(Qt.NoBrush))
+            p.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             p.drawRect(pr)
         p.end()
 
@@ -3055,21 +3167,21 @@ class BubbleOverlay(QWidget):
         return self._norm(d["fx"], d["fy"], d["cx"], d["cy"])   # resize
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             idx = self._hit(event.pos())
             if idx >= 0:
                 self.boxRemoved.emit(idx)
             return
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         if self._edit:
-            self.setFocus(Qt.MouseFocusReason)
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
             self._begin_edit(event.pos())
             return
         idx = self._hit(event.pos())
         if idx < 0:
             return
-        ctrl = bool(event.modifiers() & Qt.ControlModifier)
+        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
         self.boxClicked.emit(idx, ctrl)
 
     def _begin_edit(self, pos):
@@ -3160,7 +3272,7 @@ class FontPicker(QWidget):
 
     def __init__(self, recents=None, search_placeholder=""):
         super().__init__()
-        self._all = list(QFontDatabase().families())
+        self._all = list(font_families())
         self._recents = [r for r in (recents or []) if r in self._all]
         self._current = None
 
@@ -3182,9 +3294,9 @@ class FontPicker(QWidget):
         lay.addWidget(self.list)
 
         self.preview = QLabel("")
-        self.preview.setFrameShape(QFrame.StyledPanel)
+        self.preview.setFrameShape(QFrame.Shape.StyledPanel)
         self.preview.setMinimumHeight(40)
-        self.preview.setAlignment(Qt.AlignCenter)
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.preview)
 
         self._rebuild()
@@ -3216,7 +3328,7 @@ class FontPicker(QWidget):
         self.search.blockSignals(False)
         self._apply_filter("")
         for i in range(self.list.count()):
-            if self.list.item(i).data(Qt.UserRole) == target:
+            if self.list.item(i).data(Qt.ItemDataRole.UserRole) == target:
                 self.list.setCurrentRow(i)
                 self.list.scrollToItem(self.list.item(i))
                 return
@@ -3238,7 +3350,7 @@ class FontPicker(QWidget):
         """Re-read the installed font list (e.g. after fonts were installed) and
         keep the current selection."""
         cur = self._current
-        self._all = list(QFontDatabase().families())
+        self._all = list(font_families())
         self._recents = [r for r in self._recents if r in self._all]
         self._rebuild()
         if cur:
@@ -3267,7 +3379,7 @@ class FontPicker(QWidget):
         for fam in ordered:
             label = ("★ " + fam) if fam in recents_set else fam
             item = QListWidgetItem(label)
-            item.setData(Qt.UserRole, fam)
+            item.setData(Qt.ItemDataRole.UserRole, fam)
             self.list.addItem(item)
         self.list.blockSignals(False)
         self._apply_filter(self.search.text())
@@ -3281,7 +3393,7 @@ class FontPicker(QWidget):
         first_visible = None
         for i in range(self.list.count()):
             item = self.list.item(i)
-            fam = item.data(Qt.UserRole)
+            fam = item.data(Qt.ItemDataRole.UserRole)
             hide = not font_match(fam, text)
             item.setHidden(hide)
             if not hide and first_visible is None:
@@ -3293,7 +3405,7 @@ class FontPicker(QWidget):
     def _on_select(self, current, _previous):
         if current is None:
             return
-        fam = current.data(Qt.UserRole)
+        fam = current.data(Qt.ItemDataRole.UserRole)
         self._current = fam
         self.preview.setText(fam + "  –  AaBb 123")
         f = QFont(fam)
@@ -3322,7 +3434,7 @@ class TextPreview(QWidget):
         # em advance while measuring vertical text; 0 = horizontal (see _word_w)
         self._vem = 0.0
         self.setMinimumHeight(120)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_text(self, text):
         self._text = text or ""
@@ -3558,12 +3670,12 @@ class TextPreview(QWidget):
 
     def paintEvent(self, _ev):
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         w, h = self.width(), self.height()
         self._paint_background(p, w, h)
         p.setPen(QPen(QColor(0, 0, 0, 60), 1))
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRect(0, 0, w - 1, h - 1)
 
         o = self._opts()
@@ -3578,7 +3690,7 @@ class TextPreview(QWidget):
             f.setItalic(True)
             f.setPixelSize(13)
             p.setFont(f)
-            p.drawText(self.rect(), Qt.AlignCenter,
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
                        self._docker._tr("preview_empty"))
             p.end()
             return
@@ -3714,15 +3826,15 @@ class TextPreview(QWidget):
             b2 = _obr if (_obr is not None and _tgt in ("outline2", "both")) \
                 else QBrush(o["outline2_color"])
             pen2 = QPen(b2, max(0.5, o["outline2_px"] * scale))
-            pen2.setJoinStyle(Qt.RoundJoin)
-            pen2.setCapStyle(Qt.RoundCap)
+            pen2.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen2.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen2)
         if o["outline"] and o["outline_px"] > 0:
             b1 = _obr if (_obr is not None and _tgt in ("outline1", "both")) \
                 else QBrush(o["outline_color"])
             pen = QPen(b1, max(0.5, o["outline_px"] * scale))
-            pen.setJoinStyle(Qt.RoundJoin)
-            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen)
         if fill_pat is not None:
             p.fillPath(path, _scaled_pattern_brush(
@@ -3739,7 +3851,7 @@ def _paint_checker(p, w, h):
     """Light-gray checkerboard (shows light and dark text colors well)."""
     p.fillRect(0, 0, w, h, QColor(0xEE, 0xEE, 0xEE))
     tile = 9
-    p.setPen(Qt.NoPen)
+    p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(QColor(0xDB, 0xDB, 0xDB))
     y = 0
     row = 0
@@ -3781,7 +3893,7 @@ class ShapeCard(QFrame):
         self._best = best
         self._custom = custom
         self.setFixedSize(int(w or self.W), int(h or self.H))
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def set_size(self, w, h, scale):
         self._scale = scale
@@ -3800,14 +3912,14 @@ class ShapeCard(QFrame):
             self.update()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self._index)
         super().mousePressEvent(event)
 
     def paintEvent(self, _ev):
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         w, h = self.width(), self.height()
         _paint_checker(p, w, h)
 
@@ -3858,14 +3970,14 @@ class ShapeCard(QFrame):
         if o["outline"] and o.get("outline2_px", 0) > 0:   # outer, drawn first
             pen2 = QPen(o["outline2_color"])
             pen2.setWidthF(max(0.5, o["outline2_px"] * s))
-            pen2.setJoinStyle(Qt.RoundJoin)
-            pen2.setCapStyle(Qt.RoundCap)
+            pen2.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen2.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen2)
         if o["outline"] and o["outline_px"] > 0:
             pen = QPen(o["outline_color"])
             pen.setWidthF(max(0.5, o["outline_px"] * s))
-            pen.setJoinStyle(Qt.RoundJoin)
-            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen)
         p.fillPath(path, QBrush(o["color"]))
 
@@ -3875,19 +3987,19 @@ class ShapeCard(QFrame):
         bf.setPixelSize(11)
         p.setFont(bf)
         p.drawText(self.rect().adjusted(0, 3, -6, 0),
-                   Qt.AlignRight | Qt.AlignTop, str(self._index + 1))
+                   Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, str(self._index + 1))
         if self._custom:                     # hand-edited arrangement
             p.setPen(QColor(0x2D, 0x8C, 0xEB))
             p.drawText(self.rect().adjusted(6, 3, 0, 0),
-                       Qt.AlignLeft | Qt.AlignTop, "\u270e")
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "\u270e")
         elif self._best:
             p.setPen(QColor(0x2E, 0x8B, 0x57))
             p.drawText(self.rect().adjusted(6, 3, 0, 0),
-                       Qt.AlignLeft | Qt.AlignTop, "\u2605")
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "\u2605")
         frame = QPen(QColor(0x2D, 0x8C, 0xEB), 2) if self._selected \
             else QPen(QColor(0, 0, 0, 70), 1)
         p.setPen(frame)
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRect(1, 1, w - 2, h - 2)
         p.end()
 
@@ -3959,7 +4071,7 @@ class TextShapRWidget(QWidget):
 
         self._empty = QLabel(t("shaper_empty"))
         self._empty.setWordWrap(True)
-        self._empty.setAlignment(Qt.AlignCenter)
+        self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self._empty)
 
         # The thumbnails reflow to the available width, so their rows follow the
@@ -3969,7 +4081,7 @@ class TextShapRWidget(QWidget):
         self._grid_host.setLayout(self._flow)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.StyledPanel)
+        scroll.setFrameShape(QFrame.Shape.StyledPanel)
         scroll.setWidget(self._grid_host)
         lay.addWidget(scroll, 1)
 
@@ -4046,47 +4158,66 @@ class TextShapRWidget(QWidget):
 
     def _box(self):
         """Box to fit into: the selection, else the whole image, else a
-        default box (no document open). Returns (w, h, has_doc, shape)
+        default box (no document open). Returns (w, h, has_doc, shape, rows)
         where shape is 'round' for a roughly elliptical selection, else
-        'rect'/None."""
+        'rect'/None, and rows is its sampled outline (see `_sel_shape`) or
+        None when there is no selection to sample."""
         try:
             doc = Krita.instance().activeDocument()
         except Exception:
             doc = None
         if doc is None:
-            return 400.0, 300.0, False, None
+            return 400.0, 300.0, False, None, None
         sel = doc.selection()
         if sel is not None:
             try:
                 w, h = float(sel.width()), float(sel.height())
                 if w > 0 and h > 0:
-                    return w, h, True, self._sel_shape(sel)
+                    kind, rows = self._sel_shape(sel)
+                    return w, h, True, kind, rows
             except Exception:
                 pass
-        return float(doc.width()), float(doc.height()), True, None
+        return float(doc.width()), float(doc.height()), True, None, None
 
-    @staticmethod
-    def _sel_shape(sel):
-        """'round' if the selection fills clearly less than its bounding
-        box (an elliptical marquee is ~pi/4), else 'rect'. Subsampled."""
+    #: How many rows of the selection are sampled for its outline profile.
+    #: A speech balloon's silhouette is smooth, so a couple of dozen samples
+    #: describe it as well as hundreds would.
+    _SHAPE_ROWS = 20
+
+    @classmethod
+    def _sel_shape(cls, sel):
+        """(kind, rows) for a selection: 'round' when it fills clearly less
+        than its bounding box (an elliptical marquee is ~pi/4), else 'rect';
+        `rows` is its outline sampled top to bottom as `_SHAPE_ROWS` width
+        fractions normalised to the widest row — the shaper judges fill, rim
+        clearance and silhouette against that instead of the bounding box.
+        Returns ('rect', None) when the mask can't be read."""
         try:
             w, h = int(sel.width()), int(sel.height())
             if w <= 0 or h <= 0:
-                return "rect"
+                return "rect", None
             data = sel.pixelData(sel.x(), sel.y(), w, h)
-            if not data:
-                return "rect"
-            n = len(data)
-            step = max(1, n // 20000)
-            marked = total = 0
-            for i in range(0, n, step):
-                total += 1
-                if data[i]:
-                    marked += 1
-            frac = marked / float(total) if total else 1.0
-            return "round" if frac < 0.9 else "rect"
+            if not data or len(data) < w * h:
+                return "rect", None
+            col_step = max(1, w // 160)         # bound the work on huge selections
+            rows = []
+            for i in range(cls._SHAPE_ROWS):
+                y = min(h - 1, int((i + 0.5) / cls._SHAPE_ROWS * h))
+                base = y * w
+                marked = total = 0
+                for x in range(0, w, col_step):
+                    total += 1
+                    if data[base + x]:
+                        marked += 1
+                rows.append(marked / float(total) if total else 0.0)
+            widest = max(rows) if rows else 0.0
+            if widest <= 0:
+                return "rect", None
+            profile = [r / widest for r in rows]
+            frac = sum(rows) / len(rows)        # marked area / bounding box
+            return ("round" if frac < 0.9 else "rect"), profile
         except Exception:
-            return "rect"
+            return "rect", None
 
     def _opts(self):
         d = self._docker
@@ -4174,7 +4305,7 @@ class TextShapRWidget(QWidget):
                                 crossbar_i=d.crossbar_chk.isChecked())
         prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
         clean, mask = parse_bold(prepared)
-        box_w, box_h, has_doc, sel_shape = self._box()
+        box_w, box_h, has_doc, sel_shape, sel_rows = self._box()
         same_text = (self._text_key == clean)
         self._text_key = clean
         if not same_text:                  # a new line starts over
@@ -4202,7 +4333,8 @@ class TextShapRWidget(QWidget):
                     mode=mode, hyphenate=self.hyph_btn.isChecked(),
                     lang=d._hyph_lang_for(clean), mask=mask, limit=10,
                     dehyphenate=self.dehyph_btn.isChecked(),
-                    inset=self._outline_inset())
+                    inset=self._outline_inset(),
+                    shape_rows=sel_rows)
             except Exception:
                 self._cands = []
             # a hand-edited arrangement survives the re-fit as its own card
@@ -4411,15 +4543,15 @@ class TextShapRWidget(QWidget):
         if 0x30 <= vk <= 0x39:
             return vk - 0x30
         k = event.key()
-        if Qt.Key_0 <= k <= Qt.Key_9:
-            return k - Qt.Key_0
+        if Qt.Key.Key_0 <= k <= Qt.Key.Key_9:
+            return k - Qt.Key.Key_0
         return None
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key in (Qt.Key_Left, Qt.Key_Up, Qt.Key_Right, Qt.Key_Down) \
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Up, Qt.Key.Key_Right, Qt.Key.Key_Down) \
                 and self._cards:
-            step = -1 if key in (Qt.Key_Left, Qt.Key_Up) else 1
+            step = -1 if key in (Qt.Key.Key_Left, Qt.Key.Key_Up) else 1
             cur = self._sel if self._sel >= 0 else 0
             self._select(max(0, min(cur + step, len(self._cards) - 1)),
                          user=True)
@@ -4429,7 +4561,7 @@ class TextShapRWidget(QWidget):
             index = 9 if digit == 0 else digit - 1       # key 0 = card 10
             if 0 <= index < len(self._cards):
                 self._select(index, user=True)
-                if event.modifiers() & Qt.ShiftModifier:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     self._apply(True)
             return
         super().keyPressEvent(event)
@@ -4465,7 +4597,10 @@ class FlowLayout(QLayout):
         return self._items.pop(i) if 0 <= i < len(self._items) else None
 
     def expandingDirections(self):
-        return Qt.Orientations(Qt.Orientation(0))
+        # empty flags = don't expand. Qt 6 dropped the Qt.Orientations flags
+        # wrapper and Orientation is itself a flag, so Qt.Orientation(0) is the
+        # one spelling that means "no directions" on both PyQt5 and PyQt6.
+        return Qt.Orientation(0)
 
     def hasHeightForWidth(self):
         return True
@@ -4527,7 +4662,7 @@ class PanelBox(QFrame):
         self._resize_grip = None
         self._resize_ref = None
         self._user_height = 0
-        self.setFrameShape(QFrame.NoFrame)
+        self.setFrameShape(QFrame.Shape.NoFrame)
         self.setAcceptDrops(True)      # a panel can be dropped onto this one
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
@@ -4554,7 +4689,7 @@ class PanelBox(QFrame):
         self._menu_btn = QToolButton()
         self._menu_btn.setText("⋮")
         self._menu_btn.setAutoRaise(True)
-        self._menu_btn.setPopupMode(QToolButton.InstantPopup)
+        self._menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(self._menu_btn)
         menu.aboutToShow.connect(self._build_menu)
         self._menu = menu
@@ -4565,7 +4700,7 @@ class PanelBox(QFrame):
         self._header.installEventFilter(self)
         self._title.installEventFilter(self)
         self._grip.installEventFilter(self)
-        self._header.setCursor(Qt.OpenHandCursor)
+        self._header.setCursor(Qt.CursorShape.OpenHandCursor)
         self.body = QWidget()
         self._body_lay = QVBoxLayout(self.body)
         self._body_lay.setContentsMargins(0, 0, 0, 0)
@@ -4575,7 +4710,7 @@ class PanelBox(QFrame):
         # drag it to set the panel's height (persisted by the docker).
         self._resize_grip = QWidget()
         self._resize_grip.setFixedHeight(7)
-        self._resize_grip.setCursor(Qt.SizeVerCursor)
+        self._resize_grip.setCursor(Qt.CursorShape.SizeVerCursor)
         self._resize_grip.setStyleSheet(
             "background: palette(mid); border-radius: 2px;")
         self._resize_grip.setVisible(False)
@@ -4615,10 +4750,10 @@ class PanelBox(QFrame):
         self._lock_btn.setText("🔒" if self._locked else "🔓")
         self._lock_btn.blockSignals(False)
         self._header.setCursor(
-            Qt.ForbiddenCursor if self._locked else Qt.OpenHandCursor)
+            Qt.CursorShape.ForbiddenCursor if self._locked else Qt.CursorShape.OpenHandCursor)
 
     def _apply_frame(self):
-        self.setFrameShape(QFrame.StyledPanel if self._edit else QFrame.NoFrame)
+        self.setFrameShape(QFrame.Shape.StyledPanel if self._edit else QFrame.Shape.NoFrame)
         if self._edit and self._drop_zone == "top":
             self.setStyleSheet("PanelBox { border-top: 2px solid palette(highlight); }")
         elif self._edit and self._drop_zone == "bottom":
@@ -4635,29 +4770,29 @@ class PanelBox(QFrame):
     def eventFilter(self, obj, ev):
         if obj is self._resize_grip and self._edit:
             et = ev.type()
-            if et == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+            if et == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:
                 self._resize_ref = (ev.globalPos().y(), self.height())
                 return True
-            if et == QEvent.MouseMove and self._resize_ref is not None:
+            if et == QEvent.Type.MouseMove and self._resize_ref is not None:
                 dy = ev.globalPos().y() - self._resize_ref[0]
                 self.set_user_height(max(80, self._resize_ref[1] + dy))
                 return True
-            if et == QEvent.MouseButtonRelease and self._resize_ref is not None:
+            if et == QEvent.Type.MouseButtonRelease and self._resize_ref is not None:
                 self._resize_ref = None
                 self._docker._save_panel_heights()
                 return True
         if (obj in (self._header, self._title, self._grip)
                 and self._edit and not self._locked):
             et = ev.type()
-            if et == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+            if et == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:
                 self._drag_pos = ev.pos()
-            elif et == QEvent.MouseMove and self._drag_pos is not None:
+            elif et == QEvent.Type.MouseMove and self._drag_pos is not None:
                 if ((ev.pos() - self._drag_pos).manhattanLength()
                         >= QApplication.startDragDistance()):
                     self._drag_pos = None
                     self._start_drag()
                     return True
-            elif et == QEvent.MouseButtonRelease:
+            elif et == QEvent.Type.MouseButtonRelease:
                 self._drag_pos = None
         return super(PanelBox, self).eventFilter(obj, ev)
 
@@ -4668,11 +4803,11 @@ class PanelBox(QFrame):
         drag.setMimeData(mime)
         pm = self.grab()
         if pm.width() > 320:
-            pm = pm.scaledToWidth(320, Qt.SmoothTransformation)
+            pm = pm.scaledToWidth(320, Qt.TransformationMode.SmoothTransformation)
         drag.setPixmap(pm)
         drag.setHotSpot(QPoint(20, 10))
         self._docker._panel_drag_started()
-        drag.exec_(Qt.MoveAction)
+        drag.exec(Qt.DropAction.MoveAction)
         self._docker._panel_drag_finished()
 
     # -- drop target (another panel dropped onto this one) ------------------
@@ -4735,7 +4870,7 @@ class TyperExtraHost(DockWidget):
         self._placeholder = QLabel("")
         self._placeholder.setStyleSheet("color: gray;")
         self._placeholder.setWordWrap(True)
-        self._placeholder.setAlignment(Qt.AlignCenter)
+        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lay.addWidget(self._placeholder)
         self._lay.addStretch(1)
         self.setWidget(host)
@@ -4757,6 +4892,121 @@ class TyperExtraHost(DockWidget):
 # ---------------------------------------------------------------------------
 # Docker UI
 # ---------------------------------------------------------------------------
+
+class MainCharsDialog(QDialog):
+    """Mark a manga's main characters.
+
+    In a long series the character list grows to dozens of names while three or
+    four of them speak on nearly every page. Starring those keeps them at the
+    top of the character dropdown — and of the flat preset list in simple mode,
+    where every character's styles share one combo. Purely a view: no preset
+    data is touched, so unstarring never loses anything.
+    """
+
+    def __init__(self, parent, tr, groups, main_map, current_manga):
+        QDialog.__init__(self, parent)
+        self._tr = tr
+        self._groups = groups or {}
+        # working copy — only written back when the dialog is accepted
+        self._map = {str(m): [str(c) for c in (names or [])]
+                     for m, names in (main_map or {}).items()}
+        self._boxes = {}
+
+        self.setWindowTitle(tr("mainchar_title"))
+        self.setMinimumWidth(360)
+        outer = QVBoxLayout(self)
+
+        intro = QLabel(tr("mainchar_intro"))
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color:#999;")
+        outer.addWidget(intro)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel(tr("mainchar_manga")))
+        self.manga_combo = QComboBox()
+        for g in sorted(self._groups.keys(), key=lambda s: s.lower()):
+            self.manga_combo.addItem(g, g)
+        idx = self.manga_combo.findData(current_manga)
+        if idx >= 0:
+            self.manga_combo.setCurrentIndex(idx)
+        self.manga_combo.currentIndexChanged.connect(self._on_manga)
+        row.addWidget(self.manga_combo, 1)
+        outer.addLayout(row)
+
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setMinimumHeight(220)
+        outer.addWidget(self._scroll, 1)
+
+        self.clear_btn = QPushButton(tr("mainchar_clear"))
+        self.clear_btn.clicked.connect(self._clear)
+        btns = QHBoxLayout()
+        btns.addWidget(self.clear_btn)
+        btns.addStretch(1)
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                               | QDialogButtonBox.StandardButton.Cancel)
+        box.accepted.connect(self.accept)
+        box.rejected.connect(self.reject)
+        btns.addWidget(box)
+        outer.addLayout(btns)
+
+        self._build_list()
+
+    # -- internals ---------------------------------------------------------
+    def _manga(self):
+        return self.manga_combo.currentData() or ""
+
+    def _build_list(self):
+        """One checkbox per character of the selected manga."""
+        manga = self._manga()
+        chars = self._groups.get(manga) or {}
+        body = QWidget()
+        lay = QVBoxLayout(body)
+        self._boxes = {}
+        starred = set(c.lower() for c in self._map.get(manga, []))
+        names = sorted((str(c) for c in chars.keys()), key=lambda s: s.lower())
+        if not names:
+            empty = QLabel(self._tr("mainchar_none"))
+            empty.setStyleSheet("color:#999;")
+            lay.addWidget(empty)
+        for name in names:
+            cb = QCheckBox("%s  (%d)" % (name, len(chars.get(name) or {})))
+            cb.setChecked(name.lower() in starred)
+            cb.toggled.connect(lambda _c=False, n=name: self._on_toggle(n))
+            self._boxes[name] = cb
+            lay.addWidget(cb)
+        lay.addStretch(1)
+        self._scroll.setWidget(body)
+
+    def _collect(self):
+        """Store the current checkbox state for the selected manga."""
+        manga = self._manga()
+        if not manga or not self._boxes:
+            return
+        chosen = [n for n, cb in self._boxes.items() if cb.isChecked()]
+        chosen.sort(key=lambda s: s.lower())
+        if chosen:
+            self._map[manga] = chosen
+        else:
+            self._map.pop(manga, None)
+
+    def _on_toggle(self, _name):
+        self._collect()
+
+    def _on_manga(self):
+        self._build_list()
+
+    def _clear(self):
+        for cb in self._boxes.values():
+            cb.setChecked(False)
+        self._collect()
+
+    # -- API ---------------------------------------------------------------
+    def result_map(self):
+        """{manga: [main characters]} as the user left it."""
+        self._collect()
+        return {m: list(v) for m, v in self._map.items() if v}
+
 
 class TextTypeFontsDialog(QDialog):
     """Pick the font for each kind of text.
@@ -4827,7 +5077,7 @@ class TextTypeFontsDialog(QDialog):
         for r, tid in enumerate(TT.ids()):
             self._grid.addWidget(QLabel(self._docker._tt_label(tid)), r, 0)
             val = QLabel()
-            val.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._grid.addWidget(val, r, 1)
             pick = QPushButton(self._tr("ttf_choose"))
             pick.clicked.connect(lambda _c=False, t=tid: self._choose(t))
@@ -4893,12 +5143,12 @@ class TextTypeFontsDialog(QDialog):
         box.setWindowTitle(self._tr("ttf_add"))
         box.setText(self._tr("ttf_add_style_q"))
         b_current = box.addButton(self._tr("ttf_add_current"),
-                                  QMessageBox.AcceptRole)
+                                  QMessageBox.ButtonRole.AcceptRole)
         b_default = box.addButton(self._tr("ttf_add_default"),
-                                  QMessageBox.ActionRole)
-        box.addButton(QMessageBox.Cancel)
+                                  QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(b_default)
-        box.exec_()
+        box.exec()
         clicked = box.clickedButton()
         if clicked is b_current:
             # snapshot the docker's current look (font + style)
@@ -4960,6 +5210,9 @@ class TyperDocker(DockWidget):
         # snapshotting that session already reads this.
         self._script_comments = []
         self._preset_usage = self._load_preset_usage()
+        # Who the main characters are, per manga: they head the character and
+        # preset dropdowns instead of being buried in a long alphabetical list.
+        self._main_chars_map = self._load_main_chars()
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
         # session list stay decoupled (reordering tabs is harmless). The live
@@ -4999,7 +5252,7 @@ class TyperDocker(DockWidget):
             page.setLayout(lay)
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setWidget(page)
             self.main_tabs.addTab(scroll, "")
             return lay
@@ -5098,6 +5351,14 @@ class TyperDocker(DockWidget):
         self.by_char_chk.setChecked(self._load_by_char())
         self.by_char_chk.toggled.connect(self._on_by_char_toggle)
         _sgl.addWidget(self.by_char_chk)
+        # which characters head the preset dropdowns
+        self.main_chars_btn = QPushButton()
+        self.main_chars_btn.clicked.connect(self.on_main_chars)
+        _sgl.addWidget(self.main_chars_btn)
+        self.main_chars_hint = QLabel()
+        self.main_chars_hint.setWordWrap(True)
+        self.main_chars_hint.setStyleSheet("color:#999;")
+        _sgl.addWidget(self.main_chars_hint)
         lay_setup.addWidget(_sg_pb)
 
         # --- collapsible "Layout & sizes" panel ---
@@ -5330,6 +5591,11 @@ class TyperDocker(DockWidget):
         char_row.addWidget(self.lbl_char)
         self.char_combo = NoScrollComboBox()
         self.char_combo.currentIndexChanged.connect(self._on_char_selected)
+        # right-click stars a character without a trip to the Setup tab
+        self.char_combo.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.char_combo.customContextMenuRequested.connect(
+            self._char_context_menu)
         char_row.addWidget(self.char_combo, 1)
         self.char_new_btn = QPushButton()
         self.char_new_btn.clicked.connect(self.on_char_new)
@@ -5359,7 +5625,7 @@ class TyperDocker(DockWidget):
         # of two full button rows
         self.preset_menu_btn = QToolButton()
         self.preset_menu_btn.setText("⋯")
-        self.preset_menu_btn.setPopupMode(QToolButton.InstantPopup)
+        self.preset_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         preset_menu = QMenu(self.preset_menu_btn)
         self.preset_save_act = preset_menu.addAction("")
         self.preset_save_act.triggered.connect(self.on_preset_save)
@@ -5397,7 +5663,7 @@ class TyperDocker(DockWidget):
         self.script_tabs.setMovable(True)
         self.script_tabs.setExpanding(False)
         self.script_tabs.setDrawBase(False)
-        self.script_tabs.setElideMode(Qt.ElideMiddle)
+        self.script_tabs.setElideMode(Qt.TextElideMode.ElideMiddle)
         self.script_tabs.setUsesScrollButtons(True)
         self.script_tabs.currentChanged.connect(self._on_tab_changed)
         self.script_tabs.tabCloseRequested.connect(self._close_tab)
@@ -5441,14 +5707,14 @@ class TyperDocker(DockWidget):
         lay_type.addWidget(self.lbl_align)
         self.table = QTableWidget(0, 2)
         self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setWordWrap(True)
         hdr = self.table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.table.itemSelectionChanged.connect(self._on_table_select)
         self.table.cellDoubleClicked.connect(self._on_table_double)
         _pb = self._new_panel("jp_en_table", "type")
@@ -5466,7 +5732,7 @@ class TyperDocker(DockWidget):
         self.reset_btn = QPushButton()
         self.reset_btn.clicked.connect(self.on_reset_progress)
         self.counter = QLabel("0 / 0")
-        self.counter.setAlignment(Qt.AlignCenter)
+        self.counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
         nav_row.addWidget(self.prev_btn)
         nav_row.addWidget(self.counter, 1)
         nav_row.addWidget(self.next_btn)
@@ -5481,7 +5747,7 @@ class TyperDocker(DockWidget):
         self.bubble_prev_btn.setText("◀")
         self.bubble_prev_btn.clicked.connect(lambda: self._bp_step(-1))
         self.bubble_lbl = QLabel("")
-        self.bubble_lbl.setAlignment(Qt.AlignCenter)
+        self.bubble_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.bubble_next_btn = QToolButton()
         self.bubble_next_btn.setText("▶")
         self.bubble_next_btn.clicked.connect(lambda: self._bp_step(1))
@@ -5572,7 +5838,7 @@ class TyperDocker(DockWidget):
         _fontl.addWidget(self.font_picker)
         # Right-click a font row: star it / drop it straight into a category,
         # without switching to the Fonts tab.
-        self.font_picker.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.font_picker.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.font_picker.list.customContextMenuRequested.connect(
             self._font_context_menu)
         # One-click star: drop the picked font into the Fonts tab's favourites
@@ -6018,7 +6284,7 @@ class TyperDocker(DockWidget):
         _sfx_pb = self._new_panel("sfx_panel", "sfx")
         # Let the SFX panel grow to fill the tab instead of sitting at its
         # natural height at the top.
-        _sfx_pb.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        _sfx_pb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         try:
             from .sfx.sfx_docker import MangaSFXDocker
             self._sfx_docker = MangaSFXDocker()
@@ -6036,7 +6302,7 @@ class TyperDocker(DockWidget):
             elif hasattr(_sfx_root, "widget"):
                 _inner = _sfx_root.widget()
             _sfx_content = _inner if _inner is not None else _sfx_root
-            _sfx_content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            _sfx_content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
             _sfx_pb.body_layout().addWidget(_sfx_content)
         except Exception as _sfx_exc:      # noqa: BLE001
             _lbl = QLabel("SFX Helper could not load:\n%s" % _sfx_exc)
@@ -6055,13 +6321,16 @@ class TyperDocker(DockWidget):
             from .fontfav_ui import FontFavoritesPanel
             from . import fontfiles as _FF
             self.fonts_panel = FontFavoritesPanel(
-                families_fn=lambda: sorted(QFontDatabase().families()),
+                families_fn=lambda: sorted(font_families()),
                 apply_fn=self._apply_favorite_font,
                 load_fn=self._load_font_favorites,
                 save_fn=self._save_font_favorites,
                 tr=self._tr,
                 current_font_fn=lambda: (self.font_picker.currentFamily() or ""),
-                find_fonts_fn=_FF.find_font_files,
+                # ALL files of each family (Regular/Bold/Italic/…), so an
+                # exported bundle needs no manual installing on the other side
+                find_fonts_fn=lambda fams: _FF.collect_font_files(
+                    fams, parent=self.widget(), label=self._tr("font_scan"))[0],
                 install_fonts_fn=self._install_fonts_and_refresh)
             lay_fonts.addWidget(self.fonts_panel, 1)
         except Exception as _ff_exc:      # noqa: BLE001
@@ -6076,9 +6345,12 @@ class TyperDocker(DockWidget):
         outer.addWidget(self.status)
 
         # build stamp so you can see at a glance which version Krita loaded
-        self.build_lbl = QLabel("TypeR v" + VERSION + " · Build " + BUILD)
+        # the detected Qt binding (auto-chosen at import: PyQt6 on Krita 6,
+        # PyQt5 on Krita 5) — shown for transparency / bug reports
+        self.build_lbl = QLabel("TypeR v" + VERSION + " · Build " + BUILD
+                                + " · " + binding_info())
         self.build_lbl.setStyleSheet("color: gray; font-size: 10px;")
-        self.build_lbl.setAlignment(Qt.AlignRight)
+        self.build_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         outer.addWidget(self.build_lbl)
 
         self.setWidget(main)
@@ -6242,10 +6514,24 @@ class TyperDocker(DockWidget):
                 out.append(f.strip())
         return out
 
+    def _font_index(self):
+        """Tolerant matcher over the installed families.
+
+        The font names in rules, presets and favourites are hand-written and
+        travel between machines, so they drift from what the system reports:
+        "CC Wild Words" here, "CCWildWords" there; a Fonts.com kit registering
+        as "ImaginaryFriendBBW00-Rg"; a repack that baked the cut into the
+        family name. Matching through the index means a mere spelling
+        difference stops counting as a missing font. See typer_kr.fontmatch for
+        the tiers -- and for the near misses it deliberately refuses to bridge,
+        because "BadaBoom Pro BB" really is not "BadaBoom BB"."""
+        return FM.FontIndex(self._installed_families())
+
     def _missing_of(self, fonts):
-        inst = {f.lower() for f in self._installed_families()}
-        miss = [f for f in self._dedup_ci(fonts) if f.lower() not in inst]
-        return sorted(miss, key=lambda s: s.lower())
+        """Referenced fonts that resolve to nothing installed at all."""
+        idx = self._font_index()
+        return sorted(idx.missing(self._dedup_ci(fonts)),
+                      key=lambda s: s.lower())
 
     def _show_missing_fonts(self):
         """Setup-tab 'Missing fonts' report: one window that switches between a
@@ -6283,22 +6569,32 @@ class TyperDocker(DockWidget):
         play.addWidget(back)
         stack.addWidget(page)
 
+        def _add(text, family):
+            it = QListWidgetItem(text)
+            ff = QFont(family)
+            ff.setPixelSize(14)
+            it.setFont(ff)
+            lst.addItem(it)
+
         def _show(title, fonts):
             ref = self._dedup_ci(fonts)
-            missing = self._missing_of(fonts)
+            _, renamed, missing = self._font_index().report(ref)
             head.setText(self._tr("missing_head").format(
                 title=title, have=len(self._installed_families()),
                 ref=len(ref), missing=len(missing)))
             lst.clear()
-            if not missing:
-                lst.addItem(self._tr("missing_none_line"))
-            else:
+            # Names that only differ in spelling are not missing. Listing them
+            # first, rendered in the face they actually resolve to, turns the
+            # report into something actionable: these are the entries whose
+            # spelling the user may want to correct, and the preview proves the
+            # match is the right face. The arrow needs no translation.
+            for wanted, m in sorted(renamed, key=lambda p: p[0].lower()):
+                _add("%s  →  %s" % (wanted, m.family), m.family)
+            if missing:
                 for f in missing:
-                    it = QListWidgetItem(f)
-                    ff = QFont(f)
-                    ff.setPixelSize(14)
-                    it.setFont(ff)
-                    lst.addItem(it)
+                    _add(f, f)
+            elif not renamed:
+                lst.addItem(self._tr("missing_none_line"))
             stack.setCurrentWidget(page)
 
         b_fav.clicked.connect(
@@ -6308,14 +6604,14 @@ class TyperDocker(DockWidget):
         b_all.clicked.connect(
             lambda: _show(self._tr("missing_all"), self._all_referenced_fonts()))
         back.clicked.connect(lambda: stack.setCurrentWidget(menu))
-        dlg.exec_()
+        dlg.exec()
 
     def _font_context_menu(self, pos):
         """Right-click menu on the font picker: star the font under the cursor,
         or add it directly to one of the existing categories."""
         lst = self.font_picker.list
         it = lst.itemAt(pos)
-        fam = (it.data(Qt.UserRole) if it is not None
+        fam = (it.data(Qt.ItemDataRole.UserRole) if it is not None
                else self.font_picker.currentFamily())
         if not fam:
             return
@@ -6329,7 +6625,7 @@ class TyperDocker(DockWidget):
                 menu.addSeparator()
                 for c in cats:
                     cat_actions[menu.addAction("→ " + c)] = c
-        chosen = menu.exec_(lst.mapToGlobal(pos))
+        chosen = menu.exec(lst.mapToGlobal(pos))
         if chosen is None or panel is None:
             return
         if chosen is act_fav:
@@ -6430,6 +6726,108 @@ class TyperDocker(DockWidget):
             w.setVisible(by_char)
         self.auto_char_chk.setVisible(by_char)
         self._refresh_presets_combo()
+
+    # ---- main characters (the ones pinned to the top of the dropdowns) ----
+    def _load_main_chars(self):
+        """{manga: [character, …]} — who is a main character, per manga."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "mainChars", "")
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        out = {}
+        for manga, names in data.items():
+            if isinstance(names, list):
+                out[str(manga)] = [str(n) for n in names if str(n).strip()]
+        return out
+
+    def _save_main_chars(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "mainChars", json.dumps(self._main_chars_map))
+        except Exception:
+            pass
+
+    def _main_chars(self, manga=None):
+        """The main characters of a manga (the current one by default)."""
+        return list(self._main_chars_map.get(manga or self._group, []))
+
+    def _is_main_char(self, char, manga=None):
+        low = (char or "").strip().lower()
+        return any(c.lower() == low for c in self._main_chars(manga))
+
+    def _toggle_main_char(self, char, manga=None):
+        """Star/unstar a character. Returns True when it is a main character
+        afterwards."""
+        char = (char or "").strip()
+        if not char:
+            return False
+        manga = manga or self._group
+        names = [c for c in self._main_chars_map.get(manga, [])]
+        low = char.lower()
+        hit = [c for c in names if c.lower() == low]
+        if hit:
+            names = [c for c in names if c.lower() != low]
+            now_main = False
+        else:
+            names.append(char)
+            now_main = True
+        if names:
+            self._main_chars_map[manga] = names
+        else:
+            self._main_chars_map.pop(manga, None)
+        self._save_main_chars()
+        return now_main
+
+    def _forget_main_char(self, char, manga=None):
+        """Drop a character from the main list (used when it is deleted)."""
+        manga = manga or self._group
+        names = self._main_chars_map.get(manga)
+        if not names:
+            return
+        low = (char or "").strip().lower()
+        rest = [c for c in names if c.lower() != low]
+        if rest:
+            self._main_chars_map[manga] = rest
+        else:
+            self._main_chars_map.pop(manga, None)
+        self._save_main_chars()
+
+    def on_main_chars(self):
+        """Setup button: pick each manga's main characters."""
+        dlg = MainCharsDialog(self.widget(), self._tr, self._groups,
+                              self._main_chars_map, self._group)
+        if dlg.exec():
+            self._main_chars_map = dlg.result_map()
+            self._save_main_chars()
+            self._refresh_chars_combo(select=self._char)
+            self._refresh_presets_combo()
+            self._set_status(self._tr("st_mainchar_saved").format(
+                n=len(self._main_chars()), manga=self._group))
+
+    def _char_context_menu(self, pos):
+        """Right-click the character dropdown: star/unstar without leaving the
+        page you are working on."""
+        ch = self.char_combo.currentData()
+        if not ch:
+            return
+        menu = QMenu(self.char_combo)
+        is_main = self._is_main_char(ch)
+        act = menu.addAction(self._tr(
+            "mainchar_ctx_remove" if is_main else "mainchar_ctx_add"))
+        menu.addSeparator()
+        act_manage = menu.addAction(self._tr("mainchar_btn"))
+        chosen = menu.exec(self.char_combo.mapToGlobal(pos))
+        if chosen is act:
+            now = self._toggle_main_char(ch)
+            self._refresh_chars_combo(select=ch)
+            self._refresh_presets_combo()
+            self._set_status(self._tr(
+                "st_mainchar_on" if now else "st_mainchar_off").format(name=ch))
+        elif chosen is act_manage:
+            self.on_main_chars()
 
     def _preset_ref(self, data):
         """(owning character, preset name) for a preset-combo item's data.
@@ -6743,6 +7141,8 @@ class TyperDocker(DockWidget):
         self.replace_chk.setText(t("replace_existing"))
         self.replace_chk.setToolTip(t("replace_existing_tip"))
         self.by_char_chk.setText(t("presets_by_char"))
+        self.main_chars_btn.setText(t("mainchar_btn"))
+        self.main_chars_hint.setText(t("mainchar_hint"))
         self.by_char_chk.setToolTip(t("presets_by_char_tip"))
         self._retranslate_panels()
         self.exp_toggle.setText("⚗ " + t("exp_section"))
@@ -6815,8 +7215,8 @@ class TyperDocker(DockWidget):
 
     def _hline(self):
         line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
         return line
 
     def _update_color_btn(self):
@@ -6856,7 +7256,7 @@ class TyperDocker(DockWidget):
 
         dlg = QColorDialog(self._style_soft_color, self.widget())
         dlg.currentColorChanged.connect(_apply)
-        if dlg.exec_():
+        if dlg.exec():
             _apply(dlg.selectedColor())
         else:
             _apply(prev)
@@ -6961,37 +7361,37 @@ class TyperDocker(DockWidget):
         dlg.setWindowTitle(self._tr("outline_pattern_krita"))
         lay = QVBoxLayout(dlg)
         lst = QListWidget()
-        lst.setViewMode(QListWidget.IconMode)
+        lst.setViewMode(QListWidget.ViewMode.IconMode)
         lst.setIconSize(QSize(64, 64))
-        lst.setResizeMode(QListWidget.Adjust)
-        lst.setMovement(QListWidget.Static)
+        lst.setResizeMode(QListWidget.ResizeMode.Adjust)
+        lst.setMovement(QListWidget.Movement.Static)
         lst.setMinimumSize(430, 340)
         for nm in sorted(res.keys(), key=lambda s: s.lower()):
             img = self._krita_pattern_image(nm)
             if img is None:
                 continue
             it = QListWidgetItem(nm[:22])
-            it.setData(Qt.UserRole, nm)
+            it.setData(Qt.ItemDataRole.UserRole, nm)
             it.setToolTip(nm)
             it.setIcon(QIcon(QPixmap.fromImage(img).scaled(
-                64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
-            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+                64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
+            it.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom)
             lst.addItem(it)
         if lst.count() == 0:
             self._set_status(self._tr("outline_pattern_none"), error=True)
             return None, None
         lst.itemDoubleClicked.connect(lambda _i: dlg.accept())
         lay.addWidget(lst)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return None, None
         it = lst.currentItem()
         if it is None:
             return None, None
-        nm = it.data(Qt.UserRole)
+        nm = it.data(Qt.ItemDataRole.UserRole)
         return nm, self._krita_pattern_image(nm)
 
     def _patterns_dir(self):
@@ -7070,14 +7470,14 @@ class TyperDocker(DockWidget):
         if sw <= 0 or sh <= 0:
             self._set_status(self._tr("sel_none"), error=True)
             return
-        img = QImage(sw, sh, QImage.Format_ARGB32_Premultiplied)
+        img = QImage(sw, sh, QImage.Format.Format_ARGB32_Premultiplied)
         img.fill(0)
         p = QPainter(img)
         if grad_spec is not None:     # re-render the fade at the real size
             fresh = IMG.make_pattern_gradient(width=sw, height=sh, **grad_spec)
             p.drawImage(0, 0, fresh)
         elif stretch:                 # one span across the whole selection
-            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             p.drawImage(QRectF(0, 0, sw, sh), tile, QRectF(tile.rect()))
         else:
             p.fillRect(0, 0, sw, sh, _scaled_pattern_brush(tile, 100))
@@ -7085,13 +7485,13 @@ class TyperDocker(DockWidget):
             mbytes = bytes(sel.pixelData(sx, sy, sw, sh))
             if len(mbytes) >= sw * sh:
                 mask = QImage(mbytes, sw, sh, sw,
-                              QImage.Format_Alpha8).copy()
-                p.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+                              QImage.Format.Format_Alpha8).copy()
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
                 p.drawImage(0, 0, mask)
         except Exception:             # noqa: BLE001 — fall back to the bbox fill
             pass
         p.end()
-        img = img.convertToFormat(QImage.Format_ARGB32)
+        img = img.convertToFormat(QImage.Format.Format_ARGB32)
         node = _paint_layer_from_image(doc, img, sx, sy,
                                        self._tr("sel_pattern_layer"))
         if node is not None:
@@ -7121,10 +7521,10 @@ class TyperDocker(DockWidget):
         dlg.resize(430, 380)
         lay = QVBoxLayout(dlg)
         lst = QListWidget()
-        lst.setViewMode(QListWidget.IconMode)
+        lst.setViewMode(QListWidget.ViewMode.IconMode)
         lst.setIconSize(QSize(72, 72))
-        lst.setResizeMode(QListWidget.Adjust)
-        lst.setMovement(QListWidget.Static)
+        lst.setResizeMode(QListWidget.ResizeMode.Adjust)
+        lst.setMovement(QListWidget.Movement.Static)
 
         def _fill():
             lst.clear()
@@ -7133,11 +7533,11 @@ class TyperDocker(DockWidget):
                 if img.isNull():
                     continue
                 it = QListWidgetItem(e.get("name", ""))
-                it.setData(Qt.UserRole, e["path"])
+                it.setData(Qt.ItemDataRole.UserRole, e["path"])
                 it.setToolTip(e.get("name", ""))
                 it.setIcon(QIcon(QPixmap.fromImage(img).scaled(
-                    72, 72, Qt.KeepAspectRatio, Qt.FastTransformation)))
-                it.setTextAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+                    72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation)))
+                it.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom)
                 lst.addItem(it)
         _fill()
         lst.itemDoubleClicked.connect(lambda _i: dlg.accept())
@@ -7149,24 +7549,24 @@ class TyperDocker(DockWidget):
             it = lst.currentItem()
             if it is None:
                 return
-            p = it.data(Qt.UserRole)
+            p = it.data(Qt.ItemDataRole.UserRole)
             self._save_pattern_library(
                 [e for e in self._load_pattern_library() if e.get("path") != p])
             _fill()
         del_btn.clicked.connect(_delete)
         row.addWidget(del_btn)
         row.addStretch(1)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         row.addWidget(bb)
         lay.addLayout(row)
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return None, None
         it = lst.currentItem()
         if it is None:
             return None, None
-        path = it.data(Qt.UserRole)
+        path = it.data(Qt.ItemDataRole.UserRole)
         img = QImage(path)
         return (img if not img.isNull() else None), path
 
@@ -7234,7 +7634,7 @@ class TyperDocker(DockWidget):
                 t, dlg.is_gradient(), dlg.gradient_spec()))
 
         def _finish(result):
-            if result == QDialog.Accepted:
+            if result == QDialog.DialogCode.Accepted:
                 img = dlg._current_tile()
                 path = self._save_generated_pattern(img)
                 if target == "fill":
@@ -7380,7 +7780,7 @@ class TyperDocker(DockWidget):
         dlg = QColorDialog(self._shadow_color, self.widget())
         dlg.setWindowTitle(self._tr("shadow_color_btn"))
         dlg.currentColorChanged.connect(_apply)
-        if dlg.exec_():
+        if dlg.exec():
             _apply(dlg.selectedColor())
         else:
             _apply(prev)                  # cancelled -> restore the old colour
@@ -7785,7 +8185,7 @@ class TyperDocker(DockWidget):
         bar = self.main_tabs.tabBar()
         if obj is bar:
             et = ev.type()
-            if et in (QEvent.DragEnter, QEvent.DragMove):
+            if et in (QEvent.Type.DragEnter, QEvent.Type.DragMove):
                 if ev.mimeData().hasFormat(PANEL_MIME):
                     i = bar.tabAt(ev.pos())
                     if i >= 0:
@@ -7796,7 +8196,7 @@ class TyperDocker(DockWidget):
                     return True
                 ev.ignore()
                 return True
-            if et == QEvent.Drop:
+            if et == QEvent.Type.Drop:
                 if ev.mimeData().hasFormat(PANEL_MIME):
                     pid = bytes(ev.mimeData().data(PANEL_MIME)).decode("utf-8")
                     i = bar.tabAt(ev.pos())
@@ -7884,7 +8284,7 @@ class TyperDocker(DockWidget):
             host.raise_()
             self._detached[pid] = slot
         else:
-            dlg = QDialog(self, Qt.Tool)
+            dlg = QDialog(self, Qt.WindowType.Tool)
             dlg.setWindowTitle(self._panel_title(pid))
             dl = QVBoxLayout(dlg)
             dl.setContentsMargins(4, 4, 4, 4)
@@ -8664,13 +9064,13 @@ class TyperDocker(DockWidget):
         dlg = TextTypeFontsDialog(self.widget(), self._tr,
                                   self._installed_families(),
                                   self._tt_overrides(), self)
-        dlg.exec_()
+        dlg.exec()
         self._save_tt_overrides(dlg.overrides())
         self._on_text_type_changed()          # the stand-in hint may be stale now
 
     def _installed_families(self):
         try:
-            return list(QFontDatabase().families())
+            return list(font_families())
         except Exception:
             return []
 
@@ -8775,6 +9175,8 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_group_none"), error=True)
             return
         del self._groups[g]
+        if self._main_chars_map.pop(g, None) is not None:
+            self._save_main_chars()
         self._char = ""
         self._ensure_levels()
         self._save_groups()
@@ -8785,10 +9187,19 @@ class TyperDocker(DockWidget):
 
     # ---- Character level ----
     def _refresh_chars_combo(self, select=None):
+        """Rebuild the character dropdown: main characters on top (starred),
+        a separator, then the rest. Item data stays the plain name, so
+        everything that looks a character up is unaffected."""
         self._ensure_levels()
         self.char_combo.blockSignals(True)
         self.char_combo.clear()
-        for ch in sorted(self._cur_chars().keys(), key=lambda s: s.lower()):
+        main, rest = LP.sort_characters(self._cur_chars().keys(),
+                                        self._main_chars())
+        for ch in main:
+            self.char_combo.addItem("★ " + ch, ch)
+        if main and rest:
+            self.char_combo.insertSeparator(self.char_combo.count())
+        for ch in rest:
             self.char_combo.addItem(ch, ch)
         target = select or self._char
         idx = self.char_combo.findData(target)
@@ -8830,6 +9241,7 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_char_none"), error=True)
             return
         del self._groups[self._group][ch]
+        self._forget_main_char(ch)
         self._char = ""
         self._ensure_levels()
         self._save_groups()
@@ -8851,8 +9263,17 @@ class TyperDocker(DockWidget):
                                key=lambda s: s.lower()):
                 self.preset_combo.addItem(name, name)
         else:
-            for label, ch, name in LP.flatten_presets(self._cur_chars()):
-                self.preset_combo.addItem(label, (ch, name))
+            # simple mode lists every character's presets in one dropdown, so
+            # the main characters' styles go to the top of it
+            mains = self._main_chars()
+            prev_main = None
+            for label, ch, name in LP.flatten_presets(self._cur_chars(), mains):
+                is_main = self._is_main_char(ch)
+                if prev_main and not is_main:
+                    self.preset_combo.insertSeparator(self.preset_combo.count())
+                prev_main = is_main
+                self.preset_combo.addItem("★ " + label if is_main else label,
+                                          (ch, name))
         if select is not None:
             # manual match: findData compares QVariants, which is unreliable
             # for python tuples
@@ -8905,6 +9326,41 @@ class TyperDocker(DockWidget):
         self._set_status(self._tr("st_preset_deleted").format(name=name))
 
     def on_preset_export(self):
+        # ask what to export as: the self-contained bundle (presets + the fonts
+        # they name, so the other machine has nothing left to install), the bare
+        # JSON, or a readable Excel table for sharing / spreadsheet editing
+        fmts = [self._tr("preset_fmt_bundle"), self._tr("preset_fmt_json"),
+                self._tr("preset_fmt_xlsx")]
+        choice, ok = QInputDialog.getItem(
+            self.widget(), self._tr("preset_export_fmt_title"),
+            self._tr("preset_export_fmt_prompt"), fmts, 0, False)
+        if not ok:
+            return
+        if choice == fmts[0]:
+            manga = self._group or ""
+            default = "TypeR presets (%s).zip" % manga if manga \
+                else "typer_presets.zip"
+            path, _ = QFileDialog.getSaveFileName(
+                self.widget(), self._tr("preset_file_save"),
+                default, self._tr("preset_bundle_filter"))
+            if not path:
+                return
+            if not path.lower().endswith(".zip"):
+                path += ".zip"
+            self._export_presets_bundle(path)
+            return
+        if choice == fmts[2]:
+            manga = self._group or ""
+            default = "Fonts (%s).xlsx" % manga if manga else "Fonts.xlsx"
+            path, _ = QFileDialog.getSaveFileName(
+                self.widget(), self._tr("preset_file_save"),
+                default, self._tr("xlsx_filter"))
+            if not path:
+                return
+            if not path.lower().endswith(".xlsx"):
+                path += ".xlsx"
+            self._export_presets_xlsx(path)
+            return
         path, _ = QFileDialog.getSaveFileName(
             self.widget(), self._tr("preset_file_save"),
             "typer_presets.json", self._tr("preset_filter"))
@@ -8921,15 +9377,84 @@ class TyperDocker(DockWidget):
         except Exception as exc:
             self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)
 
+    def preset_font_names(self):
+        """Every font family named by a saved preset, once each, order kept."""
+        return self._dedup_ci(self._main_preset_fonts())
+
+    def _export_presets_bundle(self, path):
+        """Write presets.json PLUS every font file the presets name into a .zip.
+
+        Presets are useless without their fonts — importing them on another
+        machine used to mean hunting down and installing most of the families by
+        hand. The bundle carries every cut of every family found here, and the
+        import side installs them.
+        """
+        from . import fontfiles as _FF
+        fams = self.preset_font_names()
+        app = QApplication.instance()
+        if app is not None:
+            app.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            files, missing = _FF.collect_font_files(
+                fams, parent=self.widget(), label=self._tr("font_scan"))
+        except Exception:                               # noqa: BLE001
+            files, missing = {}, list(fams)
+        finally:
+            if app is not None:
+                app.restoreOverrideCursor()
+        try:
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("presets.json",
+                           json.dumps(self._groups, ensure_ascii=False, indent=2))
+                n_files = _FF.add_fonts_to_zip(z, files)
+        except Exception as exc:                        # noqa: BLE001
+            self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)
+            return
+        n = sum(len(pr) for chars in self._groups.values()
+                for pr in chars.values())
+        self._set_status(self._tr("st_preset_exported_bundle").format(
+            n=n, fonts=n_files, missing=len(missing)))
+        if missing:
+            self._warn_preset_fonts_missing(missing)
+
+    def _warn_preset_fonts_missing(self, missing):
+        """Say which preset fonts couldn't be bundled — they aren't installed
+        here, so the other machine will still be short of them."""
+        QMessageBox.information(
+            self.widget(), self._tr("fav_missing_title"),
+            self._tr("fav_missing_intro") + "\n\n• " + "\n• ".join(missing[:40])
+            + ("\n…" if len(missing) > 40 else ""))
+
+    def _export_presets_xlsx(self, path):
+        """Write a fonts matrix for the CURRENT manga only (characters as rows,
+        purposes as columns, fonts in the cells) — the style of the user's own
+        sheet. Dependency-free writer; character column + header row frozen."""
+        chars = self._groups.get(self._group, {})
+        headers, rows = presets_to_table(
+            chars, self._tr, default_char=self._tr("xls_default_char"))
+        sheet = self._group or self._tr("xls_sheet_presets")
+        widths = [24] + [20] * (len(headers) - 1)
+        try:
+            XLSX.write_xlsx(path, sheet, headers, rows, widths=widths,
+                            freeze_rows=1, freeze_cols=1)
+            self._set_status(
+                self._tr("st_preset_exported_xlsx").format(n=len(rows)))
+        except Exception as exc:
+            self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)
+
     def on_preset_import(self):
         path, _ = QFileDialog.getOpenFileName(
             self.widget(), self._tr("preset_file_open"),
-            "", self._tr("preset_filter"))
+            "", self._tr("preset_open_filter"))
         if not path:
             return
+        fonts = []
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
+            if zipfile.is_zipfile(path):
+                data, fonts = self._read_preset_bundle(path)
+            else:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
             if not isinstance(data, dict):
                 raise ValueError("not a preset object")
         except Exception:
@@ -8948,7 +9473,35 @@ class TyperDocker(DockWidget):
         self._refresh_groups_combo()
         self._refresh_chars_combo()
         self._refresh_presets_combo()
-        self._set_status(self._tr("st_preset_imported").format(n=count))
+        if fonts:
+            res = self._install_fonts_and_refresh(fonts) or {}
+            self._set_status(self._tr("st_preset_imported_bundle").format(
+                n=count, inst=len(res.get("installed", [])),
+                skip=len(res.get("skipped", [])),
+                fail=len(res.get("failed", []))))
+        else:
+            self._set_status(self._tr("st_preset_imported").format(n=count))
+
+    def _read_preset_bundle(self, path):
+        """(preset data, [extracted font file paths]) from an exported .zip."""
+        data = {}
+        fonts = []
+        with zipfile.ZipFile(path) as z:
+            names = z.namelist()
+            member = "presets.json" if "presets.json" in names else next(
+                (n for n in names if n.lower().endswith(".json")), "")
+            if member:
+                data = json.loads(z.read(member).decode("utf-8"))
+            wanted = [n for n in names
+                      if n.startswith("fonts/") and not n.endswith("/")]
+            if wanted:
+                tmp = tempfile.mkdtemp(prefix="typer_presets_fonts_")
+                for nm in wanted:
+                    dest = os.path.join(tmp, os.path.basename(nm))
+                    with open(dest, "wb") as fh:
+                        fh.write(z.read(nm))
+                    fonts.append(dest)
+        return data, fonts
 
     def on_preset_import_excel(self):
         """Import a character/style font-guide sheet (.xlsx) as presets: a row
@@ -9425,9 +9978,9 @@ class TyperDocker(DockWidget):
         box = QMessageBox(self.widget())
         box.setWindowTitle(self._tr("g_export_title"))
         box.setText(self._tr("g_export_msg"))
-        openb = box.addButton(self._tr("g_export_open"), QMessageBox.AcceptRole)
-        box.addButton(self._tr("g_export_cancel"), QMessageBox.RejectRole)
-        box.exec_()
+        openb = box.addButton(self._tr("g_export_open"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(self._tr("g_export_cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
         if box.clickedButton() is not openb:
             return
         import webbrowser
@@ -9626,7 +10179,7 @@ class TyperDocker(DockWidget):
             if QMessageBox.question(
                     self.widget(), self._tr("save_script_dlg"),
                     self._tr("save_script_confirm").format(
-                        name=os.path.basename(path))) != QMessageBox.Yes:
+                        name=os.path.basename(path))) != QMessageBox.StandardButton.Yes:
                 return
             target = path
         else:
@@ -9779,7 +10332,7 @@ class TyperDocker(DockWidget):
         dlg = QColorDialog(self._color, self.widget())
         dlg.setWindowTitle(self._tr("color_dlg"))
         dlg.currentColorChanged.connect(_apply)
-        if dlg.exec_():
+        if dlg.exec():
             _apply(dlg.selectedColor())
         else:
             _apply(prev)                  # cancelled -> restore the old colour
@@ -9797,7 +10350,7 @@ class TyperDocker(DockWidget):
         dlg = QColorDialog(self._outline_color, self.widget())
         dlg.setWindowTitle(self._tr("outline_color_dlg"))
         dlg.currentColorChanged.connect(_apply)
-        if dlg.exec_():
+        if dlg.exec():
             _apply(dlg.selectedColor())
         else:
             _apply(prev)                  # cancelled -> restore the old colour
@@ -9815,7 +10368,7 @@ class TyperDocker(DockWidget):
         dlg = QColorDialog(self._outline2_color, self.widget())
         dlg.setWindowTitle(self._tr("outline2_color_dlg"))
         dlg.currentColorChanged.connect(_apply)
-        if dlg.exec_():
+        if dlg.exec():
             _apply(dlg.selectedColor())
         else:
             _apply(prev)                  # cancelled -> restore the old colour
@@ -9887,7 +10440,7 @@ class TyperDocker(DockWidget):
         self.active_edit.setPlainText(new)          # triggers textChanged -> preview
         cur = self.active_edit.textCursor()
         cur.setPosition(max(0, ns))
-        cur.setPosition(max(0, ne), QTextCursor.KeepAnchor)
+        cur.setPosition(max(0, ne), QTextCursor.MoveMode.KeepAnchor)
         self.active_edit.setTextCursor(cur)
         self.active_edit.setFocus()
 
@@ -10425,7 +10978,7 @@ class TyperDocker(DockWidget):
         self.bp_overlay.boxRemoved.connect(self._on_bp_box_removed)
         self.bp_overlay.boxAdded.connect(self._on_bp_box_added)
         self.bp_overlay.boxChanged.connect(self._on_bp_box_changed)
-        self.bp_overlay.setFocusPolicy(Qt.StrongFocus)
+        self.bp_overlay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # keyboard shortcuts while the overlay has focus (fast labelling)
         for keys, fn in (
                 (("E", "."), lambda: self._bp_step(1)),
@@ -10435,7 +10988,7 @@ class TyperDocker(DockWidget):
                 (("R",), self._bp_toggle_current_shape)):
             for key in keys:
                 sc = QShortcut(QKeySequence(key), self.bp_overlay)
-                sc.setContext(Qt.WidgetShortcut)
+                sc.setContext(Qt.ShortcutContext.WidgetShortcut)
                 sc.activated.connect(fn)
         _ov_pb.body_layout().addWidget(self.bp_overlay, 2)
         lay.addWidget(_ov_pb, 2)
@@ -10511,12 +11064,12 @@ class TyperDocker(DockWidget):
         edit.setPlainText("\n".join(self._bp_user_sfx_words()))
         lay.addWidget(edit, 1)
         btns = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         lay.addWidget(btns)
         dlg.resize(320, 380)
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         words = [w.strip() for w in edit.toPlainText().split("\n")
                  if w.strip()]
@@ -10628,11 +11181,11 @@ class TyperDocker(DockWidget):
         box = QMessageBox(self.widget())
         box.setWindowTitle(self._tr("bp_models_title"))
         box.setText(msg)
-        box.setIcon(QMessageBox.Information)
+        box.setIcon(QMessageBox.Icon.Information)
         open_btn = box.addButton(self._tr("bp_models_open"),
-                                 QMessageBox.AcceptRole)
-        box.addButton(QMessageBox.Close)
-        box.exec_()
+                                 QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
         if box.clickedButton() is open_btn:
             try:
                 os.startfile(models_dir if os.path.isdir(models_dir)
@@ -10656,7 +11209,7 @@ class TyperDocker(DockWidget):
     def _bp_save_page_png(gray, w, h, path):
         """Write the grayscale page to a PNG (input for the AI detector)."""
         data = bytes(gray)
-        img = QImage(data, w, h, w, QImage.Format_Grayscale8)
+        img = QImage(data, w, h, w, QImage.Format.Format_Grayscale8)
         return img.save(path, "PNG")
 
     @staticmethod
@@ -11099,8 +11652,8 @@ class TyperDocker(DockWidget):
         ellipse for round bubbles and rectangle otherwise. This is only for
         eyeballing what was labelled; training uses the plain PNG + .txt."""
         data = bytes(gray)
-        base = QImage(data, w, h, w, QImage.Format_Grayscale8)
-        img = base.convertToFormat(QImage.Format_RGB888)
+        base = QImage(data, w, h, w, QImage.Format.Format_Grayscale8)
+        img = base.convertToFormat(QImage.Format.Format_RGB888)
         p = QPainter(img)
         try:
             f = p.font()
@@ -11113,7 +11666,7 @@ class TyperDocker(DockWidget):
                 sfx = b.get("kind") == "sfx"
                 col = QColor(70, 130, 230) if sfx else QColor(230, 60, 60)
                 p.setPen(QPen(col, pen_w))
-                p.setBrush(QBrush(Qt.NoBrush))
+                p.setBrush(QBrush(Qt.BrushStyle.NoBrush))
                 r = QRectF(float(b["x"]), float(b["y"]),
                            float(b["w"]), float(b["h"]))
                 poly = b.get("poly")
@@ -11128,7 +11681,7 @@ class TyperDocker(DockWidget):
                                float(bw), float(bh))
                 p.fillRect(badge, col)
                 p.setPen(QPen(QColor(255, 255, 255)))
-                p.drawText(badge, Qt.AlignCenter, str(i))
+                p.drawText(badge, Qt.AlignmentFlag.AlignCenter, str(i))
         finally:
             p.end()
         return img.save(path, "PNG")

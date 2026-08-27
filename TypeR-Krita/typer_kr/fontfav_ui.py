@@ -17,19 +17,21 @@ import os
 import tempfile
 import zipfile
 
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
-from PyQt5.QtGui import QFont, QFontMetrics, QColor, QPixmap, QPainter
-from PyQt5.QtWidgets import (
+from ._qt import Qt, pyqtSignal, QSize, QTimer
+from ._qt import QFont, QFontMetrics, QColor, QPixmap, QPainter
+from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
     QListWidget, QListWidgetItem, QPushButton, QDialog, QDialogButtonBox,
     QCheckBox, QInputDialog, QMessageBox, QScrollArea, QMenu,
-    QFileDialog, QStyledItemDelegate, QStyle, QSlider,
+    QFileDialog, QStyledItemDelegate, QStyle, QSlider, QApplication,
 )
 
 from .fontfav import FavoritesStore, UNCATEGORIZED
+from . import fontmatch
+from .fontfiles import add_fonts_to_zip as _zip_font_files
 
-_ROLE_FAMILY = Qt.UserRole
-_ROLE_CATS = Qt.UserRole + 1
+_ROLE_FAMILY = Qt.ItemDataRole.UserRole
+_ROLE_CATS = Qt.ItemDataRole.UserRole + 1
 _FACE_PX = 16                       # font size of the per-row face preview
 #: Cap on how many rendered font faces (and their tinted copies) are kept in
 #: memory. Well above any screenful, so scroll locality means an evicted face is
@@ -59,11 +61,11 @@ class _FontItemDelegate(QStyledItemDelegate):
         return QSize(option.rect.width(), self._size() + 12)
 
     def paint(self, painter, option, index):
-        name = index.data(Qt.DisplayRole) or ""
+        name = index.data(Qt.ItemDataRole.DisplayRole) or ""
         fam = index.data(_ROLE_FAMILY) or name
         cats = index.data(_ROLE_CATS) or ""
         painter.save()
-        if option.state & QStyle.State_Selected:
+        if option.state & QStyle.StateFlag.State_Selected:
             painter.fillRect(option.rect, option.palette.highlight())
             fg = option.palette.highlightedText().color()
         else:
@@ -84,7 +86,7 @@ class _FontItemDelegate(QStyledItemDelegate):
             f.setPixelSize(self._size())
             painter.setFont(f)
             painter.setPen(fg)
-            painter.drawText(rect, Qt.AlignVCenter | Qt.AlignLeft, name)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, name)
             name_w = QFontMetrics(f).horizontalAdvance(name)
         if cats:
             off = name_w + 14
@@ -96,7 +98,7 @@ class _FontItemDelegate(QStyledItemDelegate):
                 c.setAlpha(150)
                 painter.setPen(c)
                 painter.drawText(rect.adjusted(off, 0, 0, 0),
-                                 Qt.AlignVCenter | Qt.AlignLeft, "· " + cats)
+                                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "· " + cats)
         painter.restore()
 
 # English fallback so the panel is self-sufficient if no translator is passed.
@@ -240,7 +242,7 @@ class FontFavoritesPanel(QWidget):
         # preview size: drag to make the font faces bigger for a closer look
         size_row = QHBoxLayout()
         size_row.addWidget(QLabel(self.t("fav_size")))
-        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider = QSlider(Qt.Orientation.Horizontal)
         self.size_slider.setRange(10, 64)
         self.size_slider.setValue(self._face_px)
         self.size_slider.setToolTip(self.t("fav_size_tip"))
@@ -257,7 +259,7 @@ class FontFavoritesPanel(QWidget):
         self.list.setUniformItemSizes(True)
         self.list.setItemDelegate(_FontItemDelegate(self, _FACE_PX, self.list))
         self.list.itemDoubleClicked.connect(self._on_double)
-        self.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._list_context_menu)
         lay.addWidget(self.list, 1)
 
@@ -303,7 +305,7 @@ class FontFavoritesPanel(QWidget):
     # -- selection helpers --------------------------------------------------
     def _selected_family(self):
         it = self.list.currentItem()
-        return it.data(Qt.UserRole) if it is not None else None
+        return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
 
     def _selected_category(self):
         """The category filter value: None (all), UNCATEGORIZED, or a name."""
@@ -440,10 +442,10 @@ class FontFavoritesPanel(QWidget):
         tinted = by_colour.get(rgba)
         if tinted is None:
             tinted = QPixmap(face.size())
-            tinted.fill(Qt.transparent)
+            tinted.fill(Qt.GlobalColor.transparent)
             tp = QPainter(tinted)
             tp.drawPixmap(0, 0, face)
-            tp.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            tp.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
             tp.fillRect(tinted.rect(), color)
             tp.end()
             by_colour[rgba] = tinted
@@ -512,7 +514,7 @@ class FontFavoritesPanel(QWidget):
             fm = QFontMetrics(f)
             w = max(1, min(fm.horizontalAdvance(family) + 4, 1600))
             pm = QPixmap(w, self._face_px + 8)
-            pm.fill(Qt.transparent)
+            pm.fill(Qt.GlobalColor.transparent)
             p = QPainter(pm)
             p.setFont(f)
             p.setPen(QColor(0, 0, 0))
@@ -530,7 +532,7 @@ class FontFavoritesPanel(QWidget):
 
     def _on_double(self, item):
         if item is not None:
-            self._use(item.data(Qt.UserRole))
+            self._use(item.data(Qt.ItemDataRole.UserRole))
 
     def _use(self, family):
         try:
@@ -579,7 +581,7 @@ class FontFavoritesPanel(QWidget):
         if QMessageBox.question(
                 self, self.t("fav_remove"),
                 self.t("fav_delete_font_q", name=fam),
-                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         self._store.remove_font(fam)
         self._persist()
@@ -603,7 +605,7 @@ class FontFavoritesPanel(QWidget):
         self._select_family(fam)
 
     def _manage_categories(self):
-        _ManageCategoriesDialog(self, self.t, self._store).exec_()
+        _ManageCategoriesDialog(self, self.t, self._store).exec()
         self._persist()
         self._reload_categories()
         self._refresh_list()
@@ -619,7 +621,7 @@ class FontFavoritesPanel(QWidget):
         act_edit = menu.addAction(self.t("fav_ctx_edit"))
         menu.addSeparator()
         act_del = menu.addAction(self.t("fav_ctx_delete"))
-        chosen = menu.exec_(self.list.mapToGlobal(pos))
+        chosen = menu.exec(self.list.mapToGlobal(pos))
         if chosen is act_edit:
             self._edit_categories()
         elif chosen is act_del:
@@ -629,6 +631,8 @@ class FontFavoritesPanel(QWidget):
     def _export_favorites(self):
         """Export a .zip bundle: the favourites list PLUS the actual font files
         (found on this PC by family name), so it can be moved to another machine.
+        Every cut of a family travels — Regular, Bold, Italic — because a bundle
+        that only carries one of them still leaves work on the other machine.
         Fonts that aren't installed here can't be bundled."""
         path, _f = QFileDialog.getSaveFileName(
             self, self.t("fav_export"), "font-favourites.zip",
@@ -638,25 +642,11 @@ class FontFavoritesPanel(QWidget):
         if not path.lower().endswith(".zip"):
             path += ".zip"
         fams = self._store.fonts()
-        files = {}
-        if self._find_fonts_fn is not None:
-            try:
-                files = self._find_fonts_fn(fams) or {}
-            except Exception:                           # noqa: BLE001
-                files = {}
+        files = self._lookup_font_files(fams)
         try:
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
                 z.writestr("favourites.json", self._store.to_json())
-                added = set()
-                for _fam, fp in files.items():
-                    base = os.path.basename(fp)
-                    if base.lower() in added:
-                        continue
-                    added.add(base.lower())
-                    try:
-                        z.write(fp, "fonts/" + base)
-                    except Exception:                   # noqa: BLE001
-                        pass
+                n_files = _zip_font_files(z, files)
         except Exception as e:                          # noqa: BLE001
             QMessageBox.warning(self, self.t("fav_export"),
                                 self.t("fav_io_error", err=e))
@@ -664,8 +654,28 @@ class FontFavoritesPanel(QWidget):
         missing = [f for f in fams if f not in files]
         QMessageBox.information(
             self, self.t("fav_export"),
-            self.t("fav_export_done", n=len(fams), fonts=len(files),
+            self.t("fav_export_done", n=len(fams), fonts=n_files,
                    missing=len(missing)))
+
+    def _lookup_font_files(self, families):
+        """{family: [font file paths]} for *families* — the lookup can take a
+        moment the first time (it reads every installed font file), so the
+        cursor says so."""
+        if self._find_fonts_fn is None:
+            return {}
+        app = QApplication.instance()
+        if app is not None:
+            app.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            files = self._find_fonts_fn(families) or {}
+        except Exception:                               # noqa: BLE001
+            files = {}
+        finally:
+            if app is not None:
+                app.restoreOverrideCursor()
+        # the callback may hand back one path per family or a list of them
+        return {fam: ([p] if isinstance(p, str) else list(p))
+                for fam, p in files.items() if p}
 
     def _import_favorites(self):
         """Import a .zip bundle (favourites + font files, fonts get installed)
@@ -692,7 +702,7 @@ class FontFavoritesPanel(QWidget):
         self._refresh_list()
         QMessageBox.information(self, self.t("fav_import"),
                                 self.t("fav_import_done", n=n))
-        missing = incoming.missing_fonts(self._families())
+        missing = incoming.missing_fonts(self._families(), self._font_resolver())
         if missing:
             self._warn_missing(missing)
 
@@ -737,7 +747,8 @@ class FontFavoritesPanel(QWidget):
                    fail=len(res.get("failed", []))))
         # only nag about missing fonts the bundle couldn't provide
         if not font_paths:
-            missing = incoming.missing_fonts(self._families())
+            missing = incoming.missing_fonts(self._families(),
+                                             self._font_resolver())
             if missing:
                 self._warn_missing(missing)
 
@@ -750,7 +761,8 @@ class FontFavoritesPanel(QWidget):
     def show_missing_fonts_dialog(self):
         """Public: list favourite fonts that aren't installed (or confirm all
         are). Used by the Setup-tab button too."""
-        missing = self._store.missing_fonts(self._families())
+        missing = self._store.missing_fonts(self._families(),
+                                            self._font_resolver())
         if missing:
             self._warn_missing(missing)
         else:
@@ -765,6 +777,16 @@ class FontFavoritesPanel(QWidget):
         except Exception:
             return []
 
+    def _font_resolver(self):
+        """Callable for FavoritesStore.missing_fonts().
+
+        Favourites travel between machines inside bundles, so their spelling is
+        whatever the exporting machine used. Matching tolerantly keeps the
+        import dialog from listing a dozen fonts as missing that are in fact
+        installed under a slightly different family name."""
+        idx = fontmatch.FontIndex(self._families())
+        return idx.is_available
+
     def _ask_font(self):
         """Pick an installed family from a searchable list."""
         fams = self._families()
@@ -775,7 +797,7 @@ class FontFavoritesPanel(QWidget):
 
     def _select_family(self, family):
         for i in range(self.list.count()):
-            if self.list.item(i).data(Qt.UserRole) == family:
+            if self.list.item(i).data(Qt.ItemDataRole.UserRole) == family:
                 self.list.setCurrentRow(i)
                 return
 
@@ -821,7 +843,7 @@ class _FontChooserDialog(QDialog):
             self.list.addItem(it)
         self.list.itemDoubleClicked.connect(lambda *_: self.accept())
         lay.addWidget(self.list, 1)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
@@ -834,7 +856,7 @@ class _FontChooserDialog(QDialog):
         first = None
         for i in range(self.list.count()):
             it = self.list.item(i)
-            name = it.data(Qt.UserRole).lower()
+            name = it.data(Qt.ItemDataRole.UserRole).lower()
             hide = not all(tok in name for tok in low)
             it.setHidden(hide)
             if not hide and first is None:
@@ -845,12 +867,12 @@ class _FontChooserDialog(QDialog):
                 self.list.setCurrentRow(first)
 
     def run(self):
-        if self.exec_() != QDialog.Accepted:
+        if self.exec() != QDialog.DialogCode.Accepted:
             return None, False
         it = self.list.currentItem()
         if it is None or it.isHidden():
             return None, False
-        return it.data(Qt.UserRole), True
+        return it.data(Qt.ItemDataRole.UserRole), True
 
 
 class _CategoryDialog(QDialog):
@@ -890,7 +912,7 @@ class _CategoryDialog(QDialog):
         new_row.addWidget(add)
         lay.addLayout(new_row)
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
@@ -908,7 +930,7 @@ class _CategoryDialog(QDialog):
         self._new.clear()
 
     def run(self):
-        if self.exec_() != QDialog.Accepted:
+        if self.exec() != QDialog.DialogCode.Accepted:
             return None
         return [c for c, cb in self._checks.items() if cb.isChecked()]
 
@@ -945,7 +967,7 @@ class _ManageCategoriesDialog(QDialog):
         row2.addWidget(rem)
         lay.addLayout(row2)
 
-        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         bb.rejected.connect(self.reject)
         bb.accepted.connect(self.accept)
         # Close maps to reject by default; wire it to accept so it just closes
@@ -960,11 +982,11 @@ class _ManageCategoriesDialog(QDialog):
             self.list.addItem("%s (%d)" % (c, counts.get(c, 0)))
         # store raw names on items
         for i, c in enumerate(self._store.categories()):
-            self.list.item(i).setData(Qt.UserRole, c)
+            self.list.item(i).setData(Qt.ItemDataRole.UserRole, c)
 
     def _current(self):
         it = self.list.currentItem()
-        return it.data(Qt.UserRole) if it is not None else None
+        return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
 
     def _add(self):
         name = self._new.text().strip()

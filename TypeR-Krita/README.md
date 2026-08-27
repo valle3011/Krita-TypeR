@@ -11,6 +11,10 @@ The user interface is bilingual (**English / Deutsch**) and switchable on the
 > Only modules from the Python standard library are used (`zipfile`,
 > `xml.etree`, …). Nothing extra has to be installed.
 
+**Compatibility:** Krita **5.0 – 6.x**. The plugin auto-detects its Qt binding
+(PyQt5 on Krita 5.x, PyQt6 on Krita 6.0+), so the same install works on both;
+the Setup tab shows which one was detected. Krita 4.x is not supported.
+
 ---
 
 ## Installation

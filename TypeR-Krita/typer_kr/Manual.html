@@ -117,6 +117,19 @@ filtert sofort, und es wird – anders als beim Standard-Auswahlfeld – nicht
 jeder Eintrag in seiner eigenen Schrift gezeichnet (das ist langsam). Nur die
 aktuell gewählte Schrift wird in der Vorschau angezeigt. Zuletzt benutzte
 Schriften erscheinen mit ★ ganz oben und bleiben über Sitzungen erhalten.</p>
+<p><b>Favoriten mitnehmen:</b> Im Reiter <b>Fonts</b> exportiert
+<b>Exportieren …</b> die Favoritenliste zusammen mit den echten Schriftdateien
+als <code>.zip</code> – und zwar mit <i>allen</i> Schnitten einer Familie
+(Regular, Bold, Italic …), nicht nur mit dem einen, dessen Name zufällig passt.
+Der Import auf dem anderen Rechner installiert sie ohne Adminrechte für den
+aktuellen Benutzer. Gefunden werden die Dateien über den Namen, den die Schrift
+selbst in sich trägt, nicht über den Namen, unter dem Windows sie registriert
+hat – deshalb landen auch umbenannte Repacks
+(<code>ImaginaryFriendBBW00-Rg</code> und Konsorten) im Paket. Nur was hier gar
+nicht installiert ist, kann nicht mit; das wird nach dem Export aufgelistet.
+Der erste Export liest einmalig alle installierten Schriftdateien (bei
+tausenden Fonts dauert das einen Moment), danach ist es dank Zwischenspeicher
+sofort da.</p>
 
 <h2>Japanisch / Englisch</h2>
 <p>Pro Zeile wird die Sprache erkannt (Kana/Kanji = Japanisch, lateinische
@@ -283,13 +296,32 @@ jederzeit umschalten:</p>
       automatisch einen ersten Character.</li>
   <li><b>Auswählen:</b> ein Stil-Preset im untersten Klappmenü wählen, um es
       sofort anzuwenden.</li>
+  <li><b>Hauptcharaktere:</b> In einer langen Serie stehen irgendwann dutzende
+      Namen in der Liste, während drei oder vier davon auf fast jeder Seite
+      reden. Diese lassen sich markieren – sie stehen dann mit <b>★</b> ganz
+      oben in der Charakter-Liste, durch eine Trennlinie vom Rest abgesetzt.
+      Im einfachen Modus (ohne Charakter-Ebene) stehen zusätzlich <i>ihre</i>
+      Presets oben in der Preset-Liste. Markieren geht per <b>Rechtsklick auf
+      die Charakter-Liste</b> oder im Reiter <b>Einstellungen</b> unter
+      <b>Hauptcharaktere …</b> (dort pro Manga, mit Häkchenliste). Das ist
+      reine Sortierung: es wird kein Preset verschoben, umbenannt oder
+      gelöscht, und beim Löschen eines Charakters verschwindet auch seine
+      Markierung.</li>
   <li><b>Speichern …</b> – aktuelle Einstellungen unter einem Namen beim
       <b>aktuellen Character</b> ablegen (gleicher Name überschreibt).</li>
   <li><b>Löschen</b> – das gewählte Stil-Preset entfernen.</li>
   <li><b>Importieren … / Exportieren …</b> – die gesamte Bibliothek (alle Mangas,
-      Charaktere und Stile) als <code>.json</code>-Datei teilen oder einlesen.
-      Ältere Dateien (flach oder nur mit Gruppen) werden automatisch in die
-      Manga-/Character-Struktur überführt.</li>
+      Charaktere und Stile) teilen oder einlesen. Beim Exportieren gibt es drei
+      Formate: <b>Presets + Schriften (<code>.zip</code>)</b> nimmt alle
+      Schriftdateien mit, die die Presets nennen (jeder Schnitt: Regular, Bold,
+      Italic …) – der Import auf dem anderen Rechner installiert sie gleich mit,
+      es bleibt nichts von Hand nachzuinstallieren; <b><code>.json</code></b>
+      enthält nur die Presets; <b><code>.xlsx</code></b> ist die lesbare
+      Schrifttabelle des aktuellen Mangas. Der Import nimmt
+      <code>.zip</code> und <code>.json</code> an; ältere Dateien (flach oder
+      nur mit Gruppen) werden automatisch in die Manga-/Character-Struktur
+      überführt. Schriften, die auf diesem Rechner gar nicht installiert sind,
+      kann das Paket nicht mitnehmen – sie werden nach dem Export aufgelistet.</li>
 </ul>
 <p>Presets werden dauerhaft gespeichert und stehen beim nächsten Start wieder
 zur Verfügung.</p>

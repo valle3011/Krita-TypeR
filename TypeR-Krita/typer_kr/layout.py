@@ -257,13 +257,29 @@ def _core_span(word):
     return i, j
 
 
+#: Characters that already ARE a break opportunity inside a word: a hyphen a
+#: writer put there ("Yagi-kun", "well-known") and the en-dash some scripts use
+#: for the same job. Breaking right after one needs no new hyphen at all.
+_INWORD_BREAK = "-‐‑–"
+
+
 def hyphenate(word, lang="en", left=None, right=None):
-    """Return the sorted character indices inside `word` where a hyphen may be
-    placed (valid syllable breaks), honoring a minimum of `left` letters before
-    and `right` letters after a break. When left/right are None the language's
-    own minima are used. Attached punctuation is ignored (and stays with its
-    part when the word is split). Empty list if the word is too short, not a
-    plain word, or patterns are unavailable."""
+    """Return the sorted character indices inside `word` where it may be broken
+    across lines, honoring a minimum of `left` letters before and `right` after.
+    When left/right are None the language's own minima are used. Attached
+    punctuation is ignored (and stays with its part when the word is split).
+
+    A word that already carries a hyphen breaks AT that hyphen: "Yagi-kun" gives
+    "Yagi-" / "kun", never "Yagi--" / "kun" and never "Yag-" / "i-kun". Feeding
+    such a compound to the syllable patterns as one string produced both of
+    those, because the patterns treat the hyphen as just another character. So
+    the compound is split on its own hyphens first, each part is hyphenated
+    separately, and the position after each existing hyphen is offered as a
+    break in its own right (`split_word` then adds no second hyphen).
+
+    Empty list if the word is too short, not a plain word, or patterns are
+    unavailable.
+    """
     dl, dr = _HYPH_MINS.get(_norm_lang(lang), (2, 3))
     if left is None:
         left = dl
@@ -277,23 +293,43 @@ def hyphenate(word, lang="en", left=None, right=None):
         return []
     if not _WORD_RE.match(core):
         return []
-    h = _get_hyphenator(lang)
-    if h is None:
-        return []
-    pieces = h.split(core)
-    if len(pieces) < 2:
-        return []
+
+    def _ok(pos):
+        """`pos` is an index inside `core`: enough characters on both sides?"""
+        return left <= pos <= len(core) - right
+
+    # the segments between the word's own hyphens, with their offsets in `core`
+    segments, seg_start = [], 0
     breaks = []
-    pos = 0
-    for p in pieces[:-1]:
-        pos += len(p)
-        if left <= pos <= len(core) - right:
-            breaks.append(start + pos)      # index in the ORIGINAL word
-    return breaks
+    for i, ch in enumerate(core):
+        if ch in _INWORD_BREAK:
+            segments.append((seg_start, core[seg_start:i]))
+            if _ok(i + 1):                  # break AFTER the existing hyphen
+                breaks.append(start + i + 1)
+            seg_start = i + 1
+    segments.append((seg_start, core[seg_start:]))
+
+    h = _get_hyphenator(lang)
+    if h is not None:
+        for off, seg in segments:
+            # a part still needs enough letters of its own to be worth splitting
+            if len(seg) < left + right or not seg:
+                continue
+            pieces = h.split(seg)
+            if len(pieces) < 2:
+                continue
+            pos = 0
+            for p in pieces[:-1]:
+                pos += len(p)
+                if _ok(off + pos):
+                    breaks.append(start + off + pos)
+    return sorted(set(breaks))
 
 
 def split_word(word, i):
-    """Split a Word at character index i; append a hyphen to the first part.
+    """Split a Word at character index i; append a hyphen to the first part —
+    unless it already ends with one, because the break landed on a hyphen the
+    word already had ("Yagi-kun" -> "Yagi-" / "kun", not "Yagi--" / "kun").
     Returns (left, right) as Word objects, preserving the bold runs."""
     left_runs, right_runs = [], []
     pos = 0
@@ -310,7 +346,8 @@ def split_word(word, i):
         pos = end
     if left_runs:
         lt, lb = left_runs[-1]
-        left_runs[-1] = (lt + "-", lb)          # hyphen inherits previous bold
+        if not lt.endswith(tuple(_INWORD_BREAK)):
+            left_runs[-1] = (lt + "-", lb)      # hyphen inherits previous bold
     else:
         left_runs = [("-", False)]
     left_text = "".join(t for t, _ in left_runs)
@@ -326,6 +363,17 @@ def split_word(word, i):
 # realign.
 _DEHYPH_RE = re.compile(r"(?<=[^\W\d_])-(\s+)(?=([^\W\d_]))")
 
+#: Continuations that make the hyphen part of the NAME, not a line break.
+#: Japanese honorifics are lowercase, so the capitalisation rule below cannot
+#: see them and "Yagi- kun" would be rejoined as "Yagikun" — which is the same
+#: blindness to an existing hyphen that made the shaper write "Yagi--". These
+#: are the suffixes a manga script actually uses.
+_KEEP_HYPHEN_SUFFIX = frozenset((
+    "kun", "chan", "san", "sama", "senpai", "sempai", "sensei", "dono",
+    "tan", "chin", "nee", "nii", "neesan", "niisan", "oneesan", "oniisan",
+))
+_SUFFIX_RE = re.compile(r"^[^\W\d_]+", re.UNICODE)
+
 
 def dehyphenate(text, mask=None):
     """Undo source line-break hyphenation so the shaper can re-wrap freely: join
@@ -333,8 +381,10 @@ def dehyphenate(text, mask=None):
 
     A capitalised continuation is kept as a hyphenated compound instead
     ("Spider- Man" -> "Spider-Man"), on the assumption it is a real hyphenated
-    name rather than a broken word. Only a hyphen *followed by whitespace* is
-    touched, so an ordinary in-word hyphen ("X-ray") is left alone.
+    name rather than a broken word — as is a Japanese honorific, which is
+    lowercase and would otherwise be swallowed ("Yagi- kun" stays "Yagi-kun",
+    not "Yagikun"). Only a hyphen *followed by whitespace* is touched, so an
+    ordinary in-word hyphen ("X-ray") is left alone.
 
     Returns (new_text, new_mask) with the bold `mask` realigned to the shortened
     text. This is the inverse of the `hyphenate`/`split_word` pair above.
@@ -348,7 +398,10 @@ def dehyphenate(text, mask=None):
         s, e = mo.start(), mo.end()
         out_t.append(text[last:s])
         out_m.extend(m[last:s])
-        if mo.group(2).isupper():          # capitalised -> keep as a compound
+        tail = _SUFFIX_RE.match(text[e:])
+        keep = (mo.group(2).isupper()      # capitalised -> a real compound
+                or (tail and tail.group(0).lower() in _KEEP_HYPHEN_SUFFIX))
+        if keep:
             out_t.append("-")
             out_m.append(m[s])             # the hyphen keeps its own bold bit
         # lowercase continuation -> drop the hyphen and the spaces entirely
@@ -998,14 +1051,69 @@ _MAX_LINE_CHARS = 30
 # gentler `last_term`, since a slightly short final line is normal).
 _MIN_LINE_RATIO = 0.4
 
-# Balanced/round: a symmetric pull toward this many lines (small, tie-breaker
-# only — fill and aspect still dominate, so short text is never forced up to it).
+# Legacy default kept so old callers that pass `line_target=` keep working.
 _LINE_TARGET = 4
 _LINE_TARGET_WEIGHT = 0.25
-# Tall/wide: a mild, DIMINISHING (sqrt) preference for more / fewer lines, added
-# to the score. A bias, not a hard sort key — 'tall' leans tall, but a bad
-# (over-hyphenated, tiny) extra-line block never wins over a clean shorter one.
-_TALL_WIDE_BIAS = 0.35
+
+# --- per-mode profiles ------------------------------------------------------
+# The Photoshop original (ScanR TypeR, `app_src/textShapeR.js` → PROFILE_PRESETS)
+# keeps ONE of these tables per mode; this port used to hard-code the "balanced"
+# column for every mode, which is why Tall degenerated into a ladder of one-word
+# lines and why a tall bubble was judged against a 4-line ideal. Values are that
+# reference's, with the line band widened where our generator legitimately needs
+# it (a very tall bubble really does want more lines than the reference's cap).
+#
+#   lines       soft band for the line count; outside it the count is charged
+#   line_target where the mode leans WITHIN what the geometry allows
+#   max_chars   reading measure, per mode
+#   min_ratio   below this fraction of the longest line an interior line is a stub
+_PROFILES = {
+    "balanced": {"lines": (2, 8), "line_target": 4, "max_chars": 26,
+                 "min_ratio": 0.40},
+    "round":    {"lines": (3, 7), "line_target": 4, "max_chars": 22,
+                 "min_ratio": 0.38},
+    "tall":     {"lines": (4, 12), "line_target": 6, "max_chars": 18,
+                 "min_ratio": 0.36},
+    "wide":     {"lines": (1, 5), "line_target": 3, "max_chars": 34,
+                 "min_ratio": 0.50},
+}
+#: How far the line count may sit from the ideal before the charge bites, and
+#: the most it can ever cost. Capped deliberately: the old uncapped
+#: `abs(k - 4) ** 1.5` charge could reach 2.8 points and overrule every
+#: aesthetic term at once (a quarter-full block beat a well-filled one).
+_LINE_SPREAD = 1.6
+_LINE_PEN_MAX = 0.55
+
+
+def profile_for(mode):
+    """The scoring profile for a shaper mode (unknown modes -> balanced)."""
+    return _PROFILES.get(mode or "balanced", _PROFILES["balanced"])
+
+
+def ideal_line_count(total_w, line_h, box_aspect, profile=None, max_fit=None):
+    """How many lines this text WANTS in a box of this shape.
+
+    Splitting a text of total advance width `total_w` into k lines gives a block
+    roughly `total_w / k` wide and `k * line_h` tall, so the block matches the
+    box when ``(total_w / k) / (k * line_h) == box_aspect`` — i.e.
+
+        k = sqrt(total_w / (line_h * box_aspect))
+
+    `total_w / line_h` is a pure ratio, so this is scale-free: the answer does
+    not move when the fitted size does. That is the whole point — the ideal
+    count has to come from the bubble's proportions, not from a constant, or a
+    tall bubble gets judged against a 4-line ideal and stays three-quarters
+    empty. The result is clamped to the mode's band and to what actually fits.
+    """
+    if total_w <= 0 or line_h <= 0 or box_aspect <= 0:
+        return 1.0
+    k = math.sqrt(total_w / (line_h * box_aspect))
+    prof = profile or _PROFILES["balanced"]
+    lo, hi = prof["lines"]
+    if max_fit:
+        hi = min(hi, max(1, int(max_fit)))
+        lo = min(lo, hi)
+    return max(float(lo), min(float(hi), k))
 
 
 def _arr_metrics(cand, measurer):
@@ -1022,54 +1130,208 @@ def _arr_metrics(cand, measurer):
     return px, k, line_ws, block_w, line_h * k, line_h
 
 
+#: A sampled bubble outline never goes below this fraction of the widest row —
+#: a balloon's very top and bottom taper to nothing, and a line placed there
+#: would be judged against a target width of ~0.
+_ROW_FLOOR = 0.12
+
+
+def shape_row_width(rows, t):
+    """Normalised bubble width at relative height `t` (0 = top, 1 = bottom).
+
+    `rows` is the sampled outline: one width fraction per row, top to bottom,
+    normalised so the widest row is 1.0. Linear interpolation between samples;
+    an empty/invalid profile answers 1.0, i.e. "rectangular".
+    """
+    if not rows:
+        return 1.0
+    n = len(rows)
+    if n == 1:
+        return max(_ROW_FLOOR, float(rows[0]))
+    x = min(max(float(t), 0.0), 1.0) * (n - 1)
+    i = int(x)
+    if i >= n - 1:
+        return max(_ROW_FLOOR, float(rows[-1]))
+    frac = x - i
+    val = float(rows[i]) * (1.0 - frac) + float(rows[i + 1]) * frac
+    return max(_ROW_FLOOR, val)
+
+
+def line_row_targets(rows, k, block_h=None, usable_h=None):
+    """The bubble's own width at each of `k` line positions.
+
+    The text block is set in the MIDDLE of the bubble and is usually shorter
+    than it, so line *i* sits at ``(gap + (i+0.5)*line_h) / usable_h`` of the
+    outline, not at ``(i+0.5)/k`` of it. Getting that wrong maps the first line
+    onto the balloon's tapering top edge and declares every arrangement to be
+    bursting out of the bubble. Falls back to spreading the lines over the full
+    height when the block's geometry isn't given, and to 1.0 without an outline.
+    """
+    if k <= 0:
+        return []
+    if not rows:
+        return [1.0] * k
+    if block_h and usable_h and usable_h > 0:
+        span = min(float(block_h), float(usable_h))
+        gap = max(0.0, (usable_h - span) / 2.0)      # vertically centred
+        line_h = span / k
+        return [shape_row_width(rows, (gap + (i + 0.5) * line_h) / usable_h)
+                for i in range(k)]
+    return [shape_row_width(rows, (i + 0.5) / k) for i in range(k)]
+
+
+def _phrase_break_penalty(texts, line_ws, space_w, usable_w):
+    """Charge for line breaks that tear a short phrase apart *avoidably*.
+
+    ``What?! / No / way!`` splits a two-word exclamation across lines; a letterer
+    sets ``What?! / No way!``. But in a narrow bubble one-word lines are simply
+    what fits, and charging those would punish the only sensible shape. So a
+    break is only charged when the next line's first word would still have fitted
+    on this one — i.e. when the split was a choice, not the geometry.
+    """
+    if len(texts) < 3:
+        return 0.0
+    pen = 0.0
+    for i in range(len(texts) - 1):
+        parts = texts[i].split()
+        if not parts or len(parts) > 2:
+            continue
+        if _ends_clause(parts[-1]):
+            continue                       # a clause ended here: fine to break
+        nxt = texts[i + 1].split()
+        if not nxt:
+            continue
+        # width of this line + a space + the next line's first word
+        joined = line_ws[i] + space_w + len(nxt[0]) / max(1, len(texts[i + 1])) \
+            * line_ws[i + 1]
+        if joined <= usable_w:
+            pen += 1.0
+    return pen
+
+
+def _sentence_break_penalty(texts):
+    """Charge for an interior line that carries a sentence end with more words
+    behind it (``a trap. Now``): the next sentence starts at the end of a line
+    where it could have started on its own."""
+    pen = 0
+    for t in texts[:-1]:
+        stripped = t.rstrip()
+        for i, ch in enumerate(stripped[:-1]):
+            if ch in ".!?…" and stripped[i + 1] == " ":
+                pen += 1
+                break
+    return pen
+
+
 def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
-                      max_chars=_MAX_LINE_CHARS, line_target=None):
+                      max_chars=None, line_target=None, mode=None,
+                      total_w=None, shape_rows=None):
     """Typographic quality of a candidate arrangement (higher = better).
 
     Combines the judgements a letterer makes by eye, so the recommended shape is
-    the one that *reads* best rather than merely the largest that fits:
+    the one that *reads* best rather than merely the largest that fits.
+
+    **The order of judgement is deliberate.** The four terms describing the
+    SHAPE of the block outweigh the two describing its bulk::
+
+        shape   aspect 1.1 + balance 0.8 + step 0.6 + break quality 0.5 = 3.0
+        bulk    fill 1.15 + size 1.0                                    = 2.15
+
+    Size and fill used to carry 2.7 between them against a hard fill plateau,
+    which made "biggest and fullest" win nearly every ranking — the shape terms
+    could only break ties. Reversing that is what stops the shaper recommending
+    a cramped block over a calm one.
+
+    The terms:
 
     * size, with diminishing returns (normalised against `px_ref`, the biggest
       size in the candidate set, so a one-pixel gain can't beat a better shape);
-    * fill ratio, peaked at `_TARGET_FILL` and penalised on BOTH sides, so a
-      block that hugs the rim and one that leaves the bubble half-empty both lose;
-    * aspect match between the text block and the bubble (a wide block in a tall
-      bubble is penalised, and vice-versa);
-    * line balance — flat, even line widths beat a ragged stack;
-    * break quality — a rewarded bonus for lines that end at a clause boundary
-      (`_CLAUSE_END`), and a penalty for a line made only of punctuation;
-    * reading measure — a penalty for lines longer than `max_chars` characters,
-      even when they still fit the box;
-    * no stub lines — an interior line shorter than `_MIN_LINE_RATIO` of the
-      longest is penalised (it reads as a gap in the block);
-    * line-count target — when `line_target` is given, a mild pull toward that
-      many lines (a tie-breaker; fill/aspect still decide the big picture).
+    * fill ratio on one smooth curve around ``[_TARGET_FILL, _FILL_SWEET_MAX]``,
+      judged against the bubble's real area when `shape_rows` is given;
+    * rim clearance — a block running edge to edge in EITHER direction is
+      charged, which an area ratio alone cannot see;
+    * aspect match between the text block and the bubble;
+    * line balance and line-to-line smoothness — a stack that tapers away is
+      charged by the step term even when its variance looks acceptable;
+    * break quality — a bonus for lines ending at a clause boundary, charges for
+      a sentence starting at the end of a line, for a short phrase torn apart
+      when it would have fitted, for dangling function words and hyphens;
+    * reading measure and stub lines, both per mode (see `_PROFILES`);
+    * line count, against the count the bubble's proportions imply
+      (`ideal_line_count`) — capped, so it can never overrule the rest.
 
-    A near-empty final line gets a mild penalty on top (a leftover-looking last
-    line reads badly even when it holds more than one word; single-word widows
-    are already avoided upstream in `wrap_greedy`/`balance_even`).
+    With `shape_rows` (a sampled selection outline) every line-length judgement
+    is made relative to the bubble's width AT THAT LINE'S HEIGHT, so "even" means
+    "each line uses its share of the room it has" — a lens in a balloon, a
+    rectangle in a caption box.
 
-    Qt-free and O(k): safe to call for every candidate on each refresh.
+    `line_target` and `max_chars` override the profile for callers that want the
+    old absolute behaviour. Qt-free and O(k): safe to call for every candidate on
+    each refresh.
     """
     lines = cand.get("lines") or []
-    px, k, line_ws, block_w, block_h, _line_h = _arr_metrics(cand, measurer)
+    px, k, line_ws, block_w, block_h, line_h = _arr_metrics(cand, measurer)
     if k == 0 or block_w <= 0 or usable_w <= 0 or usable_h <= 0:
         return float("-inf")
+    prof = profile_for(mode)
+    if max_chars is None:
+        max_chars = prof["max_chars"]
+    min_ratio = prof["min_ratio"]
 
     ref = float(px_ref) if px_ref else float(px)
     size_term = (px / ref) ** 0.5 if ref > 0 else 1.0        # sqrt: diminishing
 
-    # Fill is judged asymmetrically, the way a letterer does: a full bubble is
-    # good, an airy/small block is not, and only text crowding right against the
-    # rim is bad. So [_TARGET_FILL .. _FILL_SWEET_MAX] is ideal, below it is
-    # penalised as sparse, and above it drops off steeply toward edge-to-edge.
-    fill = (block_w * block_h) / (usable_w * usable_h)
-    if fill <= _TARGET_FILL:
-        fill_term = math.exp(-((fill - _TARGET_FILL) / 0.24) ** 2)
-    elif fill <= _FILL_SWEET_MAX:
-        fill_term = 1.0
+    # Fill: one smooth curve, not a plateau between two cliffs. The old shape
+    # was flat across [0.72, 0.88] — so it stopped telling candidates apart
+    # exactly where the interesting choices live — and collapsed below it
+    # (fill 0.43 scored 0.32, fill 0.25 scored 0.03), which let "big and full"
+    # decide almost every ranking on its own. A single Gaussian around the
+    # comfortable band is gentler on both sides while still preferring a bubble
+    # that is used; crowding past the sweet max still falls away fast.
+    # With a sampled outline the bubble is no longer a rectangle: an ellipse
+    # holds ~78% of its bounding box, so the same block covers proportionally
+    # more of what is actually available. Judging fill against the raw box is
+    # what made a comfortable block in a round balloon look "half empty".
+    row_targets = (line_row_targets(shape_rows, k, block_h, usable_h)
+                   if shape_rows else None)
+    area_frac = (sum(shape_rows) / len(shape_rows)) if shape_rows else 1.0
+    area_frac = max(_ROW_FLOOR, min(1.0, area_frac))
+
+    fill = (block_w * block_h) / (usable_w * usable_h * area_frac)
+    if fill <= _FILL_SWEET_MAX:
+        centre = 0.5 * (_TARGET_FILL + _FILL_SWEET_MAX)
+        fill_term = math.exp(-((fill - centre) / 0.34) ** 2)
+        if fill >= _TARGET_FILL:
+            fill_term = max(fill_term, 0.92)
     else:
-        fill_term = max(0.15, 1.0 - (fill - _FILL_SWEET_MAX) * 6.5)
+        fill_term = max(0.10, 1.0 - (fill - _FILL_SWEET_MAX) * 8.0)
+
+    # Rim clearance. An AREA ratio cannot see a block that runs edge to edge in
+    # one direction while staying short in the other: `What?! / No / way!` fills
+    # 0.73 of the area yet its longest line is exactly as wide as the usable box.
+    # What the eye reads as cramped is a block touching the rim in EITHER
+    # direction, so measure that directly.
+    # With an outline this becomes exact: every line is measured against the
+    # bubble's width AT ITS OWN HEIGHT, so a long line near the tapering top or
+    # bottom of a balloon is caught even when the block as a whole looks fine.
+    if row_targets:
+        crowd = max(block_h / usable_h,
+                    max(w / (usable_w * t) for w, t in zip(line_ws, row_targets)))
+    else:
+        crowd = max(block_w / usable_w, block_h / usable_h)
+    crowd_pen = ((crowd - 0.90) / 0.10) ** 2 if crowd > 0.90 else 0.0
+
+    # Every judgement about line LENGTHS below is made on these: each line's
+    # width relative to the bubble's width at its own height. Without an outline
+    # that is just the width itself, so a rectangle is judged against flatness
+    # exactly as before. With one, "even" stops meaning "all the same length"
+    # and starts meaning "each line uses its share of the room it has" — which
+    # is why a lens (short-long-short) is the calm shape in a balloon and a
+    # rectangle is the ragged one. Measuring both against the same profile also
+    # keeps the silhouette from being scored twice, once for and once against.
+    rel_ws = ([w / t for w, t in zip(line_ws, row_targets)] if row_targets
+              else list(line_ws))
+    rel_max = max(rel_ws) if rel_ws else 0.0
 
     block_aspect = block_w / block_h if block_h > 0 else 0.0
     box_aspect = usable_w / usable_h
@@ -1078,23 +1340,35 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
     else:
         aspect_term = 0.0
 
-    if k >= 2:
-        avg = sum(line_ws) / k
-        rag = (sum((w - avg) ** 2 for w in line_ws) / k) ** 0.5 / block_w
-        balance_term = math.exp(-(rag / 0.5) ** 2)
+    if k >= 2 and rel_max > 0:
+        avg = sum(rel_ws) / k
+        rag = (sum((w - avg) ** 2 for w in rel_ws) / k) ** 0.5 / rel_max
+        balance_term = math.exp(-(rag / 0.42) ** 2)
     else:
         balance_term = 1.0
 
+    # Line-to-line smoothness. Global variance alone cannot see a block that
+    # tapers away line by line (a triangle scored 0.71 where an even stack
+    # scored 0.76 — 0.05 apart, which no eye agrees with). What reads as ragged
+    # is the STEP between neighbours, so charge that directly, the way the
+    # reference shaper's `smoothnessWeight` does.
+    if k >= 3 and rel_max > 0:
+        steps = [abs(rel_ws[i] - rel_ws[i - 1]) / rel_max for i in range(1, k)]
+        step_rms = (sum(s * s for s in steps) / len(steps)) ** 0.5
+        step_term = math.exp(-(step_rms / 0.34) ** 2)
+    else:
+        step_term = 1.0
+
     last_term = 1.0
-    if k >= 2:
-        last_frac = line_ws[-1] / block_w
+    if k >= 2 and rel_max > 0:
+        last_frac = rel_ws[-1] / rel_max
         if last_frac < 0.5:
             last_term = min(1.0, 0.6 + 0.8 * last_frac)
     # a very short FIRST line (an orphan) reads as badly as a short last line;
     # penalise it symmetrically once there are enough lines for it to look odd.
     first_term = 1.0
-    if k >= 3:
-        first_frac = line_ws[0] / block_w
+    if k >= 3 and rel_max > 0:
+        first_frac = rel_ws[0] / rel_max
         if first_frac < 0.5:
             first_term = min(1.0, 0.6 + 0.8 * first_frac)
 
@@ -1120,14 +1394,28 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
 
     # interior stub lines: a short line between longer ones (not the last line)
     short = 0.0
-    for w in line_ws[:-1]:
-        r = w / block_w
-        if r < _MIN_LINE_RATIO:
-            d = (_MIN_LINE_RATIO - r) / _MIN_LINE_RATIO
+    for w in rel_ws[:-1]:
+        r = w / rel_max if rel_max else 0.0
+        if r < min_ratio:
+            d = (min_ratio - r) / min_ratio
             short += d * d
 
-    # soft pull toward the mode's preferred line count
-    target_pen = abs(k - line_target) ** 1.5 if line_target else 0.0
+    # Line count. `line_target` (an explicit count from the caller) keeps the
+    # old absolute behaviour for compatibility; otherwise the ideal comes from
+    # the bubble's proportions, so a tall bubble asks for a tall stack instead
+    # of being judged against a constant. Either way the charge is CAPPED: it
+    # is a tie-breaker between shapes, never a veto over fill and silhouette.
+    if line_target:
+        target_pen = abs(k - line_target) ** 1.5
+    else:
+        total = float(total_w) if total_w else (sum(line_ws) + 0.0)
+        ideal = ideal_line_count(total, line_h, box_aspect, prof,
+                                 max_fit=usable_h / line_h if line_h else None)
+        # the mode leans within what the geometry allows, it does not overrule it
+        lean = prof["line_target"] - _PROFILES["balanced"]["line_target"]
+        ideal = max(prof["lines"][0], min(prof["lines"][1], ideal + 0.5 * lean))
+        d = (k - ideal) / _LINE_SPREAD
+        target_pen = min(_LINE_PEN_MAX, d * d) / _LINE_TARGET_WEIGHT
 
     # hyphenation is a last resort: a line broken mid-word (ending in '-') reads
     # worse than the same shape without the split, so each such line is penalised
@@ -1142,10 +1430,21 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
         if parts and _bare_last(parts[-1]) in _LINE_END_STOPS:
             stop_pen += 1
 
-    quality = (1.3 * size_term          # give the chosen size real pull
-               + 1.4 * fill_term
+    _wof, space_w, _lh, _a, _d = measurer(px)
+    phrase_pen = _phrase_break_penalty(texts, line_ws, space_w, usable_w)
+    sentence_pen = _sentence_break_penalty(texts)
+
+    # Weights. Size and fill used to carry 2.7 of ~5 points between them, so
+    # "biggest and fullest" won nearly every ranking and the shape terms only
+    # broke ties. They now weigh less than the four terms that describe the
+    # SHAPE of the block (aspect + balance + step + break quality = 3.0), which
+    # is the order a letterer judges in: first does it sit right in the bubble,
+    # then is it big.
+    quality = (1.0 * size_term
+               + 1.15 * fill_term
                + 1.1 * aspect_term
                + 0.8 * balance_term
+               + 0.6 * step_term
                + 0.5 * punct_term) * last_term * first_term
     return (quality
             - 0.6 * over
@@ -1153,7 +1452,23 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
             - 0.6 * short
             - 0.5 * hyph_pen
             - 0.3 * stop_pen
+            - 0.45 * sentence_pen
+            - 0.4 * phrase_pen
+            - 0.5 * crowd_pen
             - _LINE_TARGET_WEIGHT * target_pen)
+
+
+#: Below this fill the whole candidate set counts as starved and the shaper
+#: retries with hyphenation on its own (see `shape_candidates`).
+_STARVED_FILL = 0.25
+
+
+def _block_fill(cand, measurer, usable_w, usable_h):
+    """Fraction of the usable box the arrangement's block covers."""
+    _px, _k, _lw, block_w, block_h, _lh = _arr_metrics(cand, measurer)
+    if usable_w <= 0 or usable_h <= 0:
+        return 0.0
+    return (block_w * block_h) / (usable_w * usable_h)
 
 
 def _dedup_similar(cands, measurer):
@@ -1177,7 +1492,7 @@ def _dedup_similar(cands, measurer):
 
 def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
                      mode="balanced", hyphenate=False, lang="en", mask=None,
-                     limit=10, dehyphenate=False, inset=0.0):
+                     limit=10, dehyphenate=False, inset=0.0, shape_rows=None):
     """Generate candidate arrangements of `text` for the TextShapR picker.
 
     mode: 'balanced' (evenly balanced lines, biggest size first),
@@ -1187,6 +1502,10 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     hyphenate: allow syllable breaks (uses `lang`'s patterns).
     dehyphenate: first rejoin words the source split across a line (see
         `dehyphenate`), so the shaper is free to re-wrap them.
+    shape_rows: optional sampled outline of the selection — one normalised
+        width per row, top to bottom (see `shape_row_width`). When given, fill,
+        rim clearance and silhouette are judged against the real bubble instead
+        of its bounding box. Absent, everything behaves rectangularly.
 
     Embedded line breaks become spaces (the candidates create their own
     breaks). Returns a list of dicts {'px': int, 'k': int, 'lines': [run list
@@ -1261,28 +1580,38 @@ def shape_candidates(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
             add(fit_lines_ellipse(words, measurer, _a * fw, _b * fh,
                                   max_px, min_px, None))
 
+    # Starved set: when the best thing on offer leaves the bubble nearly empty,
+    # a long word is holding the size down (`Unbelievable!` in a narrow bubble
+    # fits at 13px and fills a tenth of it). Rather than shrug, try the width
+    # sweep again WITH syllable breaks, even though the user did not ask for
+    # them: the hyphen penalty keeps those candidates out of the way whenever a
+    # clean shape exists, so this can only add options, never take one away.
+    if cands and not hyphenate and mode != "round":
+        best_fill = max(_block_fill(c, measurer, usable_w, usable_h)
+                        for c in cands)
+        if best_fill < _STARVED_FILL:
+            def _rescue(wd):
+                return hyphenate_word_breaks(wd, lang)
+            for f in _WIDTH_FRACS:
+                add(fit_lines_width(words, measurer, usable_w, usable_h,
+                                    max_px, min_px, f, _rescue))
+
     if not cands:
         return []
     # Rank by the typographic quality score for EVERY mode, so the recommended
-    # (first) card is always the best-looking shape. The mode only *biases* the
-    # score: 'balanced'/'round' pull toward a middling line count, 'tall'/'wide'
-    # add a mild, DIMINISHING preference for more / fewer lines. Crucially this
-    # is a bias, not a hard sort key — so 'tall' leans tall but a degenerate,
-    # over-hyphenated, tiny 7-line block never beats a clean 6-line one.
+    # (first) card is always the best-looking shape. The mode enters through its
+    # profile (line band, reading measure, stub ratio) and through the ideal line
+    # count the bubble's proportions imply — never as a hard sort key, so 'tall'
+    # leans tall but a degenerate, over-hyphenated block never wins.
     px_ref = max(c["px"] for c in cands) or 1
-    line_target = 4 if mode in ("balanced", "round") else None
     for c in cands:
-        s = score_arrangement(c, measurer, usable_w, usable_h, px_ref,
-                              line_target=line_target)
-        if mode == "tall":
-            s += _TALL_WIDE_BIAS * min(c["k"], 8)             # more lines better
-        elif mode == "wide":
-            s += _TALL_WIDE_BIAS * max(0, 8 - c["k"])         # fewer better
-        c["score"] = s
-    if mode == "round":
-        cands.sort(key=lambda c: (-c["px"], -c["score"]))
-    else:
-        cands.sort(key=lambda c: -c["score"])
+        c["score"] = score_arrangement(c, measurer, usable_w, usable_h, px_ref,
+                                       mode=mode, shape_rows=shape_rows)
+    # Every mode ranks by the score, round included: it used to sort by size
+    # first (`-px`, score only as a tie-break), which put a lower-scoring card
+    # in the ★ slot — in a round bubble the biggest fit is exactly the shape
+    # that crowds the rim.
+    cands.sort(key=lambda c: -c["score"])
     return _dedup_similar(cands, measurer)[:limit]
 
 

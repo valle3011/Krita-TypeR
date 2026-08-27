@@ -244,6 +244,8 @@ _T = {
         "import_merge": "Merge",
         "import_replace": "Replace",
         "st_exported": "Exported {p} preset(s) and {r} rule(s).",
+        "font_scan": "Reading the installed fonts once — this can take a "
+                     "moment with a large collection…",
         "st_imported": "Imported {p} preset(s) and {r} rule(s).",
         "st_export_fail": "Export failed: {err}",
         "st_import_fail": "Import failed: {err}",
@@ -472,6 +474,8 @@ _T = {
         "import_merge": "Zusammenführen",
         "import_replace": "Ersetzen",
         "st_exported": "{p} Preset(s) und {r} Regel(n) exportiert.",
+        "font_scan": "Installierte Schriften werden einmalig eingelesen – bei "
+                     "vielen Fonts dauert das einen Moment …",
         "st_imported": "{p} Preset(s) und {r} Regel(n) importiert.",
         "st_export_fail": "Export fehlgeschlagen: {err}",
         "st_import_fail": "Import fehlgeschlagen: {err}",

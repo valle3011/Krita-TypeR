@@ -12,18 +12,18 @@ import math
 import os
 import re
 
-from PyQt5.QtWidgets import (
+from .._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QComboBox, QPushButton, QSpinBox, QSlider, QColorDialog, QScrollArea,
     QCompleter, QInputDialog, QMessageBox, QMenu, QCheckBox,
     QDialog, QDialogButtonBox, QFileDialog, QSizePolicy, QToolButton,
     QListWidget, QListWidgetItem,
 )
-from PyQt5.QtGui import (
+from .._qt import (
     QColor, QFontDatabase, QFont, QFontMetricsF, QPainter, QPainterPath,
     QBrush, QPen, QLinearGradient, QImage, QPixmap, QIcon,
 )
-from PyQt5.QtCore import (
+from .._qt import (
     Qt, QTimer, QStringListModel, QEvent, QBuffer, QByteArray, QSize,
 )
 
@@ -35,6 +35,7 @@ from .config import (
 )
 from .svg_builder import build_sfx_svg, _xml_escape
 from .. import imgfx as IMG
+from .. import fontmatch as FMATCH
 from .rule_search import normalize_sfx, keyword_matches, rule_matches_query
 from . import modes as MODES
 from .presets_store import (
@@ -68,7 +69,7 @@ from .i18n import tr, LANGUAGES
 class NoScrollComboBox(QComboBox):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, e):
         if self.hasFocus():
@@ -80,7 +81,7 @@ class NoScrollComboBox(QComboBox):
 class NoScrollSpinBox(QSpinBox):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, e):
         if self.hasFocus():
@@ -92,7 +93,7 @@ class NoScrollSpinBox(QSpinBox):
 class NoScrollSlider(QSlider):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, e):
         if self.hasFocus():
@@ -110,6 +111,7 @@ class NoScrollSlider(QSlider):
 # überlebt also auch das Schließen/Wieder-Öffnen des Dockers.
 # ---------------------------------------------------------------------------
 _SYSTEM_FAMILIES = None
+_FONT_INDEX = None
 
 
 def _system_families():
@@ -120,6 +122,22 @@ def _system_families():
         except Exception:
             _SYSTEM_FAMILIES = []
     return _SYSTEM_FAMILIES
+
+
+def _font_index():
+    """Tolerant matcher over the installed families, built once per session.
+
+    Rule and preset font names are written by hand, copied between machines and
+    inherited from other people's rule sets, so they drift from what the system
+    actually reports: "CCWildWords" vs "CC Wild Words", Fonts.com kits that
+    register as "ImaginaryFriendBBW00-Rg", repacks that bake the cut into the
+    family name. Resolving through the index means a near-miss name still finds
+    its face instead of silently falling back to something the user never
+    picked. See typer_kr.fontmatch for what it will and will not bridge."""
+    global _FONT_INDEX
+    if _FONT_INDEX is None:
+        _FONT_INDEX = FMATCH.FontIndex(_system_families())
+    return _FONT_INDEX
 
 
 def _svg_text_content(svg):
@@ -155,11 +173,11 @@ class CollapsibleSection(QWidget):
         self.header.setText(title)
         self.header.setCheckable(True)
         self.header.setChecked(True)
-        self.header.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.header.setArrowType(Qt.DownArrow)
+        self.header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.header.setArrowType(Qt.ArrowType.DownArrow)
         self.header.setAutoRaise(True)
-        self.header.setFocusPolicy(Qt.NoFocus)
-        self.header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.header.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.header.setStyleSheet(
             "QToolButton { font-weight: bold; border: none; padding: 2px 0; }")
         self.header.toggled.connect(self._toggled)
@@ -185,11 +203,11 @@ class CollapsibleSection(QWidget):
     def set_collapsed(self, collapsed):
         self.header.setChecked(not collapsed)
         self.body.setVisible(not collapsed)
-        self.header.setArrowType(Qt.RightArrow if collapsed else Qt.DownArrow)
+        self.header.setArrowType(Qt.ArrowType.RightArrow if collapsed else Qt.ArrowType.DownArrow)
 
     def _toggled(self, expanded):
         self.body.setVisible(expanded)
-        self.header.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.header.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         if self._on_toggle:
             self._on_toggle(self.key, not expanded)
 
@@ -287,7 +305,7 @@ class SFXPreview(QWidget):
         self._opts = None
         self._fit_cache = (None, 0)      # (key, best_size) – Repaints nicht neu rechnen
         self.setMinimumHeight(56)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_data(self, opts):
         """opts: dict mit text, family, size_ref, bold, italic, fill (QColor),
@@ -336,12 +354,12 @@ class SFXPreview(QWidget):
             p.end()
 
     def _paint(self, p):
-        p.setRenderHint(QPainter.Antialiasing, True)
-        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         w, h = self.width(), self.height()
         self._paint_background(p, w, h)
         p.setPen(QPen(QColor(0, 0, 0, 60), 1))
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRect(0, 0, w - 1, h - 1)
 
         o = self._opts
@@ -352,7 +370,7 @@ class SFXPreview(QWidget):
             f.setItalic(True)
             f.setPixelSize(13)
             p.setFont(f)
-            p.drawText(self.rect(), Qt.AlignCenter, "Aa")
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Aa")
             return
 
         m = self._MARGIN
@@ -384,23 +402,23 @@ class SFXPreview(QWidget):
         # weiche (geblurte) Outline zuerst (unterste Ebene). Auf einem eigenen
         # Bild gerendert + geblurt; p (schon rotiert) zeichnet es passend.
         if o.get("soft_on"):
-            soft = QImage(self.size(), QImage.Format_ARGB32)
+            soft = QImage(self.size(), QImage.Format.Format_ARGB32)
             soft.fill(0)
             spn = QPainter(soft)
-            spn.setRenderHint(QPainter.Antialiasing, True)
+            spn.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             tex = o.get("soft_tex")
             if o.get("soft_pattern") and tex is not None:
                 tw, th = o.get("soft_tile", (0, 0))
                 sbrush = QBrush(QPixmap.fromImage(tex).scaled(
                     max(1, int(tw * scale)), max(1, int(th * scale)),
-                    Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+                    Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation))
             else:
                 sbrush = QBrush(o["soft_color"])
             sw = o.get("soft_width", 0.0) * scale
             if sw > 0:
                 spen = QPen(sbrush, sw * 2.0)
-                spen.setJoinStyle(Qt.RoundJoin)
-                spen.setCapStyle(Qt.RoundCap)
+                spen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                spen.setCapStyle(Qt.PenCapStyle.RoundCap)
                 spn.strokePath(path, spen)
             spn.fillPath(path, sbrush)
             spn.end()
@@ -414,14 +432,14 @@ class SFXPreview(QWidget):
         if o.get("outline") and o.get("outline2_px", 0) > 0:
             pen2 = QPen(o["outline2_color"])
             pen2.setWidthF(max(0.5, 2.0 * o["outline2_px"] * scale))
-            pen2.setJoinStyle(Qt.RoundJoin)
-            pen2.setCapStyle(Qt.RoundCap)
+            pen2.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen2.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen2)
         if o.get("outline") and o.get("outline_px", 0) > 0:
             pen = QPen(o["outline_color"])
             pen.setWidthF(max(0.5, 2.0 * o["outline_px"] * scale))
-            pen.setJoinStyle(Qt.RoundJoin)
-            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen)
         pat = o.get("pattern_img")
         f2 = o.get("fill2")
@@ -430,7 +448,7 @@ class SFXPreview(QWidget):
             tw = max(1, int(tw * scale))
             th = max(1, int(th * scale))
             pm = QPixmap.fromImage(pat).scaled(
-                tw, th, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+                tw, th, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
             p.fillPath(path, QBrush(pm))
         elif f2 is not None:
             br = path.boundingRect()
@@ -452,13 +470,13 @@ class SFXPreview(QWidget):
             p.setFont(badge)
             p.setPen(QColor(0xC9, 0x96, 0x2B))     # amber, as the font chips use
             p.drawText(self.rect().adjusted(4, 0, -4, -3),
-                       Qt.AlignLeft | Qt.AlignBottom, o["missing_label"])
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, o["missing_label"])
 
     def _paint_background(self, p, w, h):
         """Hellgraues Schachbrett – zeigt helle wie dunkle Textfarben gut."""
         p.fillRect(0, 0, w, h, QColor(0x9A, 0x9A, 0x9A))
         tile = 8
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         c = QColor(0x88, 0x88, 0x88)
         y = 0
         row = 0
@@ -1099,8 +1117,8 @@ class MangaSFXDocker(DockWidget):
 
     def eventFilter(self, obj, event):
         """Esc im SFX-Feld und in der Regelsuche leert das jeweilige Feld."""
-        if (event.type() == QEvent.KeyPress
-                and event.key() == Qt.Key_Escape):
+        if (event.type() == QEvent.Type.KeyPress
+                and event.key() == Qt.Key.Key_Escape):
             if obj is getattr(self, "text_input", None):
                 self.text_input.clear()
                 return True
@@ -1235,7 +1253,7 @@ class MangaSFXDocker(DockWidget):
         """Damit sich der Docker schmal ziehen lässt: das Widget darf horizontal
         beliebig schrumpfen und erzwingt keine große Mindestbreite mehr."""
         sp = widget.sizePolicy()
-        sp.setHorizontalPolicy(QSizePolicy.Ignored)
+        sp.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
         widget.setSizePolicy(sp)
         widget.setMinimumWidth(0)
         return widget
@@ -1244,7 +1262,7 @@ class MangaSFXDocker(DockWidget):
         """Erzeugt 'Überschrift + Slider + SpinBox' und synchronisiert beide."""
         parent_layout.addWidget(self._heading(title))
         row = QHBoxLayout()
-        slider = NoScrollSlider(Qt.Horizontal)
+        slider = NoScrollSlider(Qt.Orientation.Horizontal)
         slider.setRange(lo, hi)
         slider.setValue(value)
         spin = NoScrollSpinBox()
@@ -1442,37 +1460,37 @@ class MangaSFXDocker(DockWidget):
         dlg.setWindowTitle(self.t("pattern_krita_title"))
         lay = QVBoxLayout(dlg)
         lst = QListWidget()
-        lst.setViewMode(QListWidget.IconMode)
+        lst.setViewMode(QListWidget.ViewMode.IconMode)
         lst.setIconSize(QSize(64, 64))
-        lst.setResizeMode(QListWidget.Adjust)
-        lst.setMovement(QListWidget.Static)
+        lst.setResizeMode(QListWidget.ResizeMode.Adjust)
+        lst.setMovement(QListWidget.Movement.Static)
         lst.setMinimumSize(430, 340)
         for nm in sorted(res.keys(), key=lambda s: s.lower()):
             img = self._krita_pattern_image(nm)
             if img is None:
                 continue
             it = QListWidgetItem(self._elide(nm, 22))
-            it.setData(Qt.UserRole, nm)
+            it.setData(Qt.ItemDataRole.UserRole, nm)
             it.setToolTip(nm)
             it.setIcon(QIcon(QPixmap.fromImage(img).scaled(
-                64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
-            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+                64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
+            it.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom)
             lst.addItem(it)
         if lst.count() == 0:
             self._warn(self.t("warn_no_krita_patterns"))
             return
         lst.itemDoubleClicked.connect(lambda _i: dlg.accept())
         lay.addWidget(lst)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         it = lst.currentItem()
         if it is None:
             return
-        nm = it.data(Qt.UserRole)
+        nm = it.data(Qt.ItemDataRole.UserRole)
         img = self._krita_pattern_image(nm)
         if img is None:
             self._warn(self.t("warn_pattern_bad"))
@@ -1539,10 +1557,10 @@ class MangaSFXDocker(DockWidget):
         if img is None:
             return None
         try:
-            im = img.convertToFormat(QImage.Format_ARGB32)
+            im = img.convertToFormat(QImage.Format.Format_ARGB32)
             ba = QByteArray()
             buf = QBuffer(ba)
-            buf.open(QBuffer.WriteOnly)
+            buf.open(QBuffer.OpenModeFlag.WriteOnly)
             im.save(buf, "PNG")
             buf.close()
             b64 = bytes(ba.toBase64()).decode("ascii")
@@ -1561,13 +1579,16 @@ class MangaSFXDocker(DockWidget):
         if chk is not None and not chk.isChecked():
             return                       # ausgeblendet -> nicht rechnen/zeichnen
         fam = self.font_combo.currentText()
+        # Über den Matcher gehen, damit die Vorschau die echte Familie zeichnet
+        # (und nicht Qts Ersatzschrift, nur weil die Schreibweise abweicht).
+        fmatch = self._resolve_font(fam) if fam.strip() else None
         self.preview.set_data({
             "text": self._effective_text(),
-            "family": fam,
+            "family": fmatch.family if fmatch is not None else fam,
             # Tolerant preview: never abort the fit when a font is unresolved;
             # just flag it so the preview shows "not installed" (Qt substitutes
             # a fallback family for the actual drawing).
-            "missing": bool(fam.strip()) and not self._is_installed(fam),
+            "missing": bool(fam.strip()) and fmatch is None,
             "missing_label": self.t("not_installed"),
             "size_ref": max(1, self.size_spin.value()),
             "bold": self.bold_chk.isChecked(),
@@ -1764,7 +1785,7 @@ class MangaSFXDocker(DockWidget):
             self._make_shrinkable(btn)
             btn.clicked.connect(lambda _c=False, p=preset: self._apply_preset(p))
             if preset.get("user"):
-                btn.setContextMenuPolicy(Qt.CustomContextMenu)
+                btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 btn.customContextMenuRequested.connect(
                     lambda pos, p=preset, b=btn: self._show_preset_menu(p, b, pos))
             grid.addWidget(btn, i // 2, i % 2)
@@ -1846,7 +1867,7 @@ class MangaSFXDocker(DockWidget):
         menu.addSeparator()
         act_delete = menu.addAction(self.t("menu_delete"))
 
-        chosen = menu.exec_(button.mapToGlobal(pos))
+        chosen = menu.exec(button.mapToGlobal(pos))
         if chosen is None:
             return
         if chosen == act_rename:
@@ -1896,8 +1917,8 @@ class MangaSFXDocker(DockWidget):
         reply = QMessageBox.question(
             self.widget(), self.t("dlg_overwrite_title"),
             self.t("dlg_overwrite_q", name=preset["name"]),
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
             return
         preset["font"] = self.font_combo.currentText()
         preset["size"] = self.size_spin.value()
@@ -1930,8 +1951,8 @@ class MangaSFXDocker(DockWidget):
         reply = QMessageBox.question(
             self.widget(), self.t("dlg_delpreset_title"),
             self.t("dlg_delpreset_q", name=name),
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
             return
         self._user_presets = [p for p in self._user_presets if p is not preset]
         save_user_presets(self._user_presets)
@@ -1967,7 +1988,7 @@ class MangaSFXDocker(DockWidget):
         gekippt, das war der zweite Grund fürs Ruckeln."""
         combo = NoScrollComboBox()
         combo.setEditable(True)
-        combo.setInsertPolicy(QComboBox.NoInsert)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
 
         quick = self._quick_fonts()
         combo.addItems(quick)
@@ -1975,14 +1996,14 @@ class MangaSFXDocker(DockWidget):
         # Completer über ein eigenes Modell (anfangs nur die Schnellwahl).
         self._font_model = QStringListModel(list(quick))
         completer = QCompleter(self._font_model, combo)
-        completer.setCompletionMode(QCompleter.PopupCompletion)
-        completer.setCaseSensitivity(Qt.CaseInsensitive)
-        completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
         combo.setCompleter(completer)
 
         # Breite an einer kurzen Mindestlänge ausrichten statt am längsten
         # Fontnamen – sonst zwingt das Dropdown den ganzen Docker breit.
-        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         combo.setMinimumContentsLength(6)
         self._make_shrinkable(combo)
         combo.setCurrentIndex(0)
@@ -2001,33 +2022,45 @@ class MangaSFXDocker(DockWidget):
         full = quick + [f for f in self._families() if f not in seen]
         self._font_model.setStringList(full)
 
-    def _installed_set(self):
-        if getattr(self, "_inst_set", None) is None:
-            self._inst_set = set(self._families())
-        return self._inst_set
+    def _resolve_font(self, family):
+        """Die tatsächlich installierte Familie zu einem gewünschten Namen.
+
+        Gibt ein FMATCH.Match zurück (``.family`` ist der echte Name, den Qt
+        kennt) oder None, wenn die Schrift wirklich fehlt."""
+        return _font_index().resolve(family)
 
     def _is_installed(self, family):
-        return bool(family) and family in self._installed_set()
+        return self._resolve_font(family) is not None
 
     def _best_alternative(self):
         """A really-installed fallback: the first installed favourite, else the
-        first system family."""
+        first system family. Returns the *resolved* family name, so the result
+        is always something Qt can set verbatim."""
         for fav in SFX_FONTS:
-            if self._is_installed(fav):
-                return fav
+            m = self._resolve_font(fav)
+            if m is not None:
+                return m.family
         fams = self._families()
         return fams[0] if fams else ""
 
     def _select_font(self, font_name, warn=True):
-        """Wählt den Font im Dropdown. Ist die Schrift nicht installiert, wird
-        (bei warn=True) gewarnt und eine installierte Alternative gesetzt."""
-        if font_name and not self._is_installed(font_name):
-            alt = self._best_alternative()
-            if warn:
-                self._warn(self.t("st_font_missing", font=font_name,
-                                  alt=alt or "?"))
-            if alt:
-                font_name = alt
+        """Wählt den Font im Dropdown.
+
+        Ein Name, der nicht wörtlich in der Systemliste steht, wird zuerst
+        tolerant aufgelöst – Schreibweise, Foundry-Kürzel und ein im
+        Familiennamen steckender Schnitt kosten den Font sonst grundlos. Erst
+        wenn auch das scheitert, wird gewarnt und eine Alternative gesetzt."""
+        if font_name:
+            m = self._resolve_font(font_name)
+            if m is not None:
+                font_name = m.family
+            else:
+                alt = self._best_alternative()
+                if warn:
+                    self._warn(self.t("st_font_missing", font=font_name,
+                                      alt=alt or "?"))
+                if alt:
+                    font_name = alt
         idx = self.font_combo.findText(font_name)
         if idx >= 0:
             self.font_combo.setCurrentIndex(idx)
@@ -2383,7 +2416,7 @@ class MangaSFXDocker(DockWidget):
                         first = fonts[0]
                         btn.clicked.connect(
                             lambda _c=False, f=first: self._select_font(f))
-                    btn.setContextMenuPolicy(Qt.CustomContextMenu)
+                    btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                     btn.customContextMenuRequested.connect(
                         lambda pos, r=rule, b=btn:
                             self._show_builtin_menu(r, b, pos))
@@ -2395,7 +2428,7 @@ class MangaSFXDocker(DockWidget):
                     btn.setToolTip(tip)
                     btn.clicked.connect(
                         lambda _c=False, r=rule: self._edit_font_rule(r))
-                    btn.setContextMenuPolicy(Qt.CustomContextMenu)
+                    btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                     btn.customContextMenuRequested.connect(
                         lambda pos, r=rule, b=btn: self._show_rule_menu(r, b, pos))
                 self.rules_box.addWidget(btn)
@@ -2446,7 +2479,7 @@ class MangaSFXDocker(DockWidget):
         act_edit = menu.addAction(self.t("menu_edit"))
         menu.addSeparator()
         act_del = menu.addAction(self.t("menu_delete"))
-        chosen = menu.exec_(button.mapToGlobal(pos))
+        chosen = menu.exec(button.mapToGlobal(pos))
         if chosen == act_edit:
             self._edit_font_rule(rule)
         elif chosen == act_del:
@@ -2460,7 +2493,7 @@ class MangaSFXDocker(DockWidget):
         act_edit = menu.addAction(self.t("menu_edit"))
         menu.addSeparator()
         act_hide = menu.addAction(self.t("menu_hide"))
-        chosen = menu.exec_(button.mapToGlobal(pos))
+        chosen = menu.exec(button.mapToGlobal(pos))
         if chosen == act_edit:
             self._edit_builtin_rule(rule)
         elif chosen == act_hide:
@@ -2560,12 +2593,12 @@ class MangaSFXDocker(DockWidget):
 
         add_btn.clicked.connect(add_current)
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
 
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
         return line.text()
 
@@ -2634,8 +2667,8 @@ class MangaSFXDocker(DockWidget):
     def _delete_font_rule(self, rule):
         reply = QMessageBox.question(
             self.widget(), self.t("dlg_delrule_title"), self.t("dlg_delrule_q"),
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
             return
         self._font_rules = [r for r in self._font_rules if r is not rule]
         save_font_rules(self._font_rules)
@@ -2813,21 +2846,21 @@ class MangaSFXDocker(DockWidget):
         h = max(1, int(math.ceil(ry1 - ry0)))
         ax, ay = -rx0, -ry0                       # anchor inside the image
 
-        img = QImage(w, h, QImage.Format_ARGB32)
+        img = QImage(w, h, QImage.Format.Format_ARGB32)
         img.fill(0)
         p = QPainter(img)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         path = QPainterPath()
         path.addText(-adv / 2.0, 0.0, fn, text)   # h-centred, baseline at 0
 
         # weiche (geblurte) Outline: eigenes, isoliert geblurtes Bild ganz unten,
         # sodass der scharfe Text darüber unverwischt bleibt.
         if soft_on:
-            soft = QImage(w, h, QImage.Format_ARGB32)
+            soft = QImage(w, h, QImage.Format.Format_ARGB32)
             soft.fill(0)
             spn = QPainter(soft)
-            spn.setRenderHint(QPainter.Antialiasing, True)
+            spn.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             spn.translate(ax, ay)
             if angle:
                 spn.rotate(angle)
@@ -2835,14 +2868,14 @@ class MangaSFXDocker(DockWidget):
             if self.soft_pattern_chk.isChecked() and spimg is not None:
                 tw, th = self._pattern_tile()
                 sbrush = QBrush(QPixmap.fromImage(spimg).scaled(
-                    max(1, tw), max(1, th), Qt.IgnoreAspectRatio,
-                    Qt.SmoothTransformation))
+                    max(1, tw), max(1, th), Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation))
             else:
                 sbrush = QBrush(QColor(self.soft_color_btn._color))
             if soft_w > 0:
                 spen = QPen(sbrush, soft_w * 2.0)
-                spen.setJoinStyle(Qt.RoundJoin)
-                spen.setCapStyle(Qt.RoundCap)
+                spen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                spen.setCapStyle(Qt.PenCapStyle.RoundCap)
                 spn.strokePath(path, spen)
             spn.fillPath(path, sbrush)
             spn.end()
@@ -2859,21 +2892,21 @@ class MangaSFXDocker(DockWidget):
         if o1 > 0 and o2 > 0:              # 2nd outline coupled to the first
             pen2 = QPen(QColor(self.outline2_btn._color))
             pen2.setWidthF(max(0.5, 2.0 * o2))
-            pen2.setJoinStyle(Qt.RoundJoin)
-            pen2.setCapStyle(Qt.RoundCap)
+            pen2.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen2.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen2)
         if o1 > 0:
             pen = QPen(QColor(self.outline_btn._color))
             pen.setWidthF(max(0.5, 2.0 * o1))
-            pen.setJoinStyle(Qt.RoundJoin)
-            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             p.strokePath(path, pen)
         pimg = self._ensure_pattern_img()
         if pimg is not None:
             tw, th = self._pattern_tile()
             pm = QPixmap.fromImage(pimg).scaled(
-                max(1, tw), max(1, th), Qt.IgnoreAspectRatio,
-                Qt.SmoothTransformation)
+                max(1, tw), max(1, th), Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
             p.fillPath(path, QBrush(pm))
         else:                                     # safety: solid if no image
             p.fillPath(path, QBrush(QColor(self.fill_btn._color)))
@@ -2899,7 +2932,7 @@ class MangaSFXDocker(DockWidget):
             return None, False
         if (cx0, cy0, cx1, cy1) != (px, py, px + img.width(), py + img.height()):
             img = img.copy(cx0 - px, cy0 - py, cx1 - cx0, cy1 - cy0)
-        img = img.convertToFormat(QImage.Format_ARGB32)   # memory layout = BGRA
+        img = img.convertToFormat(QImage.Format.Format_ARGB32)   # memory layout = BGRA
         node = doc.createNode("SFX", "paintlayer")
         root = doc.rootNode()
         kids = root.childNodes()
@@ -3053,11 +3086,11 @@ class MangaSFXDocker(DockWidget):
         box = QMessageBox(self.widget())
         box.setWindowTitle(self.t("reset_title"))
         box.setText(self.t("reset_q"))
-        btn_style = box.addButton(self.t("reset_style"), QMessageBox.AcceptRole)
-        btn_all = box.addButton(self.t("reset_all"), QMessageBox.DestructiveRole)
-        box.addButton(self.t("cancel"), QMessageBox.RejectRole)
+        btn_style = box.addButton(self.t("reset_style"), QMessageBox.ButtonRole.AcceptRole)
+        btn_all = box.addButton(self.t("reset_all"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(self.t("cancel"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(btn_style)
-        box.exec_()
+        box.exec()
         clicked = box.clickedButton()
 
         if clicked is btn_all:
@@ -3124,39 +3157,117 @@ class MangaSFXDocker(DockWidget):
     # ==================================================================
     #  Import / Export (eigene Presets + Font-Regeln)
     # ==================================================================
+    def _exported_fonts(self):
+        """Font families named by the data this export carries (own presets +
+        rules). Built-in presets are left out — they travel with the plugin."""
+        seen = []
+
+        def _add(f):
+            f = (f or "").strip()
+            if f and f not in seen:
+                seen.append(f)
+
+        for p in (self._user_presets or []):
+            if isinstance(p, dict):
+                _add(p.get("font"))
+        for r in (self._font_rules or []):
+            if isinstance(r, dict):
+                for f in (r.get("fonts") or []):
+                    _add(f)
+        return seen
+
     def _export_data(self):
-        """Schreibt eigene Presets + Font-Regeln in eine .json-Datei."""
+        """Schreibt eigene Presets + Font-Regeln in eine Datei.
+
+        Standard ist ein .zip-Paket, das die Schriften der Presets/Regeln
+        gleich mitnimmt — sonst muss man sie auf dem anderen Rechner alle von
+        Hand nachinstallieren. Wer nur die Daten will, wählt .json.
+        """
         path, _flt = QFileDialog.getSaveFileName(
             self.widget(), self.t("export_title"),
-            "manga_sfx_presets.json", "JSON (*.json)")
+            "manga_sfx_presets.zip",
+            "%s (*.zip);;JSON (*.json)" % self.t("export_title"))
         if not path:
             return
-        if not path.lower().endswith(".json"):
-            path += ".json"
+        if not path.lower().endswith((".zip", ".json")):
+            path += ".zip"
         data = {
             "manga_sfx": 1,
             "presets": self._user_presets,
             "font_rules": self._font_rules,
         }
+        blob = json.dumps(data, ensure_ascii=False, indent=2)
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, ensure_ascii=False, indent=2)
+            if path.lower().endswith(".json"):
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(blob)
+            else:
+                self._write_sfx_bundle(path, blob)
         except OSError as e:                        # noqa: BLE001
             self._warn(self.t("st_export_fail", err=e))
             return
         self.status_label.setText(self.t(
             "st_exported", p=len(self._user_presets), r=len(self._font_rules)))
 
+    def _write_sfx_bundle(self, path, blob):
+        """manga_sfx_presets.json + every font file the presets/rules name."""
+        import zipfile
+        from .. import fontfiles as FFILES
+        try:
+            files, _missing = FFILES.collect_font_files(
+                self._exported_fonts(), parent=self.widget(),
+                label=self.t("font_scan"))
+        except Exception:                           # noqa: BLE001
+            files = {}
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("manga_sfx_presets.json", blob)
+            try:
+                FFILES.add_fonts_to_zip(z, files)
+            except Exception:                       # noqa: BLE001
+                pass
+
+    def _read_sfx_bundle(self, path):
+        """(data, [extracted font paths]) from an exported .zip."""
+        import zipfile
+        import tempfile
+        data = {}
+        fonts = []
+        with zipfile.ZipFile(path) as z:
+            names = z.namelist()
+            member = ("manga_sfx_presets.json"
+                      if "manga_sfx_presets.json" in names
+                      else next((n for n in names
+                                 if n.lower().endswith(".json")), ""))
+            if member:
+                data = json.loads(z.read(member).decode("utf-8"))
+            wanted = [n for n in names
+                      if n.startswith("fonts/") and not n.endswith("/")]
+            if wanted:
+                tmp = tempfile.mkdtemp(prefix="typer_sfx_fonts_")
+                for nm in wanted:
+                    dest = os.path.join(tmp, os.path.basename(nm))
+                    with open(dest, "wb") as fh:
+                        fh.write(z.read(nm))
+                    fonts.append(dest)
+        return data, fonts
+
     def _import_data(self):
-        """Liest Presets + Regeln aus einer .json-Datei (Zusammenführen/Ersetzen)."""
+        """Liest Presets + Regeln aus einer .json-Datei oder einem .zip-Paket
+        (dessen Schriften werden gleich mitinstalliert)."""
         path, _flt = QFileDialog.getOpenFileName(
-            self.widget(), self.t("import_title"), "", "JSON (*.json)")
+            self.widget(), self.t("import_title"), "",
+            "%s (*.zip *.json);;JSON (*.json)" % self.t("import_title"))
         if not path:
             return
+        bundled_fonts = []
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-        except (OSError, ValueError) as e:          # noqa: BLE001
+            import zipfile
+            if zipfile.is_zipfile(path):
+                data, bundled_fonts = self._read_sfx_bundle(path)
+            else:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+        except (OSError, ValueError, KeyError) as e:    # noqa: BLE001
             self._warn(self.t("st_import_fail", err=e))
             return
         if not isinstance(data, dict):
@@ -3178,12 +3289,12 @@ class MangaSFXDocker(DockWidget):
         box = QMessageBox(self.widget())
         box.setWindowTitle(self.t("import_title"))
         box.setText(self.t("import_q", p=len(presets), r=len(rules)))
-        btn_merge = box.addButton(self.t("import_merge"), QMessageBox.AcceptRole)
+        btn_merge = box.addButton(self.t("import_merge"), QMessageBox.ButtonRole.AcceptRole)
         btn_replace = box.addButton(self.t("import_replace"),
-                                    QMessageBox.DestructiveRole)
-        box.addButton(self.t("cancel"), QMessageBox.RejectRole)
+                                    QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(self.t("cancel"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(btn_merge)
-        box.exec_()
+        box.exec()
         clicked = box.clickedButton()
 
         if clicked is btn_replace:
@@ -3197,11 +3308,25 @@ class MangaSFXDocker(DockWidget):
 
         save_user_presets(self._user_presets)
         save_font_rules(self._font_rules)
+        if bundled_fonts:
+            self._install_bundled_fonts(bundled_fonts)
         self._rebuild_presets()
         self._rebuild_rules()
         self._refresh_suggestions(self.text_input.text())
         self.status_label.setText(self.t(
             "st_imported", p=len(presets), r=len(rules)))
+
+    def _install_bundled_fonts(self, paths):
+        """Install the fonts that came with a bundle (per user, no admin) and
+        drop the cached family list so the new faces resolve immediately."""
+        global _SYSTEM_FAMILIES, _FONT_INDEX
+        try:
+            from .. import fontfiles as FFILES
+            FFILES.install_fonts(paths)
+        except Exception:                           # noqa: BLE001
+            return
+        _SYSTEM_FAMILIES = None
+        _FONT_INDEX = None
 
     # --- Hilfen für den Import ----------------------------------------
     def _as_int(self, value, default):
