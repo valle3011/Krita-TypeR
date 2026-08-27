@@ -1263,6 +1263,149 @@ if imported:
         import traceback
         traceback.print_exc()
 
+# --- Picking lines the short way + a style of its own per line -------------
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _KR_APP._settings.pop(("typer_kr", "tabOrder"), None)
+        _KR_APP._settings[("typer_kr", "batchStyle")] = "false"
+        _ld = TK.TyperDocker()
+        _KR_APP._doc = _FakeDoc(800, 1200)
+        _ld.editor.setPlainText("Alpha line\nBeta line\nGamma line")
+        _ld.analyze()
+        _ld._bp_boxes = [{"x": 10, "y": 10, "w": 200, "h": 120,
+                          "kind": "bubble", "shape": "rect", "fill": 1.0}
+                         for _ in range(3)]
+        _ld._bp_assign = []
+        _ld.bp_batch_page_chk.blockSignals(True)
+        _ld.bp_batch_page_chk.setChecked(False)
+        _ld.bp_batch_page_chk.blockSignals(False)
+        _ld.on_bp_batch_assign()
+
+        # --- selecting several rows at once
+        _ld.bp_batch_table.selectAll()
+        check("select all really selects every row",
+              _ld._bp_batch_rows() == [0, 1, 2])
+        _ld.bp_batch_table.clearSelection()
+        _ld.bp_batch_table.selectRow(1)
+        check("one selected row is the row that is acted on",
+              _ld._bp_batch_rows() == [1])
+        check("a single row also arms that bubble",
+              _ld._bp_current == 1)
+
+        # --- take the current line (and the ones after it)
+        _ld._bp_assign = [-1, -1, -1]
+        _ld._index = 1                        # 'Beta line' is current
+        _ld.bp_batch_table.clearSelection()
+        _ld.bp_batch_table.selectRow(0)
+        _ld.on_bp_batch_take_line()
+        check("take gives the selected bubble the current line",
+              _ld._bp_assign == [1, -1, -1])
+        _ld.bp_batch_table.selectAll()
+        _ld._index = 0
+        _ld.on_bp_batch_take_line()
+        check("take fills a multi-row selection with consecutive lines",
+              _ld._bp_assign == [0, 1, 2])
+
+        # --- assign by clicking through the script
+        _ld._bp_assign = [-1, -1, -1]
+        _ld.bp_batch_table.clearSelection()
+        _ld.bp_batch_table.selectRow(0)
+        _ld.bp_batch_pick_btn.setChecked(True)
+        _ld.table.selectRow(2)                # click 'Gamma line'
+        check("clicking a line assigns it to the armed bubble",
+              _ld._bp_assign[0] == 2)
+        check("... and steps on to the next bubble",
+              _ld.bp_batch_table.currentRow() == 1)
+        _ld.table.selectRow(0)
+        _ld.table.selectRow(1)
+        check("clicking on down the script fills the following bubbles",
+              _ld._bp_assign == [2, 0, 1])
+        check("the mode switches itself off once every bubble has a line",
+              not _ld.bp_batch_pick_btn.isChecked())
+
+        # an SFX box is stepped over while clicking
+        _ld._bp_boxes[1]["kind"] = "sfx"
+        _ld._bp_assign = [-1, -1, -1]
+        _ld._bp_batch_refresh()
+        _ld.bp_batch_table.clearSelection()
+        _ld.bp_batch_table.selectRow(0)
+        _ld.bp_batch_pick_btn.setChecked(True)
+        _ld.table.selectRow(0)
+        check("click-assign skips an SFX box instead of feeding it a line",
+              _ld.bp_batch_table.currentRow() == 2)
+        _ld.bp_batch_pick_btn.setChecked(False)
+        _ld._bp_boxes[1]["kind"] = "bubble"
+
+        # --- the line filter
+        _ld._bp_assign = [0, 1, 2]
+        _ld._bp_batch_refresh()
+        _full = _ld.bp_batch_table.cellWidget(0, 1).count()
+        _ld.bp_batch_search.setText("gamma")
+        _combo = _ld.bp_batch_table.cellWidget(1, 1)
+        check("the filter narrows the line pickers",
+              _combo.count() < _full)
+        check("a row's OWN line survives the filter (nothing is lost)",
+              _combo.findData(1) >= 0)
+        _ld.bp_batch_search.setText("")
+
+        # --- per-line style: hidden until switched on
+        check("the style columns are hidden by default",
+              _ld.bp_batch_table.isColumnHidden(3)
+              and _ld.bp_batch_table.isColumnHidden(4))
+        _ld.bp_batch_style_chk.setChecked(True)
+        check("switching the setting on shows font and preset columns",
+              not _ld.bp_batch_table.isColumnHidden(3)
+              and not _ld.bp_batch_table.isColumnHidden(4))
+        check("the setting is remembered",
+              _KR_APP._settings.get(("typer_kr", "batchStyle")) == "true")
+
+        # --- stamping the current style onto selected rows
+        _ld.font_picker.setCurrentFamily("Arial")
+        _ld.bp_batch_table.clearSelection()
+        _ld.bp_batch_table.selectRow(0)
+        _ld.bp_batch_table.selectRow(2)
+        _ld.on_bp_batch_stamp_style()
+        check("the stamped rows carry the font",
+              _ld._bp_style[2].get("font") == "Arial")
+        check("an untouched row keeps the global style",
+              _ld._bp_style[1] == {})
+        _ld.on_bp_batch_clear_style()
+        check("clearing the style gives the row back to the global one",
+              _ld._bp_style[2] == {})
+
+        # --- a row style really reaches the docker, and is given back
+        _ld._bp_style = [{}, {"font": "Times New Roman"}, {}]
+        _ld.font_picker.setCurrentFamily("Arial")
+        check("applying a row style switches the docker's font",
+              _ld._bp_apply_row_style(1)
+              and _ld.font_picker.currentFamily() == "Times New Roman")
+        check("a row without a style leaves the font alone",
+              not _ld._bp_apply_row_style(0)
+              and _ld.font_picker.currentFamily() == "Times New Roman")
+
+        _ld.font_picker.setCurrentFamily("Arial")
+        _ld._bp_assign = [0, 1, 2]
+        _ld._bp_run = {"pairs": TK.BB.batch_pairs(_ld._bp_assign, 3),
+                       "at": 0, "done": 0, "skipped": 0, "units": [],
+                       "review": False, "waiting": False, "back_to": 0,
+                       "restyled": False,
+                       "style": _ld._collect_settings(),
+                       "font": _ld.font_picker.currentFamily()}
+        for _ in range(8):
+            if _ld._bp_run is None:
+                break
+            _ld._bp_batch_tick()
+        check("after a run with per-line styles the font is back to normal",
+              _ld.font_picker.currentFamily() == "Arial")
+        _ld.deleteLater()
+        _KR_APP._doc = None
+        _KR_APP._settings.pop(("typer_kr", "batchStyle"), None)
+    except Exception:                               # pragma: no cover
+        check("line picking / per-line style suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- The Batch tab: its own view and tools, independent of BubblR ----------
 # The point of the separate tab is that marking bubbles and filling them must
 # not require the detection tab. Both tabs are views of ONE box list, so what

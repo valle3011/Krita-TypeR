@@ -666,6 +666,32 @@ LANG = {
                             "each of them below."),
         "st_batch_boxes_cleared": "All boxes removed.",
         "bp_batch_assign": "Assign lines",
+        "bp_batch_all": "Select all",
+        "bp_batch_all_tip": ("Select every row, to give them all the same line "
+                             "run, the same font or the same preset at once."),
+        "bp_batch_take": "Take current line",
+        "bp_batch_take_tip": ("Give the selected bubble(s) the line that is "
+                              "current in the Type tab \u2014 and the ones after "
+                              "it, when several rows are selected."),
+        "bp_batch_pick": "Assign by clicking",
+        "bp_batch_pick_tip": ("While active, clicking a line in the Type tab\u2019s "
+                              "table gives it to the selected bubble and steps "
+                              "to the next one, so a page is paired by clicking "
+                              "down the script."),
+        "bp_batch_style": "Style per line",
+        "bp_batch_style_tip": ("Show a font and a preset column, so a single "
+                               "line can look different from the rest \u2014 a "
+                               "whisper, a shout, a sign. Empty means the style "
+                               "from the Type/Style tabs, exactly as before."),
+        "bp_batch_search_ph": "Filter lines\u2026",
+        "bp_batch_col_font": "Font",
+        "bp_batch_col_preset": "Preset",
+        "st_bp_batch_took": "{n} bubble(s) given a line.",
+        "st_bp_batch_pick_mode": ("Click the lines in the Type tab \u2014 each one "
+                                  "goes to the selected bubble, then the next."),
+        "st_bp_batch_pick_done": "Every bubble has a line.",
+        "st_bp_batch_styled": "Style stored on {n} row(s).",
+        "st_bp_batch_unstyled": "Style removed from {n} row(s).",
         "bp_batch_gap": "Insert gap",
         "bp_batch_ungap": "Remove gap",
         "bp_batch_clear": "Clear",
@@ -1517,6 +1543,36 @@ LANG = {
                             "eine Zeile zuordnen."),
         "st_batch_boxes_cleared": "Alle Boxen entfernt.",
         "bp_batch_assign": "Zeilen zuordnen",
+        "bp_batch_all": "Alle ausw\u00e4hlen",
+        "bp_batch_all_tip": ("W\u00e4hlt alle Reihen aus, um ihnen auf einmal "
+                             "dieselbe Zeilenfolge, dieselbe Schrift oder "
+                             "dasselbe Preset zu geben."),
+        "bp_batch_take": "Aktuelle Zeile \u00fcbernehmen",
+        "bp_batch_take_tip": ("Gibt der/den gew\u00e4hlten Bubble(s) die im "
+                              "Type-Reiter aktuelle Zeile \u2014 und bei mehreren "
+                              "Reihen die darauf folgenden."),
+        "bp_batch_pick": "Per Klick zuweisen",
+        "bp_batch_pick_tip": ("Solange aktiv, gibt ein Klick auf eine Zeile in "
+                              "der Tabelle des Type-Reiters diese Zeile der "
+                              "gew\u00e4hlten Bubble und springt zur n\u00e4chsten \u2014 "
+                              "so ordnest du eine Seite zu, indem du das Skript "
+                              "durchklickst."),
+        "bp_batch_style": "Stil pro Zeile",
+        "bp_batch_style_tip": ("Blendet eine Schrift- und eine Preset-Spalte "
+                               "ein, damit eine einzelne Zeile anders aussehen "
+                               "kann als der Rest \u2014 Fl\u00fcstern, Schreien, ein "
+                               "Schild. Leer bedeutet: der Stil aus den "
+                               "Type-/Stil-Reitern, genau wie bisher."),
+        "bp_batch_search_ph": "Zeilen filtern\u2026",
+        "bp_batch_col_font": "Schrift",
+        "bp_batch_col_preset": "Preset",
+        "st_bp_batch_took": "{n} Bubble(s) eine Zeile gegeben.",
+        "st_bp_batch_pick_mode": ("Klicke die Zeilen im Type-Reiter an \u2014 jede "
+                                  "geht an die gew\u00e4hlte Bubble, dann die "
+                                  "n\u00e4chste."),
+        "st_bp_batch_pick_done": "Jede Bubble hat eine Zeile.",
+        "st_bp_batch_styled": "Stil auf {n} Reihe(n) gespeichert.",
+        "st_bp_batch_unstyled": "Stil von {n} Reihe(n) entfernt.",
         "bp_batch_gap": "L\u00fccke einf\u00fcgen",
         "bp_batch_ungap": "L\u00fccke entfernen",
         "bp_batch_clear": "Leeren",
@@ -3514,6 +3570,11 @@ class FontPicker(QWidget):
         self._rebuild()
 
     # -- public API --
+
+    def families(self):
+        """Every installed family, recently used ones first — the same order
+        the list shows, so a picker built from this reads the same way."""
+        return order_with_recents(self._all, self._recents)
 
     def currentFamily(self):
         return self._current
@@ -5534,6 +5595,7 @@ class TyperDocker(DockWidget):
         self._bp_assign = []       # unit index per box (-1 = none), for batch
         self._bp_run = None        # live batch run state (see _bp_batch_tick)
         self._bp_last_units = []   # units the last batch wrote (for its undo)
+        self._bp_style = []        # per box: {'font','preset'} or {} (opt-in)
         self._bp_overlays = []     # every page view (BubblR tab + Batch tab)
         self._bp_mode_btns = {}    # click mode -> its buttons in every tab
         self._bp_page_thumb = None # (img, doc_w, doc_h) last shown, for new views
@@ -7490,6 +7552,12 @@ class TyperDocker(DockWidget):
                           ("bp_batch_ungap_btn", "bp_batch_ungap"),
                           ("bp_batch_clear_btn", "bp_batch_clear"),
                           ("bp_batch_page_chk", "bp_batch_page"),
+                          ("bp_batch_style_chk", "bp_batch_style"),
+                          ("bp_batch_all_btn", "bp_batch_all"),
+                          ("bp_batch_take_btn", "bp_batch_take"),
+                          ("bp_batch_pick_btn", "bp_batch_pick"),
+                          ("bp_batch_stamp_btn", "bp_assign"),
+                          ("bp_batch_unstamp_btn", "bp_unassign"),
                           ("bp_batch_start_btn", "bp_batch_start"),
                           ("bp_batch_stop_btn", "bp_batch_stop"),
                           ("bp_batch_review_chk", "bp_batch_review"),
@@ -7498,9 +7566,11 @@ class TyperDocker(DockWidget):
             if w is not None:
                 w.setText(t(key))
                 w.setToolTip(t(key + "_tip"))
+        self.bp_batch_search.setPlaceholderText(t("bp_batch_search_ph"))
         self.bp_batch_table.setHorizontalHeaderLabels(
             [t("bp_batch_col_bubble"), t("bp_batch_col_line"),
-             t("bp_batch_col_text")])
+             t("bp_batch_col_text"), t("bp_batch_col_font"),
+             t("bp_batch_col_preset")])
         self._bp_batch_refresh()      # shape/SFX labels are translated too
         # re-label the page combo / status in the new language
         self._refresh_pages_combo()
@@ -10548,6 +10618,10 @@ class TyperDocker(DockWidget):
         if rows:
             self._index = rows[0].row()
             self._show_current()
+            # 'assign by clicking' turns this table into the batch's line
+            # picker: the clicked line goes to the armed bubble and the batch
+            # steps to the next one
+            self._bp_batch_line_clicked(self._index)
 
     def _on_table_double(self, *args):
         # double-click on a row = insert immediately
@@ -11187,6 +11261,8 @@ class TyperDocker(DockWidget):
         switched off entirely. Detection is offered as an accelerator, not as a
         prerequisite.
         """
+        app = Krita.instance()
+
         # marking tools: everything needed to get boxes onto the page
         _mk_pb = self._new_panel("batch_mark", "batch")
         mk = _mk_pb.body_layout()
@@ -11263,12 +11339,51 @@ class TyperDocker(DockWidget):
         self.bp_batch_page_chk.toggled.connect(
             lambda *_a: self.on_bp_batch_assign())
         row.addWidget(self.bp_batch_page_chk)
+        # per-line style is off by default: the extra columns would only be in
+        # the way on a page where every bubble is ordinary dialogue
+        self.bp_batch_style_chk = QCheckBox()
+        self.bp_batch_style_chk.setChecked(
+            app.readSetting("typer_kr", "batchStyle", "false") == "true")
+        self.bp_batch_style_chk.toggled.connect(self._on_bp_batch_style_toggle)
+        row.addWidget(self.bp_batch_style_chk)
         bt.addLayout(row)
 
-        self.bp_batch_table = QTableWidget(0, 3)
+        # picking a line for a bubble, made short
+        row = FlowLayout()
+        self.bp_batch_all_btn = QPushButton()
+        self.bp_batch_all_btn.clicked.connect(
+            lambda *_a: self.bp_batch_table.selectAll())
+        row.addWidget(self.bp_batch_all_btn)
+        self.bp_batch_take_btn = QPushButton()
+        self.bp_batch_take_btn.clicked.connect(self.on_bp_batch_take_line)
+        row.addWidget(self.bp_batch_take_btn)
+        self.bp_batch_pick_btn = QPushButton()
+        self.bp_batch_pick_btn.setCheckable(True)
+        self.bp_batch_pick_btn.toggled.connect(self._on_bp_batch_pick_toggle)
+        row.addWidget(self.bp_batch_pick_btn)
+        self.bp_batch_stamp_btn = QPushButton()
+        self.bp_batch_stamp_btn.clicked.connect(self.on_bp_batch_stamp_style)
+        row.addWidget(self.bp_batch_stamp_btn)
+        self.bp_batch_unstamp_btn = QPushButton()
+        self.bp_batch_unstamp_btn.clicked.connect(self.on_bp_batch_clear_style)
+        row.addWidget(self.bp_batch_unstamp_btn)
+        bt.addLayout(row)
+
+        # filter for the line pickers: a long script makes a 200-entry dropdown
+        self.bp_batch_search = QLineEdit()
+        self.bp_batch_search.setClearButtonEnabled(True)
+        self.bp_batch_search.textChanged.connect(
+            lambda *_a: self._bp_batch_refresh())
+        bt.addWidget(self.bp_batch_search)
+
+        self.bp_batch_table = QTableWidget(0, 5)
         self.bp_batch_table.verticalHeader().setVisible(False)
         self.bp_batch_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows)
+        # several rows at once: give three bubbles the same preset, clear a
+        # block of pairings, stamp a style onto a whole conversation
+        self.bp_batch_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
         self.bp_batch_table.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers)
         self.bp_batch_table.itemSelectionChanged.connect(
@@ -11690,28 +11805,183 @@ class TyperDocker(DockWidget):
         self.bp_batch_status.setText(self._tr(key).format(**fmt))
 
     def _on_bp_batch_row(self):
-        """Selecting a row arms that bubble, so the overlay highlights the
-        bubble whose line you are looking at."""
+        """Selecting a single row arms that bubble, so the page view highlights
+        the bubble whose line you are looking at. A multi-row selection arms
+        nothing — it is about to be acted on as a block."""
+        if len(self._bp_batch_rows()) != 1:
+            return
         row = self.bp_batch_table.currentRow()
         if 0 <= row < len(self._bp_boxes) and row != self._bp_current:
             self._bp_set_current(row)
 
+    @staticmethod
+    def _short(text, n=40):
+        """One-line, shortened preview of a script line."""
+        text = (text or "").replace("\n", " ").strip()
+        return text if len(text) <= n else text[:n - 1] + "…"
+
     def _bp_batch_unit_combo(self, row, first, last):
         """The per-row line picker: '—' plus every unit of the range, so a
-        pairing can be corrected by hand without counting rows."""
+        pairing can be corrected by hand without counting rows.
+
+        The search box filters what is offered — a 200-line script otherwise
+        makes a dropdown nobody wants to scroll. The row's OWN line always
+        stays in the list, or changing an unrelated row's filter would silently
+        drop pairings.
+        """
+        query = self.bp_batch_search.text().strip().lower()
+        want = self._bp_assign[row] if row < len(self._bp_assign) else -1
         combo = NoScrollComboBox()
         combo.addItem(self._tr("bp_batch_none"), -1)
         for u in range(first, last):
-            text = self._unit_text(u).replace("\n", " ").strip()
-            if len(text) > 40:
-                text = text[:39] + "…"
-            combo.addItem("{n}  {t}".format(n=u + 1, t=text), u)
-        want = self._bp_assign[row] if row < len(self._bp_assign) else -1
+            text = self._unit_text(u)
+            if query and query not in text.lower() and u != want:
+                continue
+            combo.addItem("{n}  {t}".format(n=u + 1, t=self._short(text)), u)
         idx = combo.findData(want)
         combo.setCurrentIndex(max(0, idx))
         combo.currentIndexChanged.connect(
             lambda *_a, r=row, c=combo: self._on_bp_batch_pick(r, c))
         return combo
+
+    def _bp_batch_font_combo(self, row):
+        """Per-row font override: '—' means "use the font from the Type tab"."""
+        combo = NoScrollComboBox()
+        combo.addItem(self._tr("bp_batch_none"), "")
+        for fam in self.font_picker.families():
+            combo.addItem(fam, fam)
+        want = (self._bp_style[row] or {}).get("font", "")
+        idx = combo.findData(want)
+        combo.setCurrentIndex(max(0, idx))
+        combo.currentIndexChanged.connect(
+            lambda *_a, r=row, c=combo: self._on_bp_batch_style_pick(
+                r, "font", c.currentData()))
+        return combo
+
+    def _bp_batch_preset_combo(self, row):
+        """Per-row preset override, offering the same presets as the Type tab
+        (they are per manga/character, so the list follows the current one)."""
+        combo = NoScrollComboBox()
+        combo.addItem(self._tr("bp_batch_none"), None)
+        for i in range(self.preset_combo.count()):
+            data = self.preset_combo.itemData(i)
+            if data is None:
+                continue                    # the combo's own "(none)" entry
+            combo.addItem(self.preset_combo.itemText(i), data)
+        want = (self._bp_style[row] or {}).get("preset")
+        idx = combo.findData(want) if want is not None else 0
+        combo.setCurrentIndex(max(0, idx))
+        combo.currentIndexChanged.connect(
+            lambda *_a, r=row, c=combo: self._on_bp_batch_style_pick(
+                r, "preset", c.currentData()))
+        return combo
+
+    def _on_bp_batch_style_pick(self, row, key, value):
+        if not (0 <= row < len(self._bp_style)):
+            return
+        style = dict(self._bp_style[row] or {})
+        if value:
+            style[key] = value
+        else:
+            style.pop(key, None)
+        self._bp_style[row] = style
+
+    def _bp_batch_rows(self):
+        """Selected rows, or the current one when nothing is selected."""
+        rows = sorted({i.row() for i in
+                       self.bp_batch_table.selectedIndexes()})
+        if rows:
+            return rows
+        cur = self.bp_batch_table.currentRow()
+        return [cur] if cur >= 0 else []
+
+    def on_bp_batch_take_line(self):
+        """Give the selected bubble(s) the line that is current in the Type
+        tab, and the ones after it — the fast way to fix a whole run of
+        pairings without opening a dropdown per row."""
+        rows = self._bp_batch_rows()
+        if not rows:
+            self._bp_batch_note("st_bp_batch_pick_row")
+            return
+        unit = self._index
+        for row in rows:
+            if unit < len(self._pairs):
+                self._bp_assign[row] = unit
+                unit += 1
+            else:
+                self._bp_assign[row] = -1
+        self._bp_batch_refresh()
+        self._bp_batch_note("st_bp_batch_took", n=len(rows))
+
+    def _on_bp_batch_pick_toggle(self, on):
+        """'Assign by clicking': while on, clicking a line in the Type tab's
+        table gives it to the current bubble row and steps to the next one, so
+        a page is paired by clicking down the script."""
+        if on:
+            self._bp_batch_note("st_bp_batch_pick_mode")
+            if self.bp_batch_table.currentRow() < 0 \
+                    and self.bp_batch_table.rowCount():
+                self.bp_batch_table.selectRow(0)
+
+    def _bp_batch_line_clicked(self, unit):
+        """A line was clicked in the Type tab while 'assign by clicking' is on."""
+        if not getattr(self, "bp_batch_pick_btn", None) \
+                or not self.bp_batch_pick_btn.isChecked():
+            return False
+        row = self.bp_batch_table.currentRow()
+        if not (0 <= row < len(self._bp_assign)):
+            return False
+        self._bp_assign[row] = unit
+        self._bp_batch_refresh()
+        nxt = row + 1
+        while nxt < len(self._bp_boxes) and (
+                self._bp_boxes[nxt].get("kind") == "sfx"):
+            nxt += 1                       # SFX boxes take no line
+        if nxt < self.bp_batch_table.rowCount():
+            self.bp_batch_table.selectRow(nxt)
+        else:
+            self.bp_batch_pick_btn.setChecked(False)
+            self._bp_batch_note("st_bp_batch_pick_done")
+        return True
+
+    def on_bp_batch_stamp_style(self):
+        """Store the current style (font + preset) on the selected rows."""
+        rows = self._bp_batch_rows()
+        if not rows:
+            self._bp_batch_note("st_bp_batch_pick_row")
+            return
+        if not self.bp_batch_style_chk.isChecked():
+            self.bp_batch_style_chk.setChecked(True)      # or it stays hidden
+        style = {}
+        fam = self.font_picker.currentFamily()
+        if fam:
+            style["font"] = fam
+        data = self.preset_combo.currentData()
+        if data is not None:
+            style["preset"] = data
+        for row in rows:
+            if 0 <= row < len(self._bp_style):
+                self._bp_style[row] = dict(style)
+        self._bp_batch_refresh()
+        self._bp_batch_note("st_bp_batch_styled", n=len(rows))
+
+    def on_bp_batch_clear_style(self):
+        """Drop the stored style from the selected rows (back to the global
+        style from the Type/Style tabs)."""
+        rows = self._bp_batch_rows()
+        if not rows:
+            self._bp_batch_note("st_bp_batch_pick_row")
+            return
+        for row in rows:
+            if 0 <= row < len(self._bp_style):
+                self._bp_style[row] = {}
+        self._bp_batch_refresh()
+        self._bp_batch_note("st_bp_batch_unstyled", n=len(rows))
+
+    def _on_bp_batch_style_toggle(self, on):
+        Krita.instance().writeSetting("typer_kr", "batchStyle",
+                                      "true" if on else "false")
+        self._bp_batch_refresh()
 
     def _on_bp_batch_pick(self, row, combo):
         if 0 <= row < len(self._bp_assign):
@@ -11728,16 +11998,25 @@ class TyperDocker(DockWidget):
         self.bp_batch_table.setItem(row, 2, item)
 
     def _bp_batch_refresh(self):
-        """Rebuild the assignment table from the boxes and the pairing."""
+        """Rebuild the assignment table from the boxes, the pairing and the
+        per-row styles. Keeps the selection, so acting on several rows in a row
+        does not mean re-selecting them each time."""
         table = getattr(self, "bp_batch_table", None)
         if table is None:
             return
-        if len(self._bp_assign) != len(self._bp_boxes):
-            self._bp_assign = (self._bp_assign
-                               + [-1] * len(self._bp_boxes))[:len(self._bp_boxes)]
+        n = len(self._bp_boxes)
+        if len(self._bp_assign) != n:
+            self._bp_assign = (self._bp_assign + [-1] * n)[:n]
+        if len(self._bp_style) != n:
+            self._bp_style = (self._bp_style + [{}] * n)[:n]
         first, last = self._bp_batch_range()
+        styled = self.bp_batch_style_chk.isChecked()
+        keep = self._bp_batch_rows() if table.rowCount() == n else []
+        cur = table.currentRow()
         table.blockSignals(True)
-        table.setRowCount(len(self._bp_boxes))
+        table.setRowCount(n)
+        table.setColumnHidden(3, not styled)
+        table.setColumnHidden(4, not styled)
         for row, b in enumerate(self._bp_boxes):
             kind = b.get("kind", "bubble")
             label = "{n}  {k}".format(
@@ -11748,6 +12027,17 @@ class TyperDocker(DockWidget):
             table.setCellWidget(row, 1,
                                 self._bp_batch_unit_combo(row, first, last))
             self._bp_batch_fill_preview(row)
+            if styled:
+                table.setCellWidget(row, 3, self._bp_batch_font_combo(row))
+                table.setCellWidget(row, 4, self._bp_batch_preset_combo(row))
+            else:
+                table.removeCellWidget(row, 3)
+                table.removeCellWidget(row, 4)
+        for row in keep:
+            if 0 <= row < n:
+                table.selectRow(row)
+        if 0 <= cur < n:
+            table.setCurrentCell(cur, 0)
         table.blockSignals(False)
         table.resizeColumnToContents(0)
         self._bp_batch_update_buttons()
@@ -11801,7 +12091,10 @@ class TyperDocker(DockWidget):
                 return
         self._bp_run = {"pairs": pairs, "at": 0, "done": 0, "skipped": 0,
                         "units": [], "review": review, "waiting": False,
-                        "back_to": self._index}
+                        "back_to": self._index, "restyled": False,
+                        # the user's own style, restored when the run ends
+                        "style": self._collect_settings(),
+                        "font": self.font_picker.currentFamily()}
         self._bp_batch_update_buttons()
         QTimer.singleShot(0, self._bp_batch_tick)
 
@@ -11833,6 +12126,10 @@ class TyperDocker(DockWidget):
         self._bp_refresh_overlay()
         self._bp_update_nav()
         self._index = unit          # insert_arrangement numbers the layer
+        # a row with its own font/preset becomes the current style before it is
+        # fitted, so the candidates already reflect it
+        if self._bp_apply_row_style(box_index):
+            run["restyled"] = True
 
         shapr = self.shapr_widget
         clean, mask = parse_bold(self._prepared_text(self._unit_text(unit)))
@@ -11871,6 +12168,30 @@ class TyperDocker(DockWidget):
             run["skipped"] += 1
         QTimer.singleShot(self._BATCH_TICK_MS, self._bp_batch_tick)
 
+    def _bp_apply_row_style(self, row):
+        """Put the row's stored style into the docker's own controls.
+
+        The whole insert path reads the live controls, so a per-row style has
+        to BE the current style for the length of one bubble — there is no
+        second style channel to pass down, and inventing one would mean a
+        second copy of the Style tab. `_bp_batch_finish` puts the user's
+        settings back.
+        """
+        style = (self._bp_style[row] if 0 <= row < len(self._bp_style)
+                 else None) or {}
+        if not style:
+            return False
+        data = style.get("preset")
+        if data is not None:
+            ch, name = self._preset_ref(data)
+            preset = self._cur_chars().get(ch, {}).get(name)
+            if isinstance(preset, dict):
+                self._apply_preset(preset)      # font + the whole Style tab
+        fam = style.get("font")
+        if fam:
+            self.font_picker.setCurrentFamily(fam)   # font wins over the preset
+        return True
+
     def _bp_batch_continue(self):
         """Called from the insert path when a reviewed bubble was applied:
         book it and move on to the next one.
@@ -11894,6 +12215,17 @@ class TyperDocker(DockWidget):
         self._bp_run = None
         if run is None:
             return
+        if run.get("restyled"):
+            # per-row styles borrowed the docker's controls; give them back
+            try:
+                self._apply_settings(run["style"])
+                if run.get("font"):
+                    self.font_picker.setCurrentFamily(run["font"])
+                self._on_outline_toggle()
+                self._on_shadow_toggle()
+                self._on_auto_toggle()
+            except Exception:
+                pass
         self._bp_last_units = list(run["units"])
         self.bp_batch_undo_btn.setEnabled(bool(self._bp_last_units))
         self._bp_batch_update_buttons()

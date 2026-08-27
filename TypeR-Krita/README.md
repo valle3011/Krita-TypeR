@@ -167,8 +167,21 @@ in the other.) It can be hidden with **Enable Batch tab** in Setup.
    - The table is editable: pick a different line for any bubble, or use
      **Insert gap** / **Remove gap** when a bubble was detected that carries no
      dialogue and everything below has shifted by one.
+   - Faster than the dropdowns: select rows (Ctrl/Shift, or **Select all**) and
+     press **Take current line** — they get the Type tab's current line and the
+     ones after it. Or switch on **Assign by clicking** and simply click the
+     lines in the Type tab's table: each one goes to the selected bubble and the
+     batch steps to the next. The filter box narrows what the dropdowns offer.
    - Clicking a row highlights that bubble in the page view.
-3. **Fill all bubbles.** Each bubble is fitted individually and gets the ★
+3. **A line that should look different (optional).** Switch on **Style per
+   line** and the table grows a **Font** and a **Preset** column. Leave them
+   empty and the line uses the style from the Type/Style tabs, exactly as
+   before; fill one in and just that line whispers, shouts, or reads as a sign.
+   Select several rows and press **Assign current style** to stamp what you have
+   set up in the Type/Style tabs onto all of them, or **Use current style** to
+   take the override away again. Your own settings are restored when the run
+   ends.
+4. **Fill all bubbles.** Each bubble is fitted individually and gets the ★
    shape. **Stop** interrupts the run; what is already placed stays.
    - **Review each** pauses at every bubble with the shape cards up so you pick
      the shape yourself — applying one continues the run.

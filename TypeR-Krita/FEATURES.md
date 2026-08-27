@@ -339,6 +339,33 @@ editable: each row has the bubble, a line picker and the text, and "Insert gap"
 limits the range to the current page's units (`_page_unit_range`) — one image is
 one page.
 
+**Picking a line, four ways.** The per-row dropdown is the precise one; the
+other three exist because a 200-line script makes it slow. Rows are
+multi-selectable (`_bp_batch_rows` — selection, else the current row):
+"Take current line" gives the selected bubbles the Type tab's current line and
+the ones after it; "Assign by clicking" (`_bp_batch_line_clicked`, hooked into
+`_on_table_select`) turns the Type tab's table into the picker — click a line,
+it goes to the armed bubble and the batch steps to the next, skipping SFX
+boxes; and the search box filters what the dropdowns offer. **A row's own line
+always survives the filter**, or filtering would silently drop pairings.
+
+**Style per line (opt-in, setting `batchStyle`).** Two extra columns — font and
+preset — appear only when the checkbox is on, because on a page of ordinary
+dialogue they are just in the way. Empty means "use the Type/Style tabs", which
+is the behaviour without the feature. `_bp_style` holds one dict per *box*
+(`{"font":…, "preset":…}`), and "Assign current style" / "Use current style"
+stamp or clear the current style on the selected rows (those two string keys had
+been sitting unused since the first import).
+
+**⚠ A per-row style becomes the docker's real style for one bubble.** The whole
+insert path reads the live controls, so `_bp_apply_row_style` applies the preset
+through the normal `_apply_preset` and sets the font on the real picker; a
+second style channel would mean a second copy of the Style tab. It runs *before*
+the fitting, so the candidates already reflect it. The run remembers the user's
+own settings (`_collect_settings` at start) and `_bp_batch_finish` restores them
+— only when something was actually restyled, so an ordinary run costs nothing.
+The font wins over the preset's font when a row names both.
+
 **⚠ The run drives the normal insert path, it is not a second one.** Each step
 puts the box into the *document selection* (`_select_box`) and then calls
 `insert_arrangement(..., replace=True)`. Everything downstream — the fitter, the
