@@ -280,9 +280,18 @@ its settings survive; because every layout move ends in `box.show()`,
 
 - `bubbles.py`, `ai_backend.py`; UI in the BubblR tab
 
-**The switch:** `BUBBLR_LOCKED` at the top of `typer_kr.py`. `True` forces the
-toggle off and hides the tab. ⚠️ **Set it back to `True` before publishing to
-`Krita-TypeR`** unless the AI is ready — it is `False` here for local use only.
+**The switch:** `BUBBLR_LOCKED` at the top of `typer_kr.py`. When locked, the
+tab and its enable toggle are hidden, and so is the Batch tab's "Detect" button
+— everything else on the Batch tab keeps working, because marking by hand never
+needed the detector.
+
+**It is locked unless a file named `bubblr_dev` sits in `typer_kr/`.** The
+marker is gitignored, so the published source is locked *by default* and a dev
+machine stays unlocked across updates (`xcopy`/`cp` add files, they never delete
+the marker). This replaced a hand-edited `BUBBLR_LOCKED = False`, which every
+sync to `Krita-TypeR` faithfully carried along — which is how the AI tab ended
+up published for months. Delete the marker to see exactly what everyone else
+sees.
 
 ### Batch placement — the Batch tab
 

@@ -1263,6 +1263,47 @@ if imported:
         import traceback
         traceback.print_exc()
 
+# --- The BubblR lock: a published build hides the AI tab, not the Batch tab -
+# The lock exists so the unfinished AI detection is not shipped. What must NOT
+# happen is that it takes the batch workflow with it -- marking bubbles by hand
+# and filling them never needed the detector.
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _KR_APP._settings.pop(("typer_kr", "tabOrder"), None)
+        _was_locked = TK.BUBBLR_LOCKED
+        TK.BUBBLR_LOCKED = True
+        _lk = TK.TyperDocker()
+        check("locked: the BubblR tab is gone",
+              _lk._tab_index_of("bubblr") is None)
+        check("locked: its enable toggle is hidden too",
+              _lk.enable_bubblr_chk.isHidden())
+        check("locked: the Batch tab is still there",
+              _lk._tab_index_of("batch") is not None)
+        check("locked: the Batch tab's Detect button goes with it",
+              _lk.batch_detect_btn.isHidden())
+        check("locked: the other marking tools stay",
+              not _lk.batch_add_sel_btn.isHidden()
+              and not _lk.batch_edit_btn.isHidden())
+        _lk._on_bp_box_added(10.0, 20.0, 100.0, 80.0)
+        _lk.editor.setPlainText("A line")
+        _lk.analyze()
+        _lk.on_bp_batch_assign()
+        check("locked: marking and pairing still work",
+              len(_lk._bp_boxes) == 1 and _lk._bp_assign == [0])
+        _lk.deleteLater()
+
+        TK.BUBBLR_LOCKED = False
+        _ul = TK.TyperDocker()
+        check("unlocked: the Detect button is offered again",
+              not _ul.batch_detect_btn.isHidden())
+        _ul.deleteLater()
+        TK.BUBBLR_LOCKED = _was_locked
+    except Exception:                               # pragma: no cover
+        check("BubblR lock suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- Picking lines the short way + a style of its own per line -------------
 if imported:
     try:

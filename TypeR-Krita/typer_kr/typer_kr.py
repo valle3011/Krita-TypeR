@@ -86,10 +86,17 @@ VERSION = "1.11"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
-# hidden and its enable toggle is not shown. Set this to False to bring it back
-# once the AI is ready (all the BubblR code stays in place, just dormant).
-# Local/dev build: unlocked so the AI tab is available.
-BUBBLR_LOCKED = False
+# hidden, its enable toggle is not shown, and the Batch tab's "Detect" button
+# goes away with it. All the BubblR code stays in place, just dormant.
+#
+# The lock is ON unless a file named `bubblr_dev` sits next to this one. That
+# way the published source is locked by DEFAULT — the old arrangement was a
+# hand-edited `= False` that every sync to the public repo carried along, which
+# is exactly how it ended up published unlocked. The marker is not in the repo
+# and `xcopy`/`cp` never delete it, so a dev machine stays unlocked across
+# updates. Delete the marker to see what everyone else sees.
+BUBBLR_LOCKED = not os.path.exists(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "bubblr_dev"))
 
 # Build stamp = last-modified time of THIS installed file. copy/xcopy keep the
 # source's timestamp, so this shows which code version Krita actually loaded -
@@ -11293,6 +11300,10 @@ class TyperDocker(DockWidget):
         row.addWidget(self.batch_order_btn)
         self.batch_detect_btn = QPushButton()
         self.batch_detect_btn.clicked.connect(self.on_bp_detect)
+        # detection is BubblR's: when that is locked off, this goes with it.
+        # Everything else on this tab keeps working — marking by hand never
+        # needed the detector.
+        self.batch_detect_btn.setVisible(not BUBBLR_LOCKED)
         row.addWidget(self.batch_detect_btn)
         self.batch_clear_btn = QPushButton()
         self.batch_clear_btn.clicked.connect(self.on_batch_clear_boxes)
