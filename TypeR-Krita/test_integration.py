@@ -653,8 +653,9 @@ if imported:
         _d = TK.TyperDocker()
         _bar = _d.main_tabs.tabBar()
         _got = [_bar.tabData(i) for i in range(_d.main_tabs.count())]
-        check("absent id ignored + unlisted Fonts tab appended at the end",
-              _got == ["type", "style", "setup", "shapr", "sfx", "fonts"])
+        check("absent id ignored + unlisted tabs appended at the end",
+              _got == ["type", "style", "setup", "shapr", "sfx",
+                       "batch", "fonts"])
         check("content stays in sync with a ghost-id order",
               all(_d.main_tabs.widget(i) is _d._tab_pages.get(_bar.tabData(i))
                   for i in range(_d.main_tabs.count())))
@@ -1259,6 +1260,79 @@ if imported:
         check("xlsx export: all parts are well-formed XML", _wf)
     except Exception:                               # pragma: no cover
         check("preset Excel export suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- The Batch tab: its own view and tools, independent of BubblR ----------
+# The point of the separate tab is that marking bubbles and filling them must
+# not require the detection tab. Both tabs are views of ONE box list, so what
+# is checked here is that the two views stay in step.
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _KR_APP._settings.pop(("typer_kr", "tabOrder"), None)
+        _td = TK.TyperDocker()
+        check("the Batch tab is present by default",
+              _td._tab_index_of("batch") is not None)
+        check("marking, page view and the run live on the Batch tab",
+              _td._panel_tab.get("batch_mark") == "batch"
+              and _td._panel_tab.get("batch_overlay") == "batch"
+              and _td._panel_tab.get("bubblr_batch") == "batch")
+        check("BubblR keeps its own detection panel and page view",
+              _td._panel_tab.get("bubblr_detect") == "bubblr"
+              and _td._panel_tab.get("bubblr_overlay") == "bubblr")
+        check("there are two page views, not one widget in two places",
+              len(_td._bp_overlays) == 2
+              and _td.bp_overlay is not _td.batch_overlay)
+
+        # both views show the same boxes
+        _td._bp_boxes = [{"x": 10, "y": 10, "w": 100, "h": 80,
+                          "kind": "bubble", "shape": "rect", "fill": 1.0}]
+        _td._bp_refresh_overlay()
+        check("a box marked once shows up in both views",
+              len(_td.bp_overlay._boxes) == 1
+              and len(_td.batch_overlay._boxes) == 1)
+
+        # the click modes are one mode with two sets of buttons
+        _td.batch_edit_btn.setChecked(True)
+        check("switching a mode on in the Batch tab arms it in BubblR too",
+              _td.bp_edit_btn.isChecked())
+        check("the mode really reaches the page views",
+              _td.bp_overlay._edit and _td.batch_overlay._edit)
+        _td.bp_sfxmark_btn.setChecked(True)
+        check("modes stay exclusive ACROSS the two tabs",
+              not _td.batch_edit_btn.isChecked()
+              and not _td.bp_edit_btn.isChecked()
+              and _td.batch_sfxmark_btn.isChecked())
+        check("leaving edit mode also switches it off in the views",
+              not _td.bp_overlay._edit and not _td.batch_overlay._edit)
+        _td.bp_sfxmark_btn.setChecked(False)
+
+        # clearing throws the boxes away in both views
+        _td.on_batch_clear_boxes()
+        check("clearing removes the boxes from both views",
+              _td._bp_boxes == []
+              and not _td.bp_overlay._boxes and not _td.batch_overlay._boxes)
+        _td.deleteLater()
+
+        # ... and none of it needs the BubblR tab to be switched on
+        _KR_APP._settings[("typer_kr", "enableBubblr")] = "false"
+        _bt = TK.TyperDocker()
+        check("with BubblR switched off the Batch tab is still there",
+              _bt._tab_index_of("bubblr") is None
+              and _bt._tab_index_of("batch") is not None)
+        _bt._on_bp_box_added(20.0, 30.0, 120.0, 90.0)
+        check("marking by hand works with BubblR off",
+              len(_bt._bp_boxes) == 1 and _bt._bp_boxes[0]["x"] == 20)
+        _bt.editor.setPlainText("Only line")
+        _bt.analyze()
+        _bt.on_bp_batch_assign()
+        check("pairing works with BubblR off",
+              _bt._bp_assign == [0])
+        _bt.deleteLater()
+        _KR_APP._settings.pop(("typer_kr", "enableBubblr"), None)
+    except Exception:                               # pragma: no cover
+        check("Batch tab suite ran", False)
         import traceback
         traceback.print_exc()
 

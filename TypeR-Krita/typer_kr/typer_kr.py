@@ -625,6 +625,46 @@ LANG = {
                            "'ai' folder (run ai\\setup.ps1 once)."),
         "bp_detect": "Detect bubbles",
         "panel_bubblr_batch": "Batch: line per bubble",
+        "tab_batch": "Batch",
+        "panel_batch_mark": "Mark bubbles",
+        "panel_batch_overlay": "Page",
+        "enable_batch": "Enable Batch tab",
+        "enable_batch_tip": ("Mark the bubbles of a page and fill them all in "
+                             "one run. Works on its own \u2014 BubblR does not "
+                             "have to be switched on."),
+        "batch_add_sel": "From selection",
+        "batch_add_sel_tip": ("Turn the selection into bubble boxes. Hold "
+                              "Shift while dragging the marquee over one "
+                              "balloon after another and every part becomes "
+                              "its own box."),
+        "batch_edit": "Edit boxes",
+        "batch_edit_tip": ("Draw a new box on empty canvas, drag a box to move "
+                           "it, drag a corner to resize; right-click removes."),
+        "batch_shape": "Toggle shape",
+        "batch_shape_tip": ("While active, click a box to force it round <-> "
+                            "rectangular. Worth doing for a caption that was "
+                            "read as round \u2014 a round box is fitted as an "
+                            "ellipse, so the text comes out smaller."),
+        "batch_sfxmark": "Mark SFX",
+        "batch_sfxmark_tip": ("While active, click a box to switch it between "
+                              "speech bubble and SFX (blue). SFX boxes are "
+                              "skipped when the lines are assigned."),
+        "batch_order": "Set order",
+        "batch_order_tip": ("Click the boxes in the order you want them "
+                            "numbered \u2014 that order is the order the lines "
+                            "are assigned in."),
+        "batch_detect": "Detect",
+        "batch_detect_tip": ("Let BubblR find the bubbles as a starting point. "
+                             "An accelerator, not a requirement: everything "
+                             "here works with hand-marked boxes."),
+        "batch_clear": "Clear boxes",
+        "batch_clear_tip": "Throw away every box and start marking again.",
+        "batch_page": "Reload page",
+        "batch_page_tip": ("Show the open document in the view above (happens "
+                           "automatically when you open this tab)."),
+        "batch_mark_hint": ("Mark the bubbles above, then pair a line with "
+                            "each of them below."),
+        "st_batch_boxes_cleared": "All boxes removed.",
         "bp_batch_assign": "Assign lines",
         "bp_batch_gap": "Insert gap",
         "bp_batch_ungap": "Remove gap",
@@ -1434,6 +1474,48 @@ LANG = {
                            "ausführen)."),
         "bp_detect": "Bubbles erkennen",
         "panel_bubblr_batch": "Stapel: Zeile pro Bubble",
+        "tab_batch": "Stapel",
+        "panel_batch_mark": "Bubbles markieren",
+        "panel_batch_overlay": "Seite",
+        "enable_batch": "Stapel-Reiter aktivieren",
+        "enable_batch_tip": ("Die Bubbles einer Seite markieren und alle in "
+                             "einem Lauf f\u00fcllen. Funktioniert eigenst\u00e4ndig "
+                             "\u2014 BubblR muss daf\u00fcr nicht an sein."),
+        "batch_add_sel": "Aus Auswahl",
+        "batch_add_sel_tip": ("Macht aus der Auswahl Bubble-Boxen. Umschalt "
+                              "halten und nacheinander \u00fcber die Blasen "
+                              "ziehen \u2014 jeder Teil wird eine eigene Box."),
+        "batch_edit": "Boxen bearbeiten",
+        "batch_edit_tip": ("Auf freier Fl\u00e4che eine neue Box ziehen, eine Box "
+                           "verschieben, an einer Ecke die Gr\u00f6\u00dfe \u00e4ndern; "
+                           "Rechtsklick entfernt sie."),
+        "batch_shape": "Form umschalten",
+        "batch_shape_tip": ("Solange aktiv, schaltet ein Klick eine Box "
+                            "zwischen rund und eckig um. Lohnt sich bei einem "
+                            "Kasten, der als rund erkannt wurde \u2014 rund wird "
+                            "als Ellipse eingepasst, der Text f\u00e4llt dadurch "
+                            "kleiner aus."),
+        "batch_sfxmark": "SFX markieren",
+        "batch_sfxmark_tip": ("Solange aktiv, schaltet ein Klick eine Box "
+                              "zwischen Sprechblase und SFX (blau) um. "
+                              "SFX-Boxen werden beim Zuordnen \u00fcbersprungen."),
+        "batch_order": "Reihenfolge setzen",
+        "batch_order_tip": ("Die Boxen in der gew\u00fcnschten Reihenfolge "
+                            "anklicken \u2014 diese Reihenfolge ist die, in der "
+                            "die Zeilen zugeordnet werden."),
+        "batch_detect": "Erkennen",
+        "batch_detect_tip": ("L\u00e4sst BubblR die Blasen als Ausgangspunkt "
+                             "finden. Eine Abk\u00fcrzung, keine Bedingung: alles "
+                             "hier funktioniert auch mit Boxen von Hand."),
+        "batch_clear": "Boxen leeren",
+        "batch_clear_tip": ("Verwirft alle Boxen, damit du neu markieren "
+                            "kannst."),
+        "batch_page": "Seite neu laden",
+        "batch_page_tip": ("Zeigt das offene Dokument in der Ansicht oben "
+                           "(passiert beim \u00d6ffnen des Reiters automatisch)."),
+        "batch_mark_hint": ("Oben die Bubbles markieren, unten jeder Bubble "
+                            "eine Zeile zuordnen."),
+        "st_batch_boxes_cleared": "Alle Boxen entfernt.",
         "bp_batch_assign": "Zeilen zuordnen",
         "bp_batch_gap": "L\u00fccke einf\u00fcgen",
         "bp_batch_ungap": "L\u00fccke entfernen",
@@ -5414,6 +5496,7 @@ class TyperDocker(DockWidget):
         lay_style = _page()      # font variants, alignment, effects, fitting
         lay_setup = _page()      # language + panel layout
         lay_bubblr = _page()     # auto-detect bubbles + per-bubble styles
+        lay_batch = _page()      # mark bubbles by hand + fill a page in one run
         lay_shapr = _page()      # TextShapR: pick a shape arrangement
         lay_sfx = _page()        # SFX Helper (embedded MangaSFX docker)
         lay_fonts = _page()      # Font favourites (starred fonts + categories)
@@ -5431,6 +5514,7 @@ class TyperDocker(DockWidget):
         # movable-panel registry (customizable layout, step 2a)
         self._tab_layouts = {"type": lay_type, "style": lay_style,
                              "setup": lay_setup, "bubblr": lay_bubblr,
+                             "batch": lay_batch,
                              "shapr": lay_shapr, "sfx": lay_sfx,
                              "fonts": lay_fonts}
         self._panels = {}          # panel id -> PanelBox
@@ -5450,6 +5534,9 @@ class TyperDocker(DockWidget):
         self._bp_assign = []       # unit index per box (-1 = none), for batch
         self._bp_run = None        # live batch run state (see _bp_batch_tick)
         self._bp_last_units = []   # units the last batch wrote (for its undo)
+        self._bp_overlays = []     # every page view (BubblR tab + Batch tab)
+        self._bp_mode_btns = {}    # click mode -> its buttons in every tab
+        self._bp_page_thumb = None # (img, doc_w, doc_h) last shown, for new views
 
         # Make a Setup section collapsible under a checkable button, exactly
         # like the "Layout & sizes" / "Experimental" sections: the button shows/
@@ -5662,6 +5749,13 @@ class TyperDocker(DockWidget):
         exp_lay.addWidget(self.enable_bubblr_chk)
         # locked off in public releases → hide the toggle so it can't be enabled
         self.enable_bubblr_chk.setVisible(not BUBBLR_LOCKED)
+        # the Batch tab is independent of BubblR on purpose: marking bubbles by
+        # hand and filling them in one run needs no detection at all
+        self.enable_batch_chk = QCheckBox()
+        self.enable_batch_chk.setChecked(
+            app.readSetting("typer_kr", "enableBatch", "true") == "true")
+        self.enable_batch_chk.toggled.connect(self._on_enable_batch)
+        exp_lay.addWidget(self.enable_batch_chk)
         self.enable_shapr_chk = QCheckBox()
         self.enable_shapr_chk.setChecked(
             app.readSetting("typer_kr", "enableShapr", "true") == "true")
@@ -6412,6 +6506,11 @@ class TyperDocker(DockWidget):
         # --- BubblR tab (auto-detect bubbles + per-bubble styles) ---
         self._build_bubblr_tab(lay_bubblr)
 
+        # --- Batch tab (mark bubbles by hand, then fill the page in one run) ---
+        # Built after BubblR because it reuses that tab's handlers and box list;
+        # it does NOT need the BubblR tab to be enabled.
+        self._build_batch_tab(lay_batch)
+
         # --- TextShapR tab (a movable panel, so it joins the custom layout) ---
         self.shapr_widget = TextShapRWidget(self)
         _shapr_pb = self._new_panel("shapr_panel", "shapr")
@@ -6519,6 +6618,7 @@ class TyperDocker(DockWidget):
         # phase and builds on layoutmodel.py.
         self._tab_defaults = [("type", "tab_type"), ("style", "tab_style"),
                               ("setup", "tab_setup"), ("bubblr", "tab_bubblr"),
+                              ("batch", "tab_batch"),
                               ("shapr", "tab_shapr"), ("sfx", "tab_sfx"),
                               ("fonts", "tab_fonts")]
         self._tab_pages = {}          # id -> tab page widget (kept when hidden)
@@ -6529,6 +6629,7 @@ class TyperDocker(DockWidget):
         # apply the BubblR-tab / TextShapR-button enable state now that both
         # the tabs and the toggles exist
         self._on_enable_bubblr(self.enable_bubblr_chk.isChecked(), save=False)
+        self._on_enable_batch(self.enable_batch_chk.isChecked(), save=False)
         self._on_enable_shapr(self.enable_shapr_chk.isChecked(), save=False)
         self._on_enable_sfx(self.enable_sfx_chk.isChecked(), save=False)
         self._on_enable_fonts(self.enable_fonts_chk.isChecked(), save=False)
@@ -7304,6 +7405,8 @@ class TyperDocker(DockWidget):
         self._retranslate_panels()
         self.exp_toggle.setText("⚗ " + t("exp_section"))
         self.enable_bubblr_chk.setText(t("enable_bubblr"))
+        self.enable_batch_chk.setText(t("enable_batch"))
+        self.enable_batch_chk.setToolTip(t("enable_batch_tip"))
         self.enable_shapr_chk.setText(t("enable_shapr"))
         self.enable_sfx_chk.setText(t("enable_sfx"))
         self.enable_fonts_chk.setText(t("enable_fonts"))
@@ -7366,6 +7469,21 @@ class TyperDocker(DockWidget):
         self.bp_sfx_db_btn.setToolTip(t("bp_sfx_db_tip"))
         self.bp_export_btn.setText(t("bp_export"))
         self.bp_export_btn.setToolTip(t("bp_export_tip"))
+        # Batch tab: its own marking tools
+        for name, key in (("batch_add_sel_btn", "batch_add_sel"),
+                          ("batch_edit_btn", "batch_edit"),
+                          ("batch_shape_btn", "batch_shape"),
+                          ("batch_sfxmark_btn", "batch_sfxmark"),
+                          ("batch_order_btn", "batch_order"),
+                          ("batch_detect_btn", "batch_detect"),
+                          ("batch_clear_btn", "batch_clear"),
+                          ("batch_page_btn", "batch_page")):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setText(t(key))
+                w.setToolTip(t(key + "_tip"))
+        self.batch_mark_hint.setText(t("batch_mark_hint"))
+        self.batch_overlay.setToolTip(t("bp_overlay_tip"))
         # batch panel
         for name, key in (("bp_batch_assign_btn", "bp_batch_assign"),
                           ("bp_batch_gap_btn", "bp_batch_gap"),
@@ -8093,6 +8211,8 @@ class TyperDocker(DockWidget):
                      "hyphenation": "panel_hyphenation",
                      "bubblr_detect": "panel_bubblr_detect",
                      "bubblr_batch": "panel_bubblr_batch",
+                     "batch_mark": "panel_batch_mark",
+                     "batch_overlay": "panel_batch_overlay",
                      "bubblr_overlay": "panel_bubblr_overlay",
                      "setup_general": "panel_setup_general",
                      "layout_sizes": "panel_layout_sizes",
@@ -8593,6 +8713,20 @@ class TyperDocker(DockWidget):
             Krita.instance().writeSetting(
                 "typer_kr", "enableBubblr", "true" if on else "false")
 
+    def _on_enable_batch(self, on, save=True):
+        """Show or hide the Batch tab (kept alive when hidden)."""
+        idx = self._tab_index_of("batch")
+        if on and idx is None:
+            page = self._tab_pages.get("batch")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("batch"))
+                self.main_tabs.tabBar().setTabData(i, "batch")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableBatch", "true" if on else "false")
+
     def _on_enable_shapr(self, on, save=True):
         """Show or hide the TextShapR tab. The page widget is kept alive when
         hidden so its state survives re-enabling."""
@@ -8748,6 +8882,16 @@ class TyperDocker(DockWidget):
     def _save_ui_tab(self, index):
         try:
             Krita.instance().writeSetting("typer_kr", "uiTab", str(int(index)))
+        except Exception:
+            pass
+        # Opening the Batch tab shows the open page in its overlay, so marking
+        # by hand works straight away — without this you would have to run
+        # detection once just to see the page. Re-read on every visit so
+        # switching documents in Krita is picked up; never mid-run.
+        try:
+            bar = self.main_tabs.tabBar()
+            if bar.tabData(index) == "batch" and self._bp_run is None:
+                self.batch_show_page(quiet=True)
         except Exception:
             pass
 
@@ -11033,6 +11177,161 @@ class TyperDocker(DockWidget):
     # BubblR tab: detect bubbles, map script lines, per-bubble styles
     # ------------------------------------------------------------------
 
+    def _build_batch_tab(self, lay):
+        """The Batch tab: mark the bubbles, pair a line with each, fill them.
+
+        Deliberately independent of the BubblR tab. The marking tools here are
+        a second set of buttons for the SAME modes (see `_bp_register_mode_btn`)
+        and the overlay is a second view of the SAME box list, so you can mark
+        in either tab — but you never need to open BubblR, and it can stay
+        switched off entirely. Detection is offered as an accelerator, not as a
+        prerequisite.
+        """
+        # marking tools: everything needed to get boxes onto the page
+        _mk_pb = self._new_panel("batch_mark", "batch")
+        mk = _mk_pb.body_layout()
+
+        row = FlowLayout()
+        self.batch_add_sel_btn = QPushButton()
+        self.batch_add_sel_btn.clicked.connect(self.on_bp_add_from_selection)
+        row.addWidget(self.batch_add_sel_btn)
+        self.batch_edit_btn = QPushButton()
+        self.batch_edit_btn.setCheckable(True)
+        self.batch_edit_btn.toggled.connect(self._on_bp_edit_toggle)
+        self._bp_register_mode_btn("edit", self.batch_edit_btn)
+        row.addWidget(self.batch_edit_btn)
+        self.batch_shape_btn = QPushButton()
+        self.batch_shape_btn.setCheckable(True)
+        self.batch_shape_btn.toggled.connect(self._on_bp_shapemark_toggle)
+        self._bp_register_mode_btn("shape", self.batch_shape_btn)
+        row.addWidget(self.batch_shape_btn)
+        self.batch_sfxmark_btn = QPushButton()
+        self.batch_sfxmark_btn.setCheckable(True)
+        self.batch_sfxmark_btn.toggled.connect(self._on_bp_sfxmark_toggle)
+        self._bp_register_mode_btn("sfx", self.batch_sfxmark_btn)
+        row.addWidget(self.batch_sfxmark_btn)
+        self.batch_order_btn = QPushButton()
+        self.batch_order_btn.setCheckable(True)
+        self.batch_order_btn.toggled.connect(self._on_bp_order_toggle)
+        self._bp_register_mode_btn("order", self.batch_order_btn)
+        row.addWidget(self.batch_order_btn)
+        self.batch_detect_btn = QPushButton()
+        self.batch_detect_btn.clicked.connect(self.on_bp_detect)
+        row.addWidget(self.batch_detect_btn)
+        self.batch_clear_btn = QPushButton()
+        self.batch_clear_btn.clicked.connect(self.on_batch_clear_boxes)
+        row.addWidget(self.batch_clear_btn)
+        # explicit refresh for when the document changed while the tab was open
+        self.batch_page_btn = QPushButton()
+        self.batch_page_btn.clicked.connect(lambda *_a: self.batch_show_page())
+        row.addWidget(self.batch_page_btn)
+        mk.addLayout(row)
+
+        self.batch_mark_hint = QLabel("")
+        self.batch_mark_hint.setStyleSheet("color: gray;")
+        self.batch_mark_hint.setWordWrap(True)
+        mk.addWidget(self.batch_mark_hint)
+        lay.addWidget(_mk_pb)
+
+        # the tab's own page view
+        _ov_pb = self._new_panel("batch_overlay", "batch")
+        self.batch_overlay = self._new_bubble_overlay()
+        _ov_pb.body_layout().addWidget(self.batch_overlay, 2)
+        lay.addWidget(_ov_pb, 2)
+
+        # batch: which line goes into which bubble, then fill them all
+        _bt_pb = self._new_panel("bubblr_batch", "batch")
+        bt = _bt_pb.body_layout()
+
+        row = FlowLayout()
+        self.bp_batch_assign_btn = QPushButton()
+        self.bp_batch_assign_btn.clicked.connect(self.on_bp_batch_assign)
+        row.addWidget(self.bp_batch_assign_btn)
+        self.bp_batch_gap_btn = QPushButton()
+        self.bp_batch_gap_btn.clicked.connect(self.on_bp_batch_gap)
+        row.addWidget(self.bp_batch_gap_btn)
+        self.bp_batch_ungap_btn = QPushButton()
+        self.bp_batch_ungap_btn.clicked.connect(self.on_bp_batch_ungap)
+        row.addWidget(self.bp_batch_ungap_btn)
+        self.bp_batch_clear_btn = QPushButton()
+        self.bp_batch_clear_btn.clicked.connect(self.on_bp_batch_clear)
+        row.addWidget(self.bp_batch_clear_btn)
+        # whole script vs. just this page: with page markers the batch draws
+        # from the current page, which is what one image usually holds
+        self.bp_batch_page_chk = QCheckBox()
+        self.bp_batch_page_chk.setChecked(True)
+        self.bp_batch_page_chk.toggled.connect(
+            lambda *_a: self.on_bp_batch_assign())
+        row.addWidget(self.bp_batch_page_chk)
+        bt.addLayout(row)
+
+        self.bp_batch_table = QTableWidget(0, 3)
+        self.bp_batch_table.verticalHeader().setVisible(False)
+        self.bp_batch_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.bp_batch_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.bp_batch_table.itemSelectionChanged.connect(
+            self._on_bp_batch_row)
+        hh = self.bp_batch_table.horizontalHeader()
+        hh.setStretchLastSection(True)
+        bt.addWidget(self.bp_batch_table, 1)
+
+        row = FlowLayout()
+        self.bp_batch_start_btn = QPushButton()
+        self.bp_batch_start_btn.clicked.connect(self.on_bp_batch_start)
+        self.bp_batch_start_btn.setEnabled(False)
+        row.addWidget(self.bp_batch_start_btn)
+        self.bp_batch_stop_btn = QPushButton()
+        self.bp_batch_stop_btn.clicked.connect(self.on_bp_batch_stop)
+        self.bp_batch_stop_btn.setEnabled(False)
+        row.addWidget(self.bp_batch_stop_btn)
+        # review: stop at every bubble with the shape cards up, instead of
+        # taking the recommended one unattended
+        self.bp_batch_review_chk = QCheckBox()
+        row.addWidget(self.bp_batch_review_chk)
+        self.bp_batch_undo_btn = QPushButton()
+        self.bp_batch_undo_btn.clicked.connect(self.on_bp_batch_undo)
+        self.bp_batch_undo_btn.setEnabled(False)
+        row.addWidget(self.bp_batch_undo_btn)
+        bt.addLayout(row)
+
+        self.bp_batch_status = QLabel("")
+        self.bp_batch_status.setStyleSheet("color: gray;")
+        self.bp_batch_status.setWordWrap(True)
+        bt.addWidget(self.bp_batch_status)
+        lay.addWidget(_bt_pb, 1)
+
+    def on_batch_clear_boxes(self):
+        """Throw away every box and start marking from scratch."""
+        if not self._bp_boxes:
+            return
+        self._bp_boxes = []
+        self._bp_click_seq = []
+        self._bp_reset_state()
+        self._bp_refresh()
+        self._set_status(self._tr("st_batch_boxes_cleared"))
+
+    def batch_show_page(self, quiet=False):
+        """Load the open document into the Batch tab's overlay without running
+        detection — marking by hand needs the page, nothing else.
+
+        `quiet` suppresses the "no document" complaint, for the automatic
+        refresh when the tab is opened.
+        """
+        doc = Krita.instance().activeDocument()
+        if doc is None:
+            if not quiet:
+                self._set_status(self._tr("st_no_doc"), error=True)
+            return False
+        w, h = doc.width(), doc.height()
+        try:
+            thumb = doc.thumbnail(600, max(1, int(h * 600 / float(w))))
+        except Exception:
+            return False
+        self._bp_set_page(thumb, w, h)
+        return True
+
     def _build_bubblr_tab(self, lay):
         app = Krita.instance()
 
@@ -11069,24 +11368,28 @@ class TyperDocker(DockWidget):
         self.bp_order_btn = QPushButton()
         self.bp_order_btn.setCheckable(True)
         self.bp_order_btn.toggled.connect(self._on_bp_order_toggle)
+        self._bp_register_mode_btn("order", self.bp_order_btn)
         row.addWidget(self.bp_order_btn)
         # "Mark SFX": while active, click a box to flip it between speech
         # bubble and SFX / free text (blue). Same mode idea as 'Set order'.
         self.bp_sfxmark_btn = QPushButton()
         self.bp_sfxmark_btn.setCheckable(True)
         self.bp_sfxmark_btn.toggled.connect(self._on_bp_sfxmark_toggle)
+        self._bp_register_mode_btn("sfx", self.bp_sfxmark_btn)
         row.addWidget(self.bp_sfxmark_btn)
         # "Toggle shape": while active, click a box to force it round <-> rect
         # (overrides the auto shape from the fill ratio).
         self.bp_shape_btn = QPushButton()
         self.bp_shape_btn.setCheckable(True)
         self.bp_shape_btn.toggled.connect(self._on_bp_shapemark_toggle)
+        self._bp_register_mode_btn("shape", self.bp_shape_btn)
         row.addWidget(self.bp_shape_btn)
         # "Edit boxes": draw a new box on empty canvas, drag a box body to move
         # it, drag a corner to resize; right-click still removes.
         self.bp_edit_btn = QPushButton()
         self.bp_edit_btn.setCheckable(True)
         self.bp_edit_btn.toggled.connect(self._on_bp_edit_toggle)
+        self._bp_register_mode_btn("edit", self.bp_edit_btn)
         row.addWidget(self.bp_edit_btn)
         # "Panel order": use Magi to detect comic panels and renumber the
         # bubbles panel-by-panel (fixes interleaving across side-by-side panels)
@@ -11207,77 +11510,30 @@ class TyperDocker(DockWidget):
         det.addLayout(row)
         lay.addWidget(_det_pb)
 
-        # batch: which line goes into which bubble, then fill them all
-        _bt_pb = self._new_panel("bubblr_batch", "bubblr")
-        bt = _bt_pb.body_layout()
-
-        row = FlowLayout()
-        self.bp_batch_assign_btn = QPushButton()
-        self.bp_batch_assign_btn.clicked.connect(self.on_bp_batch_assign)
-        row.addWidget(self.bp_batch_assign_btn)
-        self.bp_batch_gap_btn = QPushButton()
-        self.bp_batch_gap_btn.clicked.connect(self.on_bp_batch_gap)
-        row.addWidget(self.bp_batch_gap_btn)
-        self.bp_batch_ungap_btn = QPushButton()
-        self.bp_batch_ungap_btn.clicked.connect(self.on_bp_batch_ungap)
-        row.addWidget(self.bp_batch_ungap_btn)
-        self.bp_batch_clear_btn = QPushButton()
-        self.bp_batch_clear_btn.clicked.connect(self.on_bp_batch_clear)
-        row.addWidget(self.bp_batch_clear_btn)
-        # whole script vs. just this page: with page markers the batch draws
-        # from the current page, which is what one image usually holds
-        self.bp_batch_page_chk = QCheckBox()
-        self.bp_batch_page_chk.setChecked(True)
-        self.bp_batch_page_chk.toggled.connect(
-            lambda *_a: self.on_bp_batch_assign())
-        row.addWidget(self.bp_batch_page_chk)
-        bt.addLayout(row)
-
-        self.bp_batch_table = QTableWidget(0, 3)
-        self.bp_batch_table.verticalHeader().setVisible(False)
-        self.bp_batch_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows)
-        self.bp_batch_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.bp_batch_table.itemSelectionChanged.connect(
-            self._on_bp_batch_row)
-        hh = self.bp_batch_table.horizontalHeader()
-        hh.setStretchLastSection(True)
-        bt.addWidget(self.bp_batch_table, 1)
-
-        row = FlowLayout()
-        self.bp_batch_start_btn = QPushButton()
-        self.bp_batch_start_btn.clicked.connect(self.on_bp_batch_start)
-        self.bp_batch_start_btn.setEnabled(False)
-        row.addWidget(self.bp_batch_start_btn)
-        self.bp_batch_stop_btn = QPushButton()
-        self.bp_batch_stop_btn.clicked.connect(self.on_bp_batch_stop)
-        self.bp_batch_stop_btn.setEnabled(False)
-        row.addWidget(self.bp_batch_stop_btn)
-        # review: stop at every bubble with the shape cards up, instead of
-        # taking the recommended one unattended
-        self.bp_batch_review_chk = QCheckBox()
-        row.addWidget(self.bp_batch_review_chk)
-        self.bp_batch_undo_btn = QPushButton()
-        self.bp_batch_undo_btn.clicked.connect(self.on_bp_batch_undo)
-        self.bp_batch_undo_btn.setEnabled(False)
-        row.addWidget(self.bp_batch_undo_btn)
-        bt.addLayout(row)
-
-        self.bp_batch_status = QLabel("")
-        self.bp_batch_status.setStyleSheet("color: gray;")
-        self.bp_batch_status.setWordWrap(True)
-        bt.addWidget(self.bp_batch_status)
-        lay.addWidget(_bt_pb, 1)
 
         # overlay preview: the numbered bubbles on the page thumbnail
         _ov_pb = self._new_panel("bubblr_overlay", "bubblr")
-        self.bp_overlay = BubbleOverlay()
-        self.bp_overlay.boxClicked.connect(self._on_bp_box_clicked)
-        self.bp_overlay.boxRemoved.connect(self._on_bp_box_removed)
-        self.bp_overlay.boxAdded.connect(self._on_bp_box_added)
-        self.bp_overlay.boxChanged.connect(self._on_bp_box_changed)
-        self.bp_overlay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.bp_overlay = self._new_bubble_overlay()
+        _ov_pb.body_layout().addWidget(self.bp_overlay, 2)
+        lay.addWidget(_ov_pb, 2)
+
+        self._on_bp_backend()
+
+    def _new_bubble_overlay(self):
+        """A page overlay wired to the shared box list.
+
+        There is more than one of these — the BubblR tab has one and the Batch
+        tab has its own — because a Qt widget can only live in one place at a
+        time. They are *views*, not owners: every one of them renders
+        `_bp_boxes` and reports clicks to the same handlers, so it makes no
+        difference which one you mark in.
+        """
+        ov = BubbleOverlay()
+        ov.boxClicked.connect(self._on_bp_box_clicked)
+        ov.boxRemoved.connect(self._on_bp_box_removed)
+        ov.boxAdded.connect(self._on_bp_box_added)
+        ov.boxChanged.connect(self._on_bp_box_changed)
+        ov.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # keyboard shortcuts while the overlay has focus (fast labelling)
         for keys, fn in (
                 (("E", "."), lambda: self._bp_step(1)),
@@ -11286,13 +11542,13 @@ class TyperDocker(DockWidget):
                 (("S",), self._bp_toggle_current_sfx),
                 (("R",), self._bp_toggle_current_shape)):
             for key in keys:
-                sc = QShortcut(QKeySequence(key), self.bp_overlay)
+                sc = QShortcut(QKeySequence(key), ov)
                 sc.setContext(Qt.ShortcutContext.WidgetShortcut)
                 sc.activated.connect(fn)
-        _ov_pb.body_layout().addWidget(self.bp_overlay, 2)
-        lay.addWidget(_ov_pb, 2)
-
-        self._on_bp_backend()
+        self._bp_overlays.append(ov)
+        if self._bp_page_thumb is not None:
+            ov.set_page(*self._bp_page_thumb)      # a later view catches up
+        return ov
 
     def _on_bp_backend(self, *_a):
         mode = self.bp_backend_combo.currentData() or "heur"
@@ -11918,7 +12174,7 @@ class TyperDocker(DockWidget):
             boxes, rtl=self.bp_rtl_chk.isChecked())
         self._bp_click_seq = []
         thumb = doc.thumbnail(600, max(1, int(h * 600 / float(w))))
-        self.bp_overlay.set_page(thumb, w, h)
+        self._bp_set_page(thumb, w, h)
         self._bp_reset_state()
         self._bp_refresh()
         if self._bp_boxes:
@@ -12122,21 +12378,58 @@ class TyperDocker(DockWidget):
         except Exception:
             return default
 
+    def _bp_register_mode_btn(self, name, btn):
+        """Register a click-mode button under its mode `name`.
+
+        A mode can have more than one button — the BubblR tab has a set and the
+        Batch tab has its own — but there is only ONE mode. Registering them
+        keeps the sets showing the same state and keeps the modes exclusive
+        across tabs, so 'edit boxes' cannot be on in one tab and off in the
+        other while the overlays share their boxes.
+        """
+        self._bp_mode_btns.setdefault(name, []).append(btn)
+
+    def _bp_sync_mode_btns(self, name, on):
+        """Put every button of mode `name` into state `on` without re-firing
+        the toggled handlers."""
+        for btn in self._bp_mode_btns.get(name, ()):
+            if btn.isChecked() != on:
+                btn.blockSignals(True)
+                btn.setChecked(on)
+                btn.blockSignals(False)
+
     def _bp_exclusive_modes(self, keep):
-        """Uncheck every click-mode button except `keep` so only one is on."""
-        for name in ("bp_order_btn", "bp_sfxmark_btn", "bp_shape_btn",
-                     "bp_edit_btn"):
-            btn = getattr(self, name, None)
-            if btn is not None and name != keep and btn.isChecked():
-                btn.setChecked(False)
+        """Switch off every click mode except `keep` so only one is active."""
+        for name in self._bp_mode_btns:
+            if name != keep:
+                self._bp_sync_mode_btns(name, False)
+                self._bp_apply_mode(name, False)
+
+    #: Click modes on the page overlay: id -> the status line shown on entry.
+    _BP_MODES = {"order": "st_bp_order_mode", "sfx": "st_bp_sfx_mode",
+                 "shape": "st_bp_shape_mode", "edit": "st_bp_edit_mode"}
+
+    def _bp_apply_mode(self, name, on):
+        """What a click mode actually does, independent of which button (or
+        which tab) asked for it."""
+        if name == "edit":
+            for ov in self._bp_overlays:
+                ov.set_edit_mode(on)
+        elif name == "order" and not on and self._bp_click_seq:
+            self._bp_click_seq = []     # leaving mid-way cancels the numbering
+            self._bp_refresh_overlay()
+
+    def _on_bp_mode_toggle(self, name, on):
+        """A click-mode button was toggled — in either tab."""
+        self._bp_sync_mode_btns(name, on)
+        if on:
+            self._bp_exclusive_modes(name)
+            self._set_status(self._tr(self._BP_MODES[name]))
+        self._bp_apply_mode(name, on)
 
     def _on_bp_edit_toggle(self, on):
         """Enter/leave 'edit boxes' mode (draw / move / resize on the page)."""
-        if on:
-            self._bp_exclusive_modes("bp_edit_btn")
-            self._set_status(self._tr("st_bp_edit_mode"))
-        if hasattr(self, "bp_overlay"):
-            self.bp_overlay.set_edit_mode(on)
+        self._on_bp_mode_toggle("edit", on)
 
     def _on_bp_box_added(self, x, y, w, h):
         self._bp_boxes.append({"x": int(round(x)), "y": int(round(y)),
@@ -12175,26 +12468,16 @@ class TyperDocker(DockWidget):
     def _on_bp_order_toggle(self, on):
         """Enter/leave 'set reading order' mode. Leaving mid-way cancels the
         partial numbering."""
-        if on:
-            self._bp_exclusive_modes("bp_order_btn")
-        if not on and self._bp_click_seq:
-            self._bp_click_seq = []
-            self._bp_refresh_overlay()
-        if on:
-            self._set_status(self._tr("st_bp_order_mode"))
+        self._on_bp_mode_toggle("order", on)
 
     def _on_bp_sfxmark_toggle(self, on):
         """Enter/leave 'mark SFX' mode: clicking a box flips bubble <-> SFX."""
-        if on:
-            self._bp_exclusive_modes("bp_sfxmark_btn")
-            self._set_status(self._tr("st_bp_sfx_mode"))
+        self._on_bp_mode_toggle("sfx", on)
 
     def _on_bp_shapemark_toggle(self, on):
         """Enter/leave 'toggle shape' mode: clicking a box flips round <->
         rect, overriding the automatic shape."""
-        if on:
-            self._bp_exclusive_modes("bp_shape_btn")
-            self._set_status(self._tr("st_bp_shape_mode"))
+        self._on_bp_mode_toggle("shape", on)
 
     def _on_bp_box_clicked(self, idx, ctrl):
         # 'mark SFX' mode: a click toggles the box kind (bubble <-> sfx).
@@ -12241,10 +12524,17 @@ class TyperDocker(DockWidget):
         self._bp_reset_state()
         self._bp_refresh()
 
+    def _bp_set_page(self, img, doc_w, doc_h):
+        """Show the page in every overlay, and remember it for views that are
+        built later (the Batch tab's overlay may not exist yet)."""
+        self._bp_page_thumb = (img, doc_w, doc_h)
+        for ov in self._bp_overlays:
+            ov.set_page(img, doc_w, doc_h)
+
     def _bp_refresh_overlay(self):
         pending = {b: n + 1 for n, b in enumerate(self._bp_click_seq)}
-        self.bp_overlay.set_boxes(self._bp_boxes, pending,
-                                  current=self._bp_current)
+        for ov in self._bp_overlays:
+            ov.set_boxes(self._bp_boxes, pending, current=self._bp_current)
 
     def _bp_refresh(self):
         self._bp_refresh_overlay()

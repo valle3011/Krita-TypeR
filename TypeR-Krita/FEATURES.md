@@ -10,7 +10,7 @@ Line numbers drift; the names don't. Grep the name, not the number.
 
 | File | Lines | What it is |
 |---|---:|---|
-| `typer_kr.py` | ~12,350 | The docker: all six tabs, the insert path, the UI strings |
+| `typer_kr.py` | ~12,500 | The docker: all six tabs, the insert path, the UI strings |
 | `layout.py` | ~1,740 | The typesetting engine. **Qt-free, so it is unit-tested** |
 | `bubbles.py` | ~1,400 | BubblR: bubble detection + batch pairing |
 | `balloons.py` | ~290 | Balloon shape library. Qt-free, tested |
@@ -284,23 +284,45 @@ its settings survive; because every layout move ends in `box.show()`,
 toggle off and hides the tab. ⚠️ **Set it back to `True` before publishing to
 `Krita-TypeR`** unless the AI is ready — it is `False` here for local use only.
 
-### Batch placement (line per bubble, filled in one run)
+### Batch placement — the Batch tab
 
 Mark the bubbles, pair each with a script line, press one button, and the whole
 page is typeset. The everyday loop (Type tab: select a bubble, Insert, next)
 stays exactly as it was — this is the second route, for a page whose bubbles are
 already marked.
 
+**It has its own tab, on purpose.** Marking bubbles and filling them is not an
+AI feature, so it must not require the BubblR tab: `enableBatch` is independent
+of `enableBubblr`, the Batch tab carries its own marking tools and its own page
+view, and detection appears there as one accelerator button. With BubblR
+switched off entirely, nothing here is lost.
+
+- Tab: `_build_batch_tab()`; panels `batch_mark`, `batch_overlay`,
+  `bubblr_batch` (the pairing table + the run). Toggle: "Enable Batch tab" in
+  Setup > Experimental
 - Core (Qt-free, tested): `bubbles.py` → `regions_from_mask()`,
   `assign_units()`, `batch_pairs()`, plus the older `insert_gap()` /
   `remove_gap()` which finally have a caller
-- UI: the `_new_panel("bubblr_batch", "bubblr")` block — `bp_batch_table` and
-  the `bp_batch_*` buttons
 - Run: `on_bp_batch_start()` → `_bp_batch_tick()` → `_bp_batch_finish()`;
   `on_bp_batch_undo()` takes a run back
 - Headless fitting: `TextShapRWidget.candidates_for()` and `_fit_params()`,
   split out of `refresh()` so the batch gets the same ★ pick the cards would
   show for a bubble that is not on screen
+
+**⚠ Two views, one box list.** A Qt widget lives in one place at a time, so the
+BubblR tab and the Batch tab each build their own `BubbleOverlay`
+(`_new_bubble_overlay`, registered in `_bp_overlays`). They are *views*:
+`_bp_boxes` stays the single owner, `_bp_refresh_overlay` and `_bp_set_page`
+fan out to every view. Boxes belong to the page, not to a tab — two separate
+lists would break "detect in BubblR, then fill in Batch" and leave the user
+with two contradictory markings.
+
+The same goes for the click modes. `_bp_mode_btns` maps a mode
+(`order`/`sfx`/`shape`/`edit`) to *all* its buttons across the tabs;
+`_bp_sync_mode_btns` keeps them showing the same state and `_bp_apply_mode`
+holds the effect, so a mode cannot be on in one tab and off in the other while
+both overlays share their boxes. Anything driving a mode goes through
+`_on_bp_mode_toggle`, never through a single button.
 
 **Marking the bubbles.** Detection fills the box list as before, but
 "Add bubble from selection" now splits a selection into its **unconnected
@@ -340,8 +362,10 @@ removes exactly the `TypeR NN — ` layers the run wrote
 (`_remove_existing_layers` per unit) — shorter, and it cannot eat anything the
 batch did not create.
 
-**To switch off:** drop the `_new_panel("bubblr_batch", "bubblr")` block in
-`_build_bubblr_tab`. The `bubbles.py` helpers have no other caller; the hook in
+**To switch off:** uncheck "Enable Batch tab" (the page widget is kept alive,
+like every other hideable tab). To remove it from the code, drop
+`_build_batch_tab` and its call, plus the `batch` entries in `_tab_layouts` and
+`_tab_defaults`. The `bubbles.py` helpers have no other caller; the hook in
 `insert_arrangement` is guarded by `self._bp_run is None` and does nothing
 without the panel.
 

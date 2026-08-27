@@ -141,23 +141,33 @@ size that fits the current selection.
 
 ## Batch: fill a whole page in one go
 
-The everyday loop places one line at a time. When a page's bubbles are already
-marked, the **BubblR** tab can do the whole page instead: pair each bubble with
-its line, press one button, and every line is set into its bubble with the shape
-TextShapR recommends.
+The everyday loop places one line at a time. The **Batch** tab does a whole page
+instead: mark the bubbles, pair each with its line, press one button, and every
+line is set into its bubble with the shape TextShapR recommends.
 
-1. **Mark the bubbles.** Either run **Detect**, or mark them by hand: hold
-   **Shift** and drag the selection marquee over one balloon after another, then
-   press **Add bubble from selection** — a selection made of several parts is
-   split into one box per part.
+The tab stands on its own — it shows the open page, carries its own marking
+tools, and needs neither the BubblR tab nor its bubble detection. (If you do use
+detection, both tabs work on the same boxes, so you can start in one and finish
+in the other.) It can be hidden with **Enable Batch tab** in Setup.
+
+1. **Mark the bubbles.** Open the **Batch** tab — the open page appears in the
+   view. Then either drag boxes onto it with **Edit boxes**, or use the
+   selection: hold **Shift** and drag the marquee over one balloon after
+   another, then press **From selection** — a selection made of several parts is
+   split into one box per part. **Detect** is there too if you want BubblR to
+   propose the boxes first.
+   - **Toggle shape** flips a box round ↔ rectangular, **Mark SFX** turns it
+     into a sound effect (those are skipped when lines are assigned), and
+     **Set order** lets you click the boxes into the order you want.
 2. **Pair the lines.** **Assign lines** maps the script's lines onto the bubbles
-   1:1 in reading order. SFX boxes are skipped without using up a line.
+   1:1 in the order they are numbered. SFX boxes are skipped without using up a
+   line.
    - With **This page only** on (default) the batch draws from the current
      page's lines; switch it off to use the whole script.
    - The table is editable: pick a different line for any bubble, or use
      **Insert gap** / **Remove gap** when a bubble was detected that carries no
      dialogue and everything below has shifted by one.
-   - Clicking a row highlights that bubble in the overlay.
+   - Clicking a row highlights that bubble in the page view.
 3. **Fill all bubbles.** Each bubble is fitted individually and gets the ★
    shape. **Stop** interrupts the run; what is already placed stays.
    - **Review each** pauses at every bubble with the shape cards up so you pick
