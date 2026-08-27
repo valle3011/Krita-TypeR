@@ -624,7 +624,66 @@ LANG = {
                            "heuristic or the learned model in the BubblR "
                            "'ai' folder (run ai\\setup.ps1 once)."),
         "bp_detect": "Detect bubbles",
+        "panel_bubblr_batch": "Batch: line per bubble",
+        "bp_batch_assign": "Assign lines",
+        "bp_batch_gap": "Insert gap",
+        "bp_batch_ungap": "Remove gap",
+        "bp_batch_clear": "Clear",
+        "bp_batch_clear_tip": "Forget the pairing; the boxes stay.",
+        "bp_batch_page": "This page only",
+        "bp_batch_start": "Fill all bubbles",
+        "bp_batch_stop": "Stop",
+        "bp_batch_stop_tip": ("End the run after the bubble being placed. What is already on the page stays."),
+        "bp_batch_review": "Review each",
+        "bp_batch_undo": "Undo batch",
+        "bp_batch_none": "\u2014",
+        "bp_batch_round": "round",
+        "bp_batch_rect": "rect",
+        "bp_batch_sfx": "SFX",
+        "bp_batch_col_bubble": "Bubble",
+        "bp_batch_col_line": "Line",
+        "bp_batch_col_text": "Text",
+        "bp_batch_confirm_title": "Fill bubbles",
+        "bp_batch_confirm": ("Place {n} line(s) into their bubbles now? "
+                             "Each one gets the shape TextShapR recommends. "
+                             "\u201cUndo batch\u201d takes it all back."),
+        "bp_batch_assign_tip": ("Pair the lines with the bubbles 1:1 in "
+                                "reading order. SFX boxes are passed over "
+                                "without using up a line."),
+        "bp_batch_gap_tip": ("The selected bubble gets no line and everything "
+                             "below moves down one \u2014 the fix when a bubble "
+                             "was detected that carries no dialogue."),
+        "bp_batch_ungap_tip": "Pull the lines below the selected row back up.",
+        "bp_batch_page_tip": ("Draw only from the current page\u2019s lines "
+                              "(one image is usually one page). Off: the whole "
+                              "script."),
+        "bp_batch_start_tip": ("Fill every paired bubble in one run, best "
+                               "shape each. Stop interrupts it; what is "
+                               "already placed stays."),
+        "bp_batch_review_tip": ("Stop at every bubble with the shape cards up "
+                                "instead of taking the recommended shape "
+                                "unattended. Applying one continues the run."),
+        "bp_batch_undo_tip": ("Delete the layers the last batch created "
+                              "(only those \u2014 nothing else on the page)."),
+        "st_bp_batch_assigned": "{n} line(s) paired with bubbles.",
+        "st_bp_batch_mismatch": ("{n} paired \u2014 but there are {lines} line(s) "
+                                 "for {boxes} box(es). Correct the table before "
+                                 "you fill."),
+        "st_bp_batch_cleared": "Pairing cleared.",
+        "st_bp_batch_pick_row": "Select a row in the table first.",
+        "st_bp_batch_nothing": "No line is paired with a bubble yet.",
+        "st_bp_batch_running": "Filling {cur} / {n} \u2026",
+        "st_bp_batch_review": "Bubble {cur} / {n}: pick a shape, then Apply.",
+        "st_bp_batch_done": "Batch finished: {n} placed, {skipped} skipped.",
+        "st_bp_batch_stopped": "Batch stopped: {n} placed, {skipped} skipped.",
+        "st_bp_batch_undone": "{n} layer(s) of the last batch removed.",
         "bp_add_sel": "Add bubble from selection",
+        "bp_add_sel_tip": ("Turn the selection into bubble boxes. A "
+                           "selection made of several parts (hold Shift "
+                           "while dragging the marquee over one balloon "
+                           "after another) is split into one box per "
+                           "part, so a whole page can be marked in one "
+                           "go and then filled by the batch."),
         "bp_reset": "Reset order",
         "bp_order": "Set order",
         "bp_order_tip": ("Click the bubbles in the order you want them "
@@ -810,6 +869,8 @@ LANG = {
                            "matching pairs will be placed."),
         "st_bp_no_sel": "No selection – select a bubble first.",
         "st_bp_added": "Box {n} added from the selection.",
+        "st_bp_added_n": ("{k} boxes added from the selection "
+                          "({n} in total)."),
         "st_bp_renumbered": "New order applied.",
         "st_bp_order_mode": ("Set order: click the bubbles in reading "
                              "order."),
@@ -1372,7 +1433,74 @@ LANG = {
                            "BubblR-'ai'-Ordner (einmalig ai\\setup.ps1 "
                            "ausführen)."),
         "bp_detect": "Bubbles erkennen",
+        "panel_bubblr_batch": "Stapel: Zeile pro Bubble",
+        "bp_batch_assign": "Zeilen zuordnen",
+        "bp_batch_gap": "L\u00fccke einf\u00fcgen",
+        "bp_batch_ungap": "L\u00fccke entfernen",
+        "bp_batch_clear": "Leeren",
+        "bp_batch_clear_tip": ("Vergisst die Zuordnung; die Boxen bleiben."),
+        "bp_batch_page": "Nur diese Seite",
+        "bp_batch_start": "Alle Bubbles f\u00fcllen",
+        "bp_batch_stop": "Stopp",
+        "bp_batch_stop_tip": ("Beendet den Lauf nach der gerade gesetzten Bubble. Bereits Gesetztes bleibt."),
+        "bp_batch_review": "Einzeln pr\u00fcfen",
+        "bp_batch_undo": "Stapel zur\u00fccknehmen",
+        "bp_batch_none": "\u2014",
+        "bp_batch_round": "rund",
+        "bp_batch_rect": "eckig",
+        "bp_batch_sfx": "SFX",
+        "bp_batch_col_bubble": "Bubble",
+        "bp_batch_col_line": "Zeile",
+        "bp_batch_col_text": "Text",
+        "bp_batch_confirm_title": "Bubbles f\u00fcllen",
+        "bp_batch_confirm": ("Jetzt {n} Zeile(n) in ihre Bubbles setzen? "
+                             "Jede bekommt die von TextShapR empfohlene Form. "
+                             "\u201eStapel zur\u00fccknehmen\u201c macht alles "
+                             "wieder r\u00fcckg\u00e4ngig."),
+        "bp_batch_assign_tip": ("Ordnet die Zeilen den Bubbles 1:1 in "
+                                "Lesereihenfolge zu. SFX-Boxen werden "
+                                "\u00fcbersprungen, ohne eine Zeile zu "
+                                "verbrauchen."),
+        "bp_batch_gap_tip": ("Die gew\u00e4hlte Bubble bekommt keine Zeile, "
+                             "alles darunter r\u00fcckt eins nach unten \u2014 "
+                             "die Korrektur, wenn eine Bubble erkannt wurde, "
+                             "in der kein Dialog steht."),
+        "bp_batch_ungap_tip": ("Zieht die Zeilen unter der gew\u00e4hlten "
+                               "Reihe wieder nach oben."),
+        "bp_batch_page_tip": ("Nimmt nur die Zeilen der aktuellen Seite (ein "
+                              "Bild ist meist eine Seite). Aus: das ganze "
+                              "Skript."),
+        "bp_batch_start_tip": ("F\u00fcllt alle zugeordneten Bubbles in einem "
+                               "Lauf, jeweils mit der besten Form. Stopp "
+                               "unterbricht; bereits Gesetztes bleibt."),
+        "bp_batch_review_tip": ("H\u00e4lt bei jeder Bubble mit den Formkarten "
+                                "an, statt die Empfehlung unbeaufsichtigt zu "
+                                "nehmen. Ein \u00dcbernehmen setzt den Lauf "
+                                "fort."),
+        "bp_batch_undo_tip": ("L\u00f6scht die Ebenen des letzten Stapellaufs "
+                              "(nur diese \u2014 sonst nichts auf der Seite)."),
+        "st_bp_batch_assigned": "{n} Zeile(n) Bubbles zugeordnet.",
+        "st_bp_batch_mismatch": ("{n} zugeordnet \u2014 aber es gibt {lines} "
+                                 "Zeile(n) f\u00fcr {boxes} Box(en). Korrigiere "
+                                 "die Tabelle vor dem F\u00fcllen."),
+        "st_bp_batch_cleared": "Zuordnung geleert.",
+        "st_bp_batch_pick_row": "W\u00e4hle zuerst eine Reihe in der Tabelle.",
+        "st_bp_batch_nothing": "Noch ist keine Zeile einer Bubble zugeordnet.",
+        "st_bp_batch_running": "F\u00fclle {cur} / {n} \u2026",
+        "st_bp_batch_review": ("Bubble {cur} / {n}: Form w\u00e4hlen, dann "
+                               "\u00dcbernehmen."),
+        "st_bp_batch_done": ("Stapel fertig: {n} gesetzt, {skipped} "
+                             "\u00fcbersprungen."),
+        "st_bp_batch_stopped": ("Stapel gestoppt: {n} gesetzt, {skipped} "
+                                "\u00fcbersprungen."),
+        "st_bp_batch_undone": "{n} Ebene(n) des letzten Stapels entfernt.",
         "bp_add_sel": "Bubble aus Auswahl hinzufügen",
+        "bp_add_sel_tip": ("Macht aus der Auswahl Bubble-Boxen. Eine "
+                           "Auswahl aus mehreren Teilen (Umschalt halten "
+                           "und nacheinander über die Blasen ziehen) wird "
+                           "in eine Box pro Teil zerlegt — so lässt sich "
+                           "eine ganze Seite in einem Rutsch markieren "
+                           "und danach im Stapel füllen."),
         "bp_reset": "Reihenfolge zurücksetzen",
         "bp_order": "Reihenfolge festlegen",
         "bp_order_tip": ("Die Bubbles in der gewünschten Reihenfolge "
@@ -1568,6 +1696,8 @@ LANG = {
                            "passende Paare werden platziert."),
         "st_bp_no_sel": "Keine Auswahl – bitte zuerst eine Bubble auswählen.",
         "st_bp_added": "Box {n} aus der Auswahl hinzugefügt.",
+        "st_bp_added_n": ("{k} Boxen aus der Auswahl hinzugefügt "
+                          "({n} insgesamt)."),
         "st_bp_renumbered": "Neue Reihenfolge übernommen.",
         "st_bp_order_mode": ("Reihenfolge festlegen: Bubbles in Lesereihen"
                              "folge anklicken."),
@@ -4276,6 +4406,53 @@ class TextShapRWidget(QWidget):
         except Exception:
             return ()
 
+    def _fit_params(self, sel_shape, max_px=None):
+        """(measurer, mode, max_px) for the current style and box shape.
+
+        Shared by the card refresh and the batch run so a batched bubble is
+        fitted with exactly the settings the picker would have shown for it —
+        including "match size", which is what keeps a batched page uniform.
+        """
+        d = self._docker
+        measurer = _make_measurer(d.font_picker.currentFamily(),
+                                  d.spacing_spin.value() / 100.0,
+                                  d.bold_chk.isChecked(),
+                                  d.italic_chk.isChecked())
+        mode = self._MODES[max(0, self._mode_group.checkedId())]
+        if self.auto_shape_btn.isChecked() and sel_shape == "round":
+            mode = "round"          # elliptical selection -> fit an ellipse
+        if max_px is None:
+            max_px = d.size_spin.value()
+            last = getattr(d, "_last_insert_px", None)
+            if self.match_btn.isChecked() and last:
+                max_px = min(max_px, int(last))   # match neighbouring bubbles
+        return measurer, mode, max_px
+
+    def candidates_for(self, clean, mask, box_w, box_h,
+                       sel_shape=None, sel_rows=None, max_px=None, limit=10):
+        """Ranked arrangements for `clean` in a box — no widgets touched.
+
+        The card grid is one caller, the batch run the other: the batch needs
+        the same ★ pick the user would see, for a bubble that is not the one
+        currently on screen, so the fitting had to come apart from the cards.
+        Returns [] on any failure (no font, no text, a fitter that gave up).
+        """
+        d = self._docker
+        if not d.font_picker.currentFamily() or not clean.strip():
+            return []
+        measurer, mode, max_px = self._fit_params(sel_shape, max_px)
+        try:
+            return L.shape_candidates(
+                clean, measurer, box_w, box_h,
+                max_px, SHAPER_MIN_PX, d.pad_spin.value() / 100.0,
+                mode=mode, hyphenate=self.hyph_btn.isChecked(),
+                lang=d._hyph_lang_for(clean), mask=mask, limit=limit,
+                dehyphenate=self.dehyph_btn.isChecked(),
+                inset=self._outline_inset(),
+                shape_rows=sel_rows)
+        except Exception:
+            return []
+
     def refresh(self):
         """Regenerate the candidates for the current line and rebuild the
         cards. Never raises; with no font/text it shows a hint instead.
@@ -4298,13 +4475,7 @@ class TextShapRWidget(QWidget):
         self._sel = -1
 
         family = d.font_picker.currentFamily()
-        prepared = prepare_text(d._current_text(),
-                                d.case_combo.currentData() or "none",
-                                d.tidy_chk.isChecked(),
-                                comic=d.comic_chk.isChecked(),
-                                crossbar_i=d.crossbar_chk.isChecked())
-        prepared = prepared.replace("\r\n", "\n").replace("\r", "\n")
-        clean, mask = parse_bold(prepared)
+        clean, mask = parse_bold(d._prepared_text(d._current_text()))
         box_w, box_h, has_doc, sel_shape, sel_rows = self._box()
         same_text = (self._text_key == clean)
         self._text_key = clean
@@ -4315,28 +4486,10 @@ class TextShapRWidget(QWidget):
             self._custom_hand = False
 
         if family and clean.strip():
-            measurer = _make_measurer(family,
-                                      d.spacing_spin.value() / 100.0,
-                                      d.bold_chk.isChecked(),
-                                      d.italic_chk.isChecked())
-            mode = self._MODES[max(0, self._mode_group.checkedId())]
-            if self.auto_shape_btn.isChecked() and sel_shape == "round":
-                mode = "round"      # elliptical selection -> fit an ellipse
-            max_px = d.size_spin.value()
-            last = getattr(d, "_last_insert_px", None)
-            if self.match_btn.isChecked() and last:
-                max_px = min(max_px, int(last))   # match neighbouring bubbles
-            try:
-                self._cands = L.shape_candidates(
-                    clean, measurer, box_w, box_h,
-                    max_px, SHAPER_MIN_PX, d.pad_spin.value() / 100.0,
-                    mode=mode, hyphenate=self.hyph_btn.isChecked(),
-                    lang=d._hyph_lang_for(clean), mask=mask, limit=10,
-                    dehyphenate=self.dehyph_btn.isChecked(),
-                    inset=self._outline_inset(),
-                    shape_rows=sel_rows)
-            except Exception:
-                self._cands = []
+            measurer, _mode, max_px = self._fit_params(sel_shape)
+            self._cands = self.candidates_for(clean, mask, box_w, box_h,
+                                              sel_shape, sel_rows,
+                                              max_px=max_px, limit=10)
             # a hand-edited arrangement survives the re-fit as its own card
             if self._custom:
                 self._readd_custom(measurer, box_w, box_h,
@@ -5286,13 +5439,17 @@ class TyperDocker(DockWidget):
         self._detached = {}        # panel id -> slot int, or "float"
         self._float_dialogs = {}   # panel id -> floating QDialog (fallback)
 
-        # BubblR tab state. BubblR only DETECTS and orders the bubbles; the
-        # text is typed/placed from the Type tab (Insert fills the current
-        # bubble and steps to the next). So there is no script mapping here.
+        # BubblR tab state. BubblR DETECTS and orders the bubbles; single lines
+        # are still typed/placed from the Type tab (Insert fills the current
+        # bubble and steps to the next). The batch panel adds the other route:
+        # a script unit per bubble, then fill them all in one run.
         self._bp_boxes = []        # ordered detected box dicts (x/y/w/h/shape)
         self._bp_click_seq = []    # box indices Ctrl-clicked for renumbering
         self._bp_current = -1      # current bubble (Insert target / step ptr)
         self._bp_placed = set()    # bubble indices already filled with text
+        self._bp_assign = []       # unit index per box (-1 = none), for batch
+        self._bp_run = None        # live batch run state (see _bp_batch_tick)
+        self._bp_last_units = []   # units the last batch wrote (for its undo)
 
         # Make a Setup section collapsible under a checkable button, exactly
         # like the "Layout & sizes" / "Experimental" sections: the button shows/
@@ -7163,6 +7320,7 @@ class TyperDocker(DockWidget):
         self.bp_backend_combo.setToolTip(t("bp_backend_tip"))
         self.bp_detect_btn.setText(t("bp_detect"))
         self.bp_add_sel_btn.setText(t("bp_add_sel"))
+        self.bp_add_sel_btn.setToolTip(t("bp_add_sel_tip"))
         self.bp_reset_btn.setText(t("bp_reset"))
         self.bp_order_btn.setText(t("bp_order"))
         self.bp_order_btn.setToolTip(t("bp_order_tip"))
@@ -7208,6 +7366,24 @@ class TyperDocker(DockWidget):
         self.bp_sfx_db_btn.setToolTip(t("bp_sfx_db_tip"))
         self.bp_export_btn.setText(t("bp_export"))
         self.bp_export_btn.setToolTip(t("bp_export_tip"))
+        # batch panel
+        for name, key in (("bp_batch_assign_btn", "bp_batch_assign"),
+                          ("bp_batch_gap_btn", "bp_batch_gap"),
+                          ("bp_batch_ungap_btn", "bp_batch_ungap"),
+                          ("bp_batch_clear_btn", "bp_batch_clear"),
+                          ("bp_batch_page_chk", "bp_batch_page"),
+                          ("bp_batch_start_btn", "bp_batch_start"),
+                          ("bp_batch_stop_btn", "bp_batch_stop"),
+                          ("bp_batch_review_chk", "bp_batch_review"),
+                          ("bp_batch_undo_btn", "bp_batch_undo")):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setText(t(key))
+                w.setToolTip(t(key + "_tip"))
+        self.bp_batch_table.setHorizontalHeaderLabels(
+            [t("bp_batch_col_bubble"), t("bp_batch_col_line"),
+             t("bp_batch_col_text")])
+        self._bp_batch_refresh()      # shape/SFX labels are translated too
         # re-label the page combo / status in the new language
         self._refresh_pages_combo()
 
@@ -7916,6 +8092,7 @@ class TyperDocker(DockWidget):
                      "style_shadow": "panel_style_shadow",
                      "hyphenation": "panel_hyphenation",
                      "bubblr_detect": "panel_bubblr_detect",
+                     "bubblr_batch": "panel_bubblr_batch",
                      "bubblr_overlay": "panel_bubblr_overlay",
                      "setup_general": "panel_setup_general",
                      "layout_sizes": "panel_layout_sizes",
@@ -8391,6 +8568,15 @@ class TyperDocker(DockWidget):
             if bar.tabData(i) == tid:
                 return i
         return None
+
+    def _show_tab(self, tid):
+        """Bring the tab with id `tid` to the front (no-op when it is hidden
+        or does not exist). Returns True when it is now in front."""
+        idx = self._tab_index_of(tid)
+        if idx is None:
+            return False
+        self.main_tabs.setCurrentIndex(idx)
+        return True
 
     def _on_enable_bubblr(self, on, save=True):
         """Show or hide the BubblR tab. The page widget is kept alive when
@@ -10251,6 +10437,30 @@ class TyperDocker(DockWidget):
             return self._pair_pages[self._index]
         return ""
 
+    def _page_unit_range(self):
+        """(first, last_exclusive) unit indices of the current unit's page.
+
+        One image is one manga page, so this is the slice a batch over the
+        open document may draw from. Without page markers the whole script is
+        one range, which is the right answer for a one-page script.
+        """
+        n = len(self._pairs)
+        pp = self._pair_pages
+        if not n:
+            return 0, 0
+        if len(pp) != n:
+            return 0, n
+        label = self._current_page_label()
+        first = last = None
+        for i, p in enumerate(pp):
+            if p == label:
+                if first is None:
+                    first = i
+                last = i
+        if first is None:
+            return 0, n
+        return first, last + 1
+
     def _refresh_pages_combo(self):
         """Rebuild the jump-to-page combo and show/hide the whole page row
         depending on whether the script actually contains "Page" markers."""
@@ -10427,6 +10637,28 @@ class TyperDocker(DockWidget):
         if not self._pairs:
             return ""
         return LP.unit_text(self._pairs[self._index])
+
+    def _unit_text(self, index):
+        """The script text of unit `index`.
+
+        Unlike `_current_text` this never looks at the active field: a batch
+        places many units and only one of them can be in the field, so reading
+        it would paste the same line into every bubble.
+        """
+        if not (0 <= index < len(self._pairs)):
+            return ""
+        return LP.unit_text(self._pairs[index])
+
+    def _prepared_text(self, text):
+        """Apply the Style tab's text transforms (case, smart punctuation,
+        comic lettering) and normalise line endings — the step every fitter
+        input goes through before it is measured."""
+        out = prepare_text(text,
+                           self.case_combo.currentData() or "none",
+                           self.tidy_chk.isChecked(),
+                           comic=self.comic_chk.isChecked(),
+                           crossbar_i=self.crossbar_chk.isChecked())
+        return out.replace("\r\n", "\n").replace("\r", "\n")
 
     def on_bold_selection(self):
         """Toggle bold (``**...**``) on the selected words in the active field."""
@@ -10726,6 +10958,10 @@ class TyperDocker(DockWidget):
                 if advance and self._index < len(self._pairs) - 1:
                     self._index += 1
                 self._refresh_view()
+        # a batch in review mode is waiting for exactly this: the shape for
+        # the current bubble was applied, so book it and move on
+        if ok and self._bp_run is not None and self._bp_run.get("waiting"):
+            self._bp_batch_continue()
         return ok
 
     def _show_current(self):
@@ -10971,6 +11207,69 @@ class TyperDocker(DockWidget):
         det.addLayout(row)
         lay.addWidget(_det_pb)
 
+        # batch: which line goes into which bubble, then fill them all
+        _bt_pb = self._new_panel("bubblr_batch", "bubblr")
+        bt = _bt_pb.body_layout()
+
+        row = FlowLayout()
+        self.bp_batch_assign_btn = QPushButton()
+        self.bp_batch_assign_btn.clicked.connect(self.on_bp_batch_assign)
+        row.addWidget(self.bp_batch_assign_btn)
+        self.bp_batch_gap_btn = QPushButton()
+        self.bp_batch_gap_btn.clicked.connect(self.on_bp_batch_gap)
+        row.addWidget(self.bp_batch_gap_btn)
+        self.bp_batch_ungap_btn = QPushButton()
+        self.bp_batch_ungap_btn.clicked.connect(self.on_bp_batch_ungap)
+        row.addWidget(self.bp_batch_ungap_btn)
+        self.bp_batch_clear_btn = QPushButton()
+        self.bp_batch_clear_btn.clicked.connect(self.on_bp_batch_clear)
+        row.addWidget(self.bp_batch_clear_btn)
+        # whole script vs. just this page: with page markers the batch draws
+        # from the current page, which is what one image usually holds
+        self.bp_batch_page_chk = QCheckBox()
+        self.bp_batch_page_chk.setChecked(True)
+        self.bp_batch_page_chk.toggled.connect(
+            lambda *_a: self.on_bp_batch_assign())
+        row.addWidget(self.bp_batch_page_chk)
+        bt.addLayout(row)
+
+        self.bp_batch_table = QTableWidget(0, 3)
+        self.bp_batch_table.verticalHeader().setVisible(False)
+        self.bp_batch_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.bp_batch_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.bp_batch_table.itemSelectionChanged.connect(
+            self._on_bp_batch_row)
+        hh = self.bp_batch_table.horizontalHeader()
+        hh.setStretchLastSection(True)
+        bt.addWidget(self.bp_batch_table, 1)
+
+        row = FlowLayout()
+        self.bp_batch_start_btn = QPushButton()
+        self.bp_batch_start_btn.clicked.connect(self.on_bp_batch_start)
+        self.bp_batch_start_btn.setEnabled(False)
+        row.addWidget(self.bp_batch_start_btn)
+        self.bp_batch_stop_btn = QPushButton()
+        self.bp_batch_stop_btn.clicked.connect(self.on_bp_batch_stop)
+        self.bp_batch_stop_btn.setEnabled(False)
+        row.addWidget(self.bp_batch_stop_btn)
+        # review: stop at every bubble with the shape cards up, instead of
+        # taking the recommended one unattended
+        self.bp_batch_review_chk = QCheckBox()
+        row.addWidget(self.bp_batch_review_chk)
+        self.bp_batch_undo_btn = QPushButton()
+        self.bp_batch_undo_btn.clicked.connect(self.on_bp_batch_undo)
+        self.bp_batch_undo_btn.setEnabled(False)
+        row.addWidget(self.bp_batch_undo_btn)
+        bt.addLayout(row)
+
+        self.bp_batch_status = QLabel("")
+        self.bp_batch_status.setStyleSheet("color: gray;")
+        self.bp_batch_status.setWordWrap(True)
+        bt.addWidget(self.bp_batch_status)
+        lay.addWidget(_bt_pb, 1)
+
         # overlay preview: the numbered bubbles on the page thumbnail
         _ov_pb = self._new_panel("bubblr_overlay", "bubblr")
         self.bp_overlay = BubbleOverlay()
@@ -11075,19 +11374,317 @@ class TyperDocker(DockWidget):
                  if w.strip()]
         self._bp_save_user_sfx_words(words)
 
+    # -- batch: which line goes into which bubble ------------------------------
+
+    def _bp_batch_range(self):
+        """(first, last_exclusive) script units the batch may draw from —
+        the current page, or the whole script when that is switched off."""
+        if self.bp_batch_page_chk.isChecked() and self._pages:
+            return self._page_unit_range()
+        return 0, len(self._pairs)
+
+    def on_bp_batch_assign(self):
+        """Map the script's lines onto the boxes, 1:1 in reading order.
+
+        This is a *proposal*, not a commitment: detection is never perfect, so
+        the point of the table below is that a wrong pairing can be corrected
+        before anything is written to the page.
+        """
+        first, last = self._bp_batch_range()
+        self._bp_assign, mismatch = BB.assign_units(
+            self._bp_boxes, last, first_unit=first)
+        self._bp_batch_refresh()
+        n = sum(1 for u in self._bp_assign if u >= 0)
+        if mismatch:
+            self._bp_batch_note("st_bp_batch_mismatch", n=n,
+                                lines=max(0, last - first),
+                                boxes=len(self._bp_boxes))
+        else:
+            self._bp_batch_note("st_bp_batch_assigned", n=n)
+
+    def on_bp_batch_clear(self):
+        """Forget the pairing (the boxes themselves stay)."""
+        self._bp_assign = [-1] * len(self._bp_boxes)
+        self._bp_batch_refresh()
+        self._bp_batch_note("st_bp_batch_cleared")
+
+    def on_bp_batch_gap(self):
+        """Insert a gap at the selected row: that bubble gets no line and
+        everything below moves down one. The fix for a bubble detection
+        missed — without it every following line would be off by one."""
+        row = self.bp_batch_table.currentRow()
+        if row < 0 or not self._bp_assign:
+            self._bp_batch_note("st_bp_batch_pick_row")
+            return
+        self._bp_assign = BB.insert_gap(self._bp_assign, row)
+        self._bp_batch_refresh()
+
+    def on_bp_batch_ungap(self):
+        """The counterpart: pull the lines below back up by one."""
+        row = self.bp_batch_table.currentRow()
+        if row < 0 or not self._bp_assign:
+            self._bp_batch_note("st_bp_batch_pick_row")
+            return
+        self._bp_assign = BB.remove_gap(self._bp_assign, row, len(self._pairs))
+        self._bp_batch_refresh()
+
+    def _bp_batch_note(self, key, **fmt):
+        """Write a line into the batch panel's own status label (the docker's
+        status bar belongs to the Type tab's insert path)."""
+        self.bp_batch_status.setText(self._tr(key).format(**fmt))
+
+    def _on_bp_batch_row(self):
+        """Selecting a row arms that bubble, so the overlay highlights the
+        bubble whose line you are looking at."""
+        row = self.bp_batch_table.currentRow()
+        if 0 <= row < len(self._bp_boxes) and row != self._bp_current:
+            self._bp_set_current(row)
+
+    def _bp_batch_unit_combo(self, row, first, last):
+        """The per-row line picker: '—' plus every unit of the range, so a
+        pairing can be corrected by hand without counting rows."""
+        combo = NoScrollComboBox()
+        combo.addItem(self._tr("bp_batch_none"), -1)
+        for u in range(first, last):
+            text = self._unit_text(u).replace("\n", " ").strip()
+            if len(text) > 40:
+                text = text[:39] + "…"
+            combo.addItem("{n}  {t}".format(n=u + 1, t=text), u)
+        want = self._bp_assign[row] if row < len(self._bp_assign) else -1
+        idx = combo.findData(want)
+        combo.setCurrentIndex(max(0, idx))
+        combo.currentIndexChanged.connect(
+            lambda *_a, r=row, c=combo: self._on_bp_batch_pick(r, c))
+        return combo
+
+    def _on_bp_batch_pick(self, row, combo):
+        if 0 <= row < len(self._bp_assign):
+            data = combo.currentData()
+            self._bp_assign[row] = -1 if data is None else int(data)
+            self._bp_batch_fill_preview(row)
+
+    def _bp_batch_fill_preview(self, row):
+        """Put the assigned line's text into the preview column."""
+        u = self._bp_assign[row] if row < len(self._bp_assign) else -1
+        text = self._unit_text(u).replace("\n", " ").strip() if u >= 0 else ""
+        item = QTableWidgetItem(text)
+        item.setToolTip(text)
+        self.bp_batch_table.setItem(row, 2, item)
+
+    def _bp_batch_refresh(self):
+        """Rebuild the assignment table from the boxes and the pairing."""
+        table = getattr(self, "bp_batch_table", None)
+        if table is None:
+            return
+        if len(self._bp_assign) != len(self._bp_boxes):
+            self._bp_assign = (self._bp_assign
+                               + [-1] * len(self._bp_boxes))[:len(self._bp_boxes)]
+        first, last = self._bp_batch_range()
+        table.blockSignals(True)
+        table.setRowCount(len(self._bp_boxes))
+        for row, b in enumerate(self._bp_boxes):
+            kind = b.get("kind", "bubble")
+            label = "{n}  {k}".format(
+                n=row + 1,
+                k=self._tr("bp_batch_sfx") if kind == "sfx"
+                else self._tr("bp_batch_" + (b.get("shape") or "rect")))
+            table.setItem(row, 0, QTableWidgetItem(label))
+            table.setCellWidget(row, 1,
+                                self._bp_batch_unit_combo(row, first, last))
+            self._bp_batch_fill_preview(row)
+        table.blockSignals(False)
+        table.resizeColumnToContents(0)
+        self._bp_batch_update_buttons()
+
+    def _bp_batch_update_buttons(self):
+        """Start is only meaningful with something to place."""
+        btn = getattr(self, "bp_batch_start_btn", None)
+        if btn is None:
+            return
+        running = self._bp_run is not None
+        pairs = BB.batch_pairs(self._bp_assign, len(self._pairs))
+        btn.setEnabled(bool(pairs) and not running)
+        self.bp_batch_stop_btn.setEnabled(running)
+        for name in ("bp_batch_assign_btn", "bp_batch_gap_btn",
+                     "bp_batch_ungap_btn", "bp_batch_clear_btn",
+                     "bp_batch_page_chk"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setEnabled(not running)
+
+    # -- batch: the run --------------------------------------------------------
+
+    #: Pause between two bubbles. The run is a chain of single-shot timers
+    #: rather than a loop so the canvas repaints and Stop stays clickable —
+    #: a loop would freeze the docker for the length of a whole page.
+    _BATCH_TICK_MS = 40
+
+    def on_bp_batch_start(self):
+        """Fill every assigned bubble with its line, one bubble per tick."""
+        if self._bp_run is not None:
+            return
+        if Krita.instance().activeDocument() is None:
+            self._bp_batch_note("st_no_doc")
+            return
+        if not self.font_picker.currentFamily():
+            self._bp_batch_note("st_no_font")
+            return
+        pairs = BB.batch_pairs(self._bp_assign, len(self._pairs))
+        if not pairs:
+            self._bp_batch_note("st_bp_batch_nothing")
+            return
+        review = self.bp_batch_review_chk.isChecked()
+        if not review:
+            # an unattended run writes a whole page; ask once
+            box = QMessageBox(self)
+            box.setWindowTitle(self._tr("bp_batch_confirm_title"))
+            box.setText(self._tr("bp_batch_confirm").format(n=len(pairs)))
+            box.setStandardButtons(QMessageBox.StandardButton.Yes
+                                   | QMessageBox.StandardButton.No)
+            if box.exec() != QMessageBox.StandardButton.Yes:
+                return
+        self._bp_run = {"pairs": pairs, "at": 0, "done": 0, "skipped": 0,
+                        "units": [], "review": review, "waiting": False,
+                        "back_to": self._index}
+        self._bp_batch_update_buttons()
+        QTimer.singleShot(0, self._bp_batch_tick)
+
+    def on_bp_batch_stop(self):
+        """Stop after the bubble currently being placed. What is already on
+        the page stays there — 'Undo batch' is the way to take it back."""
+        if self._bp_run is not None:
+            self._bp_batch_finish(stopped=True)
+
+    def _bp_batch_tick(self):
+        """Place one bubble, then hand control back to Qt."""
+        run = self._bp_run
+        if run is None:
+            return
+        if run["at"] >= len(run["pairs"]):
+            self._bp_batch_finish()
+            return
+        box_index, unit = run["pairs"][run["at"]]
+        run["at"] += 1
+        self._bp_batch_note("st_bp_batch_running",
+                            cur=run["at"], n=len(run["pairs"]))
+
+        if not (0 <= box_index < len(self._bp_boxes)) \
+                or not self._select_box(self._bp_boxes[box_index]):
+            run["skipped"] += 1
+            QTimer.singleShot(0, self._bp_batch_tick)
+            return
+        self._bp_current = box_index
+        self._bp_refresh_overlay()
+        self._bp_update_nav()
+        self._index = unit          # insert_arrangement numbers the layer
+
+        shapr = self.shapr_widget
+        clean, mask = parse_bold(self._prepared_text(self._unit_text(unit)))
+        box_w, box_h, _has_doc, sel_shape, sel_rows = shapr._box()
+        cands = shapr.candidates_for(clean, mask, box_w, box_h,
+                                     sel_shape, sel_rows,
+                                     limit=10 if run["review"] else 1)
+        if not cands:
+            # nothing fits (empty line, or the bubble is smaller than the
+            # minimum size): leave it for the typesetter rather than guess
+            run["skipped"] += 1
+            QTimer.singleShot(0, self._bp_batch_tick)
+            return
+
+        if run["review"]:
+            # hand the bubble to the user: the cards are up, Apply continues
+            # the run (see the hook at the end of insert_arrangement)
+            run["waiting"] = True
+            run["box"] = box_index
+            run["unit"] = unit
+            self._show_tab("shapr")
+            shapr.refresh()
+            shapr._select_best()
+            msg = self._tr("st_bp_batch_review").format(
+                cur=run["at"], n=len(run["pairs"]))
+            self._bp_batch_note("st_bp_batch_review",
+                                cur=run["at"], n=len(run["pairs"]))
+            self._set_status(msg)     # the BubblR panel is not in front now
+            return
+
+        if self.insert_arrangement(cands[0], False, replace=True):
+            run["done"] += 1
+            run["units"].append(unit)
+            self._bp_placed.add(box_index)
+        else:
+            run["skipped"] += 1
+        QTimer.singleShot(self._BATCH_TICK_MS, self._bp_batch_tick)
+
+    def _bp_batch_continue(self):
+        """Called from the insert path when a reviewed bubble was applied:
+        book it and move on to the next one.
+
+        Hooking the insert path rather than a button of our own means the run
+        continues no matter how the user applied the shape — the Apply button,
+        Apply + next, or a number key.
+        """
+        run = self._bp_run
+        if run is None or not run.get("waiting"):
+            return
+        run["waiting"] = False
+        run["done"] += 1
+        run["units"].append(run.get("unit", self._index))
+        self._bp_placed.add(run.get("box", self._bp_current))
+        QTimer.singleShot(self._BATCH_TICK_MS, self._bp_batch_tick)
+
+    def _bp_batch_finish(self, stopped=False):
+        """End the run and report what happened."""
+        run = self._bp_run
+        self._bp_run = None
+        if run is None:
+            return
+        self._bp_last_units = list(run["units"])
+        self.bp_batch_undo_btn.setEnabled(bool(self._bp_last_units))
+        self._bp_batch_update_buttons()
+        self._bp_batch_refresh()
+        self._bp_batch_note(
+            "st_bp_batch_stopped" if stopped else "st_bp_batch_done",
+            n=run["done"], skipped=run["skipped"])
+
+    def on_bp_batch_undo(self):
+        """Delete the layers the last batch created.
+
+        Krita's Python API has no way to fold N inserts into one undo step, so
+        undoing a batch by hand would mean N times Ctrl+Z. Removing exactly the
+        `TypeR NN — ` layers the run wrote is both shorter and more precise: it
+        cannot eat anything the batch did not create.
+        """
+        doc = Krita.instance().activeDocument()
+        units = getattr(self, "_bp_last_units", [])
+        if doc is None or not units:
+            return
+        removed = 0
+        for unit in units:
+            removed += _remove_existing_layers(doc, unit + 1)
+            self._done.discard(unit)
+            self._mark_done_row(unit)
+        try:
+            doc.refreshProjection()
+        except Exception:
+            pass
+        self._bp_last_units = []
+        self._bp_placed = set()
+        self.bp_batch_undo_btn.setEnabled(False)
+        self._bp_batch_note("st_bp_batch_undone", n=removed)
+
     # -- current bubble + selection sync ---------------------------------------
 
-    def _bp_apply_selection(self):
-        """Make the current bubble the Krita selection (when enabled), so
-        the Type tab's Insert/TextShapR work on it too."""
-        if not self.bp_selfollow_chk.isChecked():
-            return
-        if not (0 <= self._bp_current < len(self._bp_boxes)):
-            return
+    def _select_box(self, b):
+        """Make one bubble box the document's selection. True on success.
+
+        Everything downstream — the fitter, TextShapR's shape profile, the
+        insert path — reads the *selection*, never a box, so putting the box
+        into the selection is what lets a batch reuse the whole normal path
+        bubble by bubble instead of growing a second one.
+        """
         doc = Krita.instance().activeDocument()
         if doc is None:
-            return
-        b = self._bp_boxes[self._bp_current]
+            return False
         x, y = int(b["x"]), int(b["y"])
         w, h = int(b["w"]), int(b["h"])
         try:
@@ -11099,8 +11696,18 @@ class TyperDocker(DockWidget):
                     and 0 < w * h <= 4000000):
                 sel.setPixelData(BB.ellipse_mask(w, h), x, y, w, h)
             doc.setSelection(sel)
+            return True
         except Exception:
-            pass
+            return False
+
+    def _bp_apply_selection(self):
+        """Make the current bubble the Krita selection (when enabled), so
+        the Type tab's Insert/TextShapR work on it too."""
+        if not self.bp_selfollow_chk.isChecked():
+            return
+        if not (0 <= self._bp_current < len(self._bp_boxes)):
+            return
+        self._select_box(self._bp_boxes[self._bp_current])
 
     def _bp_set_current(self, idx):
         """Move the current-bubble pointer (and the doc selection) to `idx`."""
@@ -11113,9 +11720,13 @@ class TyperDocker(DockWidget):
 
     def _bp_reset_state(self):
         """After a (re)detect / reorder: forget which bubbles were placed and
-        point at the first one. No script mapping is involved."""
+        point at the first one. The batch pairing is dropped too — box numbers
+        have just changed, so keeping it would pair lines with the wrong
+        bubbles."""
         self._bp_placed = set()
+        self._bp_assign = [-1] * len(self._bp_boxes)
         self._bp_set_current(0 if self._bp_boxes else -1)
+        self._bp_batch_refresh()
 
     def _bp_next_bubble(self, start):
         """Next bubble index >= start that has not been placed yet, or None."""
@@ -11460,17 +12071,47 @@ class TyperDocker(DockWidget):
         if sel is None or sel.width() <= 0 or sel.height() <= 0:
             self._set_status(self._tr("st_bp_no_sel"), error=True)
             return
-        fill = self._selection_fill(sel)
-        self._bp_boxes.append({"x": sel.x(), "y": sel.y(),
-                               "w": sel.width(), "h": sel.height(),
-                               "kind": "bubble",
-                               "shape": BB.shape_from_fill(fill),
-                               "fill": fill})
+        added = self._boxes_from_selection(sel)
+        if not added:
+            self._set_status(self._tr("st_bp_no_sel"), error=True)
+            return
+        self._bp_boxes.extend(added)
         self._bp_click_seq = []
         self._bp_reset_state()
         self._bp_refresh()
         self._set_status(
-            self._tr("st_bp_added").format(n=len(self._bp_boxes)))
+            self._tr("st_bp_added_n" if len(added) > 1 else "st_bp_added")
+            .format(n=len(self._bp_boxes), k=len(added)))
+
+    def _boxes_from_selection(self, sel):
+        """Box dicts for a selection — one per unconnected part.
+
+        Krita has a single selection, so shift-dragging the marquee across
+        five balloons produces ONE selection whose bounding box spans the
+        whole page. Splitting it into its parts is what makes "select the
+        bubbles, then fill them all" possible at all; a plain one-bubble
+        marquee simply comes back as a list of one.
+
+        Falls back to the bounding box when the mask cannot be read (older
+        Krita builds, a vector selection), which is exactly the old behaviour.
+        """
+        try:
+            w, h = int(sel.width()), int(sel.height())
+            data = sel.pixelData(sel.x(), sel.y(), w, h)
+            if data and len(data) >= w * h:
+                boxes = BB.regions_from_mask(bytes(data), w, h,
+                                             origin=(sel.x(), sel.y()))
+                if boxes:
+                    return BB.reading_order(
+                        boxes, rtl=self.bp_rtl_chk.isChecked())
+        except Exception:
+            pass
+        fill = self._selection_fill(sel)
+        return [{"x": sel.x(), "y": sel.y(),
+                 "w": sel.width(), "h": sel.height(),
+                 "kind": "bubble",
+                 "shape": BB.shape_from_fill(fill),
+                 "fill": fill}]
 
     # -- overlay interaction ---------------------------------------------------
 

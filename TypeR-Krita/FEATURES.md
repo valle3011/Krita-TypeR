@@ -10,12 +10,12 @@ Line numbers drift; the names don't. Grep the name, not the number.
 
 | File | Lines | What it is |
 |---|---:|---|
-| `typer_kr.py` | ~8,350 | The docker: all six tabs, the insert path, the UI strings |
-| `layout.py` | ~980 | The typesetting engine. **Qt-free, so it is unit-tested** |
-| `bubbles.py` | ~1,300 | BubblR: bubble detection |
+| `typer_kr.py` | ~12,350 | The docker: all six tabs, the insert path, the UI strings |
+| `layout.py` | ~1,740 | The typesetting engine. **Qt-free, so it is unit-tested** |
+| `bubbles.py` | ~1,400 | BubblR: bubble detection + batch pairing |
 | `balloons.py` | ~290 | Balloon shape library. Qt-free, tested |
 | `texttypes.py` | ~330 | The 21 manga text kinds + their fonts/styles |
-| `langpair.py` | ~690 | Script parsing, JP↔EN pairing, presets |
+| `langpair.py` | ~790 | Script parsing, JP↔EN pairing, presets |
 | `comments.py` / `gdocs.py` / `gauth.py` | ~750 | Script comments from Word/Google Docs |
 | `sfx/` | ~3,400 | The SFX tab (MangaSFX, vendored as a sub-package) |
 | `sfx/modes.py` | ~230 | The five SFX strategies + kana→romaji. Qt-free, tested |
@@ -283,6 +283,67 @@ its settings survive; because every layout move ends in `box.show()`,
 **The switch:** `BUBBLR_LOCKED` at the top of `typer_kr.py`. `True` forces the
 toggle off and hides the tab. ⚠️ **Set it back to `True` before publishing to
 `Krita-TypeR`** unless the AI is ready — it is `False` here for local use only.
+
+### Batch placement (line per bubble, filled in one run)
+
+Mark the bubbles, pair each with a script line, press one button, and the whole
+page is typeset. The everyday loop (Type tab: select a bubble, Insert, next)
+stays exactly as it was — this is the second route, for a page whose bubbles are
+already marked.
+
+- Core (Qt-free, tested): `bubbles.py` → `regions_from_mask()`,
+  `assign_units()`, `batch_pairs()`, plus the older `insert_gap()` /
+  `remove_gap()` which finally have a caller
+- UI: the `_new_panel("bubblr_batch", "bubblr")` block — `bp_batch_table` and
+  the `bp_batch_*` buttons
+- Run: `on_bp_batch_start()` → `_bp_batch_tick()` → `_bp_batch_finish()`;
+  `on_bp_batch_undo()` takes a run back
+- Headless fitting: `TextShapRWidget.candidates_for()` and `_fit_params()`,
+  split out of `refresh()` so the batch gets the same ★ pick the cards would
+  show for a bubble that is not on screen
+
+**Marking the bubbles.** Detection fills the box list as before, but
+"Add bubble from selection" now splits a selection into its **unconnected
+parts**: hold Shift, drag the marquee over one balloon after another, and each
+part becomes its own box (`_boxes_from_selection` → `regions_from_mask`). Krita
+has exactly one selection, so without that split the bounding box would span the
+whole page.
+
+**Pairing.** "Assign lines" maps the lines 1:1 onto the boxes in reading order.
+SFX boxes are passed over *without consuming a line*, so one sound effect in the
+middle does not shift every following bubble by one. The table below is
+editable: each row has the bubble, a line picker and the text, and "Insert gap"
+/ "Remove gap" fix an off-by-one after a false detection. "This page only"
+limits the range to the current page's units (`_page_unit_range`) — one image is
+one page.
+
+**⚠ The run drives the normal insert path, it is not a second one.** Each step
+puts the box into the *document selection* (`_select_box`) and then calls
+`insert_arrangement(..., replace=True)`. Everything downstream — the fitter, the
+round-bubble shape profile, `TypeR NN — ` naming, the green done marks, "match
+size" — therefore behaves exactly as it does for a hand-placed line, and there
+is no second code path to keep in sync. A round box becomes an *elliptical*
+selection, so the text is fitted to the balloon and not to its corners.
+
+**⚠ It is a chain of single-shot timers, not a loop.** `_bp_batch_tick` places
+one bubble and re-arms itself (`_BATCH_TICK_MS`). A plain loop would freeze the
+docker for the length of a whole page and make Stop unclickable.
+
+**Review mode** parks on every bubble with the shape cards up instead of taking
+the recommendation unattended; the run is continued by the *insert path itself*
+(the hook at the end of `insert_arrangement`), so applying a shape by button,
+"Apply + next" or a number key all work.
+
+**Undo.** Krita's Python API cannot fold N inserts into one undo step, so
+undoing a batch by hand would be N times Ctrl+Z. `on_bp_batch_undo()` instead
+removes exactly the `TypeR NN — ` layers the run wrote
+(`_remove_existing_layers` per unit) — shorter, and it cannot eat anything the
+batch did not create.
+
+**To switch off:** drop the `_new_panel("bubblr_batch", "bubblr")` block in
+`_build_bubblr_tab`. The `bubbles.py` helpers have no other caller; the hook in
+`insert_arrangement` is guarded by `self._bp_run is None` and does nothing
+without the panel.
 
 ### SFX tab
 

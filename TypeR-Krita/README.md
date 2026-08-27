@@ -139,6 +139,39 @@ size that fits the current selection.
 
 ---
 
+## Batch: fill a whole page in one go
+
+The everyday loop places one line at a time. When a page's bubbles are already
+marked, the **BubblR** tab can do the whole page instead: pair each bubble with
+its line, press one button, and every line is set into its bubble with the shape
+TextShapR recommends.
+
+1. **Mark the bubbles.** Either run **Detect**, or mark them by hand: hold
+   **Shift** and drag the selection marquee over one balloon after another, then
+   press **Add bubble from selection** — a selection made of several parts is
+   split into one box per part.
+2. **Pair the lines.** **Assign lines** maps the script's lines onto the bubbles
+   1:1 in reading order. SFX boxes are skipped without using up a line.
+   - With **This page only** on (default) the batch draws from the current
+     page's lines; switch it off to use the whole script.
+   - The table is editable: pick a different line for any bubble, or use
+     **Insert gap** / **Remove gap** when a bubble was detected that carries no
+     dialogue and everything below has shifted by one.
+   - Clicking a row highlights that bubble in the overlay.
+3. **Fill all bubbles.** Each bubble is fitted individually and gets the ★
+   shape. **Stop** interrupts the run; what is already placed stays.
+   - **Review each** pauses at every bubble with the shape cards up so you pick
+     the shape yourself — applying one continues the run.
+   - **Undo batch** deletes exactly the layers the last run created, and nothing
+     else on the page.
+
+Because the batch uses the normal insert path, everything else applies
+unchanged: the `TypeR NN — …` layer naming, the green "done" marks, replacing a
+line instead of stacking it, and **Match size** on the TextShapR tab — worth
+switching on for a batch so the whole page keeps one text size.
+
+---
+
 ## Multiple scripts (tabs)
 
 You can keep several scripts open at once. Each loaded script gets its own

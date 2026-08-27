@@ -131,6 +131,9 @@ class _FakeDoc:
         self.last = n
         return n
 
+    def setSelection(self, sel):
+        self.sel = sel
+
     def setActiveNode(self, node):
         return None
 
@@ -202,7 +205,42 @@ _krita.DockWidgetFactory = type(
     {"__init__": lambda self, *a, **k: None})
 _krita.DockWidgetFactoryBase = type("DockWidgetFactoryBase", (object,),
                                     {"DockPosition": _DockPosition})
-_krita.Selection = type("Selection", (object,), {})
+class _StubSelection:
+    """Enough of Krita's Selection for the batch path: a rectangle that can be
+    overwritten with an elliptical mask, and read back the way _sel_shape and
+    insert_text_layer read it."""
+
+    def __init__(self):
+        self._x = self._y = self._w = self._h = 0
+        self._data = b""
+
+    def select(self, x, y, w, h, _value=255):
+        self._x, self._y, self._w, self._h = int(x), int(y), int(w), int(h)
+        self._data = bytes([255]) * (self._w * self._h)
+
+    def setPixelData(self, data, x, y, w, h):
+        self._x, self._y, self._w, self._h = int(x), int(y), int(w), int(h)
+        self._data = bytes(data)
+
+    def x(self):
+        return self._x
+
+    def y(self):
+        return self._y
+
+    def width(self):
+        return self._w
+
+    def height(self):
+        return self._h
+
+    def pixelData(self, x, y, w, h):
+        if len(self._data) >= w * h:
+            return self._data
+        return bytes([255]) * (w * h)
+
+
+_krita.Selection = _StubSelection
 sys.modules["krita"] = _krita
 
 sys.path.insert(0, _HERE)
@@ -1221,6 +1259,167 @@ if imported:
         check("xlsx export: all parts are well-formed XML", _wf)
     except Exception:                               # pragma: no cover
         check("preset Excel export suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- Batch placement: pair lines with bubbles, then fill them in one run ---
+# The whole point of the batch is that it drives the NORMAL insert path once
+# per bubble, so these tests check the wiring rather than the layout: does each
+# bubble become the selection, does each line land on its own numbered layer,
+# and does "undo batch" take back exactly those layers.
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _bd = TK.TyperDocker()
+        _bdoc = _FakeDoc(800, 1200)
+        _KR_APP._doc = _bdoc
+        _bd.editor.setPlainText("Page 1\nHello there\nSecond line\n"
+                                "Page 2\nOn the next page")
+        _bd.analyze()
+        check("script parsed into units across two pages",
+              len(_bd._pairs) == 3 and len(_bd._pages) == 2)
+
+        _bd._bp_boxes = [{"x": 60, "y": 80, "w": 220, "h": 150,
+                          "kind": "bubble", "shape": "rect", "fill": 1.0},
+                         {"x": 380, "y": 300, "w": 240, "h": 160,
+                          "kind": "bubble", "shape": "round", "fill": 0.78}]
+        _bd._bp_assign = []
+        _bd.bp_batch_page_chk.setChecked(True)
+        _bd.on_bp_batch_assign()
+        check("page 1's two lines pair with the two bubbles",
+              _bd._bp_assign == [0, 1])
+        check("the table shows one row per bubble",
+              _bd.bp_batch_table.rowCount() == 2)
+        check("the text column previews the paired line",
+              _bd.bp_batch_table.item(0, 2).text() == "Hello there")
+
+        # an SFX box must not consume a line
+        _bd._bp_boxes.insert(1, {"x": 300, "y": 100, "w": 90, "h": 60,
+                                 "kind": "sfx", "shape": "rect", "fill": 1.0})
+        _bd._bp_assign = []
+        _bd.on_bp_batch_assign()
+        check("an SFX box is passed over, the next bubble keeps its line",
+              _bd._bp_assign == [0, -1, 1])
+        del _bd._bp_boxes[1]
+        _bd._bp_assign = []
+        _bd.on_bp_batch_assign()
+
+        # a gap fixes an off-by-one after a false detection
+        _bd._bp_assign = TK.BB.insert_gap(_bd._bp_assign, 0)
+        check("inserting a gap moves the lines down one bubble",
+              _bd._bp_assign == [-1, 0])
+        _bd._bp_assign = TK.BB.remove_gap(_bd._bp_assign, 0, len(_bd._pairs))
+        check("removing it again restores the pairing",
+              _bd._bp_assign == [0, 1])
+
+        # selecting a box really goes through Krita's selection
+        check("a bubble box becomes the document selection",
+              _bd._select_box(_bd._bp_boxes[0])
+              and _bdoc.sel.x() == 60 and _bdoc.sel.width() == 220)
+        check("a round bubble gets an elliptical selection, not a rectangle",
+              _bd._select_box(_bd._bp_boxes[1])
+              and _bdoc.sel.pixelData(0, 0, 240, 160).count(0) > 0)
+
+        # the run itself: no dialog in review mode, so drive that one
+        _bd.font_picker.setCurrentFamily("Arial")
+        _bd.bp_batch_review_chk.setChecked(False)
+        _placed = []
+        _real_insert = _bd.insert_arrangement
+
+        def _spy(cand, advance, replace=None):
+            _placed.append((_bd._index, cand["px"]))
+            return _real_insert(cand, advance, replace)
+
+        _bd.insert_arrangement = _spy
+        _bd._bp_run = {"pairs": TK.BB.batch_pairs(_bd._bp_assign,
+                                                  len(_bd._pairs)),
+                       "at": 0, "done": 0, "skipped": 0, "units": [],
+                       "review": False, "waiting": False, "back_to": 0}
+        # run the chain synchronously: tick until the run is over
+        for _ in range(10):
+            if _bd._bp_run is None:
+                break
+            _bd._bp_batch_tick()
+        check("every paired bubble was filled once",
+              len(_placed) == 2)
+        check("each line was placed under its own unit index",
+              [u for u, _px in _placed] == [0, 1])
+        check("both lines are marked done",
+              _bd._done == {0, 1})
+        check("both bubbles are marked placed",
+              _bd._bp_placed == {0, 1})
+        _bd.insert_arrangement = _real_insert
+
+        # 'this page only' really limits the range
+        _bd._index = 2                       # a unit on page 2
+        _bd._bp_assign = []
+        _bd.on_bp_batch_assign()
+        check("on page 2 the batch only offers that page's single line",
+              _bd._bp_assign == [2, -1])
+        _bd.bp_batch_page_chk.blockSignals(True)
+        _bd.bp_batch_page_chk.setChecked(False)
+        _bd.bp_batch_page_chk.blockSignals(False)
+        _bd._bp_assign = []
+        _bd.on_bp_batch_assign()
+        check("switched off, it draws from the whole script",
+              _bd._bp_assign == [0, 1])
+
+        # undo removes exactly the layers of the last run
+        _bd._bp_last_units = [0, 1]
+        _bd._done = {0, 1}
+        _removed = []
+        _real_remove = TK._remove_existing_layers
+        TK._remove_existing_layers = (
+            lambda doc, idx, box=None: (_removed.append(idx) or 1))
+        try:
+            _bd.on_bp_batch_undo()
+        finally:
+            TK._remove_existing_layers = _real_remove
+        check("undo batch removes the layer of every unit it wrote",
+              _removed == [1, 2])          # layer numbers are 1-based
+        check("undo batch clears the done marks it set",
+              _bd._done == set())
+        check("undo batch cannot run twice",
+              _bd._bp_last_units == []
+              and not _bd.bp_batch_undo_btn.isEnabled())
+
+        # review mode: the run parks on each bubble and is continued by the
+        # normal insert path, not by a button of its own
+        _bd._done = set()
+        _bd._bp_placed = set()
+        _bd._bp_assign = [0, 1]
+        _bd._bp_run = {"pairs": TK.BB.batch_pairs(_bd._bp_assign,
+                                                  len(_bd._pairs)),
+                       "at": 0, "done": 0, "skipped": 0, "units": [],
+                       "review": True, "waiting": False, "back_to": 0}
+        _bd._bp_batch_tick()
+        check("review mode parks on the first bubble instead of placing it",
+              _bd._bp_run is not None and _bd._bp_run["waiting"]
+              and _bd._bp_run["done"] == 0)
+        check("review mode arms the bubble it is waiting on",
+              _bd._bp_current == 0 and _bd._index == 0)
+        check("review mode has the shape cards ready to pick from",
+              len(_bd.shapr_widget._cands) > 0)
+        # applying a shape through the normal path books it and moves on
+        _bd.insert_arrangement(_bd.shapr_widget._cands[0], False, replace=True)
+        check("applying a shape continues the run to the next bubble",
+              _bd._bp_run is not None and _bd._bp_run["done"] == 1
+              and _bd._bp_run["units"] == [0])
+        # Stop leaves what is placed on the page
+        _bd.on_bp_batch_stop()
+        check("stopping ends the run and keeps what was placed",
+              _bd._bp_run is None and _bd._bp_last_units == [0])
+
+        # nothing paired -> the run refuses to start
+        _bd._bp_assign = [-1, -1]
+        _bd._bp_run = None
+        _bd.on_bp_batch_start()
+        check("with nothing paired the batch does not start",
+              _bd._bp_run is None)
+        _bd.deleteLater()
+        _KR_APP._doc = None
+    except Exception:                               # pragma: no cover
+        check("batch placement suite ran", False)
         import traceback
         traceback.print_exc()
 

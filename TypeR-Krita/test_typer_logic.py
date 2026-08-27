@@ -921,6 +921,85 @@ check("next_unplaced: no wrap at end",
 check("next_unplaced: empty assign",
       BB.next_unplaced([], set(), 0) is None)
 
+# --- batch placement: regions out of one selection mask ---------------------
+# Krita has a single selection; shift-dragging over several balloons makes ONE
+# selection with several parts, and its bounding box spans them all.
+
+
+def _sel_mask(w, h, rects):
+    """Selection pixel data (one byte per pixel) with `rects` filled in."""
+    m = bytearray(w * h)
+    for (x0, y0, rw, rh) in rects:
+        for y in range(y0, y0 + rh):
+            base = y * w
+            m[base + x0:base + x0 + rw] = bytes([255]) * rw
+    return bytes(m)
+
+
+_two = BB.regions_from_mask(_sel_mask(200, 100, [(10, 10, 40, 40),
+                                                 (120, 20, 60, 50)]),
+                            200, 100)
+check("two marquee parts -> two boxes", len(_two) == 2)
+check("first part keeps its own box",
+      (_two[0]["x"], _two[0]["y"], _two[0]["w"], _two[0]["h"])
+      == (10, 10, 40, 40))
+check("second part keeps its own box",
+      (_two[1]["x"], _two[1]["y"], _two[1]["w"], _two[1]["h"])
+      == (120, 20, 60, 50))
+check("a filled rectangle is classified rect",
+      _two[0]["shape"] == "rect")
+_off = BB.regions_from_mask(_sel_mask(200, 100, [(10, 10, 40, 40)]),
+                            200, 100, origin=(500, 300))
+check("origin puts the box in document coordinates",
+      (_off[0]["x"], _off[0]["y"]) == (510, 310))
+check("touching parts stay one box",
+      len(BB.regions_from_mask(_sel_mask(200, 100, [(10, 10, 40, 40),
+                                                    (50, 10, 40, 40)]),
+                               200, 100)) == 1)
+check("antialiased speck is not a bubble",
+      len(BB.regions_from_mask(_sel_mask(200, 100, [(10, 10, 40, 40),
+                                                    (150, 50, 2, 2)]),
+                               200, 100)) == 1)
+check("empty selection -> no boxes",
+      BB.regions_from_mask(_sel_mask(200, 100, []), 200, 100) == [])
+check("no mask at all -> no boxes",
+      BB.regions_from_mask(b"", 0, 0) == [])
+# an elliptical marquee fills ~pi/4 of its bbox, so it must come back "round"
+_ell = BB.regions_from_mask(BB.ellipse_mask(120, 90), 120, 90)
+check("an elliptical marquee is classified round",
+      len(_ell) == 1 and _ell[0]["shape"] == "round")
+check("the ellipse still reports its full bounding box",
+      (_ell[0]["w"], _ell[0]["h"]) == (120, 90))
+
+# --- batch placement: which line goes into which bubble ----------------------
+_bub = [{"kind": "bubble"}, {"kind": "bubble"}, {"kind": "bubble"}]
+check("units map 1:1 in box order",
+      BB.assign_units(_bub, 3) == ([0, 1, 2], False))
+check("more units than bubbles is a mismatch",
+      BB.assign_units(_bub, 5) == ([0, 1, 2], True))
+check("more bubbles than units leaves the rest unassigned",
+      BB.assign_units(_bub, 2) == ([0, 1, -1], True))
+check("an SFX box does not eat a line",
+      BB.assign_units([{"kind": "bubble"}, {"kind": "sfx"},
+                       {"kind": "bubble"}], 2) == ([0, -1, 1], False))
+check("a box marked skip does not eat a line either",
+      BB.assign_units([{"kind": "bubble"}, {"kind": "bubble", "skip": True},
+                       {"kind": "bubble"}], 2) == ([0, -1, 1], False))
+check("first_unit starts the run mid-script (page 2 onwards)",
+      BB.assign_units([{"kind": "bubble"}, {"kind": "bubble"}], 4,
+                      first_unit=2) == ([2, 3], False))
+check("no boxes -> nothing assigned",
+      BB.assign_units([], 3) == ([], True))
+
+check("work list pairs box with unit",
+      BB.batch_pairs([0, -1, 1], 2) == [(0, 0), (2, 1)])
+check("work list leaves out units already typeset",
+      BB.batch_pairs([0, -1, 1], 2, skip_units={0}) == [(2, 1)])
+check("work list drops a unit index past the end of the script",
+      BB.batch_pairs([0, 5], 2) == [(0, 0)])
+check("work list of an empty assignment is empty",
+      BB.batch_pairs([], 3) == [])
+
 # SFX word database classifier
 _words = list(BB.SFX_SEED_WORDS) + ["zuzun"]
 check("plain sfx word matches", BB.is_sfx_line("doki", _words))

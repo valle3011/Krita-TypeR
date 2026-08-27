@@ -784,6 +784,118 @@ def next_unplaced(assign, done_units, start):
     return None
 
 
+# --- batch placement ---------------------------------------------------------
+
+SEL_MIN_REGION_FRAC = 0.0005   # a region must cover this much of the selection
+                               # bounding box before it counts as its own
+                               # bubble (kills antialiased specks)
+SEL_MIN_REGION_PX = 9          # ... and never fewer than this many grid cells
+
+
+def regions_from_mask(mask, width, height, origin=(0, 0),
+                      max_grid_w=MAX_GRID_W, rect_fill=RECT_FILL_RATIO,
+                      min_region_frac=SEL_MIN_REGION_FRAC,
+                      kind="bubble"):
+    """One box per disjoint marked region of a selection mask.
+
+    Krita has exactly one selection, but it may consist of several unconnected
+    parts: shift-dragging a marquee across five balloons is *one* selection
+    whose bounding box spans all five. Handing that bounding box to the fitter
+    would set the line across the whole page, so the parts have to be recovered
+    before anything can be placed into them.
+
+    `mask` is Krita's selection pixel data — one byte per pixel, row-major,
+    ``width`` x ``height``, 0 meaning unselected (partially selected edge
+    pixels count as selected). `origin` is the mask's top-left in document
+    coordinates, because ``Selection.pixelData`` is relative to the selection,
+    not to the page.
+
+    Returns box dicts in the same shape :func:`detect_bubbles` produces.
+    Reading order is deliberately *not* applied — the caller decides, because a
+    hand-drawn selection was quite possibly drawn in the intended order.
+
+    The mask is downscaled first, exactly as detection does: a page-sized
+    selection is millions of pixels and a pure-Python flood fill over all of
+    them would stall the docker for half a minute.
+    """
+    if width <= 0 or height <= 0 or not mask:
+        return []
+    grid, gw, gh, stride = downscale(mask, width, height, max_grid_w)
+    if gw == 0 or gh == 0:
+        return []
+    # any non-zero byte is "selected"; threshold_mask gives the 0/1 bytes
+    # find_components wants
+    binary = threshold_mask(grid, 1)
+    comps = find_components(binary, gw, gh)
+    floor = max(SEL_MIN_REGION_PX, int(min_region_frac * gw * gh))
+    ox, oy = origin
+    out = []
+    for c in comps:
+        if c["area"] < floor:
+            continue
+        x0, y0, x1, y1 = c["bbox"]
+        area = (x1 - x0 + 1) * (y1 - y0 + 1)
+        fill = c["area"] / float(area) if area else 0.0
+        out.append({
+            "x": ox + x0 * stride,
+            "y": oy + y0 * stride,
+            "w": (x1 - x0 + 1) * stride,
+            "h": (y1 - y0 + 1) * stride,
+            "kind": kind,
+            "shape": shape_from_fill(fill, rect_fill),
+            "fill": fill,
+        })
+    return out
+
+
+def assign_units(boxes, unit_count, first_unit=0, skip_kinds=("sfx",)):
+    """Map script units to boxes 1:1, in box order.
+
+    Returns ``(assign, mismatch)``: ``assign[i]`` is the unit index for box
+    ``i`` (-1 when the box gets none), and ``mismatch`` is True when the number
+    of boxes that wanted a unit and the number of units available differ — the
+    caller warns but still places what it can, because an off-by-one is exactly
+    the case the user then fixes by hand.
+
+    Boxes whose ``kind`` is in `skip_kinds` (SFX / free text by default) and
+    boxes carrying ``{"skip": True}`` are passed over without consuming a unit:
+    a sound effect is not a line of dialogue, and skipping it keeps every
+    following bubble on the right line instead of shifting them all by one.
+    """
+    assign = []
+    unit = first_unit
+    wanted = 0
+    for b in (boxes or []):
+        if (b.get("kind") in skip_kinds) or b.get("skip"):
+            assign.append(-1)
+            continue
+        wanted += 1
+        if unit < unit_count:
+            assign.append(unit)
+            unit += 1
+        else:
+            assign.append(-1)
+    available = max(0, unit_count - first_unit)
+    return assign, wanted != available
+
+
+def batch_pairs(assign, unit_count, skip_units=()):
+    """The work list for a batch run: ``(box_index, unit_index)`` for every box
+    that has a real unit, in box order.
+
+    Units in `skip_units` (typically the ones already typeset) and indices out
+    of range are left out, so a second run over the same page can be limited to
+    what is still missing.
+    """
+    skip = set(skip_units or ())
+    pairs = []
+    for i, u in enumerate(assign or []):
+        if u is None or u < 0 or u >= unit_count or u in skip:
+            continue
+        pairs.append((i, u))
+    return pairs
+
+
 def shape_from_fill(fill, rect_fill=RECT_FILL_RATIO):
     """Classify a marked region as "rect" or "round" from its fill ratio
     (marked pixels / bounding-box area). A rectangle fills ~1.0 of its
