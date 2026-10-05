@@ -65,28 +65,44 @@ executable once with `chmod +x install.sh update.sh uninstall.sh` if needed.
 
 ---
 
-## The docker: four tabs
+## The docker: tabs
 
-The docker is organized into four top-level tabs so the everyday workflow stays
-uncluttered — nothing was removed, everything is one click away:
+The docker is organized into tabs so the everyday workflow stays uncluttered —
+nothing was removed, everything is one click away. **Type**, **Style** and
+**Setup** are always there; the rest can be switched on and off under
+**⚗ Experimental** on the Setup tab (all on by default).
 
 - **Type** – the everyday loop: load script, pick a line in the JP/EN table,
-  navigate, edit the active line, pick font + color, live preview, **Insert**
-  and **TextShapR**.
+  navigate, edit the active line, pick font + color, live preview, the preset
+  picker (**Manga → Character → style**, with save/delete/import/export in the
+  **⋯** menu beside it and a **keybind** per style), **Insert** and
+  **TextShapR**.
 - **Style** – bold/italic/underline, alignment, letter case, smart punctuation,
   size / padding / line spacing, outline and shadow (each with a small
   settings popup), auto-fit, round bubble, hyphenation. **Line spacing is
   unclamped** – set it to `0` to stack lines on one baseline or well past `100`
   to spread them as far apart as you like.
-- **Presets** – Manga → Character → style preset; save/delete/import/export
-  live in the **⋯** menu next to the preset list, and each preset can be
-  given a **keybind** that switches to it from anywhere in Krita.
-- **Setup** – interface language, the "Layout & sizes" panel, and behavior
-  toggles like **"Replace previously inserted line"** (re-inserting a line
-  replaces its earlier layer instead of stacking a copy; default on) and
-  **"Organize presets by character"** (see *Presets* below; default on).
+- **Setup** – interface language, the "Layout & sizes" panel, behavior toggles
+  like **"Replace previously inserted line"** (re-inserting a line replaces its
+  earlier layer instead of stacking a copy; default on) and **"Organize presets
+  by character"** (see *Presets* below; default on), plus the
+  **⚗ Experimental** switches that show and hide the tabs below.
+- **Batch** – set a whole page at once: mark the bubbles, pair each with its
+  line, fill them all in one run (see *Batch* below).
+- **TextShapR** – pick from several auto-fitted shape candidates for the current
+  line (see *TextShapR* below).
+- **SFX** – a dedicated helper for sound-effect lettering: textures, double and
+  soft/blurred outlines, rotation, its own presets (see *SFX helper* below).
+- **Fonts** – star fonts and sort them into your own categories (see *Font
+  favourites* below).
 
-The last-used tab is remembered across restarts.
+A **BubblR** tab with automatic bubble detection exists in the source but is
+locked off in a release build, so you will not see it or its switch. The Batch
+tab never needed it.
+
+The last-used tab is remembered across restarts, and tabs can be **renamed and
+reordered** (enable *customize* on the Setup tab, then drag / double-click).
+Panels can be moved between tabs too — see *Layout & sizes*.
 
 ## Quick start (auto mode – recommended)
 
@@ -147,16 +163,15 @@ instead: mark the bubbles, pair each with its line, press one button, and every
 line is set into its bubble with the shape TextShapR recommends.
 
 The tab stands on its own — it shows the open page, carries its own marking
-tools, and needs neither the BubblR tab nor its bubble detection. (If you do use
-detection, both tabs work on the same boxes, so you can start in one and finish
-in the other.) It can be hidden with **Enable Batch tab** in Setup.
+tools, and needs no automatic bubble detection at all. It can be hidden with
+**Enable Batch tab** in Setup.
 
 1. **Mark the bubbles.** Open the **Batch** tab — the open page appears in the
    view. Then either drag boxes onto it with **Edit boxes**, or use the
    selection: hold **Shift** and drag the marquee over one balloon after
    another, then press **From selection** — a selection made of several parts is
-   split into one box per part. **Detect** is there too if you want BubblR to
-   propose the boxes first.
+   split into one box per part. (A development build also has **Detect**, which
+   proposes the boxes automatically; a release build does not.)
    - **Toggle shape** flips a box round ↔ rectangular, **Mark SFX** turns it
      into a sound effect (those are skipped when lines are assigned), and
      **Set order** lets you click the boxes into the order you want.
@@ -362,6 +377,22 @@ stray markup inside a bubble:
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
   read and edit.
+- **Font favourites (Fonts tab)** – star the fonts you actually use and sort
+  them into your own categories (Dialog, SFX, Titel, …). A font can live in
+  several categories at once; filter by category *or* search by name, then
+  double-click to use it (and jump straight back to the Type tab). Star the
+  current font with one click, or right-click any font in the picker to add it
+  to a category. Your favourites and the last filter are remembered.
+- **SFX helper (SFX tab)** – a separate workflow for sound-effect lettering:
+  pick how each Japanese sound word is handled, get font suggestions, and style
+  the effect with **texture/pattern fills** (an image or a Krita pattern),
+  **double outlines**, a **soft/blurred outline** (solid or texture-filled) and
+  free rotation — with a live preview, its own editable presets and a raster
+  insert path for effects Krita's vector text can't render.
+- **Sessions remembered** – the scripts you had open (order, text, parsed units,
+  current line and "done" progress) come back after a Krita restart.
+- **Customizable tabs** – rename and reorder the tabs, and show/hide the extra
+  ones, all from the Setup tab; the last-used tab is restored on start.
 - **Adjustable layout** (see below) – resize or hide the bigger parts of the
   docker to taste.
 
@@ -453,6 +484,7 @@ the text cleanly for the current bubble.
 | `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
 | `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation / de-hyphenation**, **TextShapR shape candidates + quality scoring** |
 | `typer_kr/bubbles.py` | BubblR: speech-bubble detection, reading order, round/rect shape, bubble↔unit mapping |
+| `typer_kr/drivefs.py` | The document id behind a `.gdoc` Google Drive refuses to read |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
 | `typer_kr/sfx/` | The MangaSFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
@@ -461,16 +493,19 @@ the text cleanly for the current bubble.
 
 ### Tests
 
-Run the whole suite (no real Krita needed; PyQt5 only for the integration part):
+Run the whole suite (no real Krita needed; PyQt is only used by the integration
+part):
 
 ```
 python run_tests.py
 ```
 
-It runs static checks (`py_compile`, `pyflakes`) plus four suites — pure layout
-logic, metamorphic/property/boundary/regression checks, SVG-structure + i18n
-integrity, and a Krita-stub integration suite that drives the real insert path,
-font picker and session persistence headless.
+It runs static checks (`py_compile`, `pyflakes`, plus a guard against
+PyQt6-incompatible spellings) and six suites — pure layout and script logic,
+metamorphic/property/boundary/regression checks, SVG structure + i18n integrity,
+font favourites, tolerant font-family matching, and a Krita-stub integration
+suite that drives the real insert path, font picker, keybinds and session
+persistence headless.
 
 All code comments and docstrings are in English. The user interface is
 available in **English, German, Spanish, French, Portuguese and Italian**
