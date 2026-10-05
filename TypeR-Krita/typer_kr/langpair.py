@@ -730,6 +730,114 @@ def default_preset_for(preset_names, usage=None):
 
 
 # ---------------------------------------------------------------------------
+# Preset keybinds
+#
+# A key that switches straight to "Kuromiya, normal talk" while the hands are
+# on the canvas, instead of walking two dropdowns for every change of speaker.
+#
+# The binding belongs to a *manga*: the same handful of keys has to be free
+# again in the next series, where those characters do not exist. Stored as
+# ``{manga: {key: [character, preset]}}`` — the key string is whatever Qt
+# renders a shortcut as ("Ctrl+Alt+1"), kept verbatim so it can go straight
+# back into a QKeySequence.
+#
+# Two rules keep the mapping a mapping, in both directions: one key drives one
+# preset, and one preset answers to one key. Binding a key that is taken moves
+# it; binding a preset that already has one replaces it. That is what lets the
+# UI show the binding as a single field next to the selected preset instead of
+# a list the user has to reason about.
+# ---------------------------------------------------------------------------
+
+def clean_keybinds(data):
+    """The stored keybind map with everything unreadable dropped.
+
+    Settings are JSON the user can also have edited by hand (or that an older
+    version wrote differently), so nothing here trusts its shape.
+    """
+    out = {}
+    if not isinstance(data, dict):
+        return out
+    for manga, binds in (data or {}).items():
+        if not isinstance(binds, dict):
+            continue
+        keep = {}
+        for key, ref in binds.items():
+            k = str(key).strip()
+            if not k or not isinstance(ref, (list, tuple)) or len(ref) != 2:
+                continue
+            ch, name = str(ref[0]).strip(), str(ref[1]).strip()
+            if name:
+                keep[k] = [ch, name]
+        if keep:
+            out[str(manga)] = keep
+    return out
+
+
+def set_keybind(binds, manga, key, char, name):
+    """Point `key` at (char, name) under `manga`; an empty key only unbinds.
+
+    Mutates and returns `binds` — the caller holds the one live map and saves
+    it, the same way the preset dict itself is handled.
+    """
+    if not manga or not name:
+        return binds
+    per = binds.setdefault(str(manga), {})
+    char, name = str(char), str(name)
+    for k, ref in list(per.items()):            # this preset had another key
+        if [str(ref[0]), str(ref[1])] == [char, name]:
+            del per[k]
+    key = str(key or "").strip()
+    if key:
+        per[key] = [char, name]                 # and the key had another preset
+    if not per:
+        binds.pop(str(manga), None)
+    return binds
+
+
+def drop_keybinds(binds, manga, char=None, name=None):
+    """Forget the bindings of a deleted manga / character / preset."""
+    per = binds.get(str(manga))
+    if not per:
+        return binds
+    if char is None:
+        binds.pop(str(manga), None)
+        return binds
+    for k, ref in list(per.items()):
+        if str(ref[0]) == str(char) and (name is None or str(ref[1]) == str(name)):
+            del per[k]
+    if not per:
+        binds.pop(str(manga), None)
+    return binds
+
+
+def keybind_for(binds, manga, char, name):
+    """The key bound to this preset, or "" — what the UI shows next to it."""
+    if not name:
+        return ""
+    for k, ref in (binds.get(str(manga)) or {}).items():
+        if str(ref[0]) == str(char) and str(ref[1]) == str(name):
+            return k
+    return ""
+
+
+def keybind_target(binds, manga, key):
+    """``(character, preset)`` this key already drives, else ``("", "")``.
+
+    Asked before binding, so the UI can say which preset a re-used key was
+    taken from instead of letting it disappear.
+    """
+    ref = (binds.get(str(manga)) or {}).get(str(key or "").strip())
+    return (str(ref[0]), str(ref[1])) if ref else ("", "")
+
+
+def keybinds_of(binds, manga):
+    """Every binding of one manga as sorted ``(key, character, preset)``."""
+    per = binds.get(str(manga)) or {}
+    return sorted(((k, str(r[0]), str(r[1])) for k, r in per.items()),
+                  key=lambda e: e[0].lower())
+
+
+# ---------------------------------------------------------------------------
 # BubblR tab helpers (pure, Qt-free)
 # ---------------------------------------------------------------------------
 

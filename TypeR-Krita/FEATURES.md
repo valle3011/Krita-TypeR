@@ -10,13 +10,14 @@ Line numbers drift; the names don't. Grep the name, not the number.
 
 | File | Lines | What it is |
 |---|---:|---|
-| `typer_kr.py` | ~12,500 | The docker: all six tabs, the insert path, the UI strings |
+| `typer_kr.py` | ~13,200 | The docker: all six tabs, the insert path, the UI strings |
 | `layout.py` | ~1,740 | The typesetting engine. **Qt-free, so it is unit-tested** |
 | `bubbles.py` | ~1,400 | BubblR: bubble detection + batch pairing |
 | `balloons.py` | ~290 | Balloon shape library. Qt-free, tested |
 | `texttypes.py` | ~330 | The 21 manga text kinds + their fonts/styles |
-| `langpair.py` | ~790 | Script parsing, JP↔EN pairing, presets |
+| `langpair.py` | ~890 | Script parsing, JP↔EN pairing, presets |
 | `comments.py` / `gdocs.py` / `gauth.py` | ~750 | Script comments from Word/Google Docs |
+| `drivefs.py` | ~150 | The doc id behind a .gdoc Drive refuses to read. Qt-free, tested |
 | `sfx/` | ~3,400 | The SFX tab (MangaSFX, vendored as a sub-package) |
 | `sfx/modes.py` | ~230 | The five SFX strategies + kana→romaji. Qt-free, tested |
 | `sfx/rule_search.py` | ~110 | SFX keyword matching + rule search. Qt-free, tested |
@@ -412,13 +413,71 @@ MangaSFX is vendored as `typer_kr/sfx/` and hosted inside TypeR's SFX tab.
 - `typer_kr.py` → `_sfx_docker`, the `_new_panel("sfx_panel", "sfx")` block
 - Switch: "Enable SFX tab" in Setup > Experimental
 
+### Preset keybinds
+
+A key that switches straight to "Kuromiya, normal talk" — character and
+style in one press — instead of two dropdowns per change of speaker.
+
+- `langpair.py` → `clean_keybinds` / `set_keybind` / `drop_keybinds` /
+  `keybind_for` / `keybind_target` / `keybinds_of` (Qt-free, tested)
+- `typer_kr.py` → `PresetKeyHook` / `handle_preset_key`, `_trigger_keybind`,
+  the `QKeySequenceEdit` row under the preset dropdown
+- Stored in kritarc as `presetKeys`: `{manga: {key: [character, preset]}}`
+
+**Per manga, not per plugin**, because the same few keys have to be free
+again in the next series, where those characters do not exist. **One key
+per preset and one preset per key** in both directions: that is what lets
+the binding be a single field next to the selected preset (and a `[key]`
+suffix in the dropdown) instead of a list to reason about — re-using a key
+moves it, and the status line says which preset lost it.
+
+**A `QShortcut` does not work here**, not even an `ApplicationShortcut`:
+Krita's canvas input manager takes key events for itself before Qt's
+shortcut map is ever consulted, so a preset key only fired after clicking
+into the docker first — which defeats the point, since the hands are on the
+canvas exactly when the speaker changes. `PresetKeyHook` is therefore an
+event filter on the **QApplication**, which Qt walks before any filter
+installed on the receiving widget.
+
+Two event types matter. `ShortcutOverride` is Qt asking "is this a shortcut
+or is someone typing?" — accepting it takes the key away from Krita's own
+actions *without* consuming it; the `KeyPress` that follows is where the
+preset is applied and swallowed. The hook reads `_keybinds` live, so
+nothing has to be rebuilt when a binding or the manga changes.
+
+Being application-wide, the guards are the whole design. It is a separate
+small QObject rather than a branch in the docker's own event filter,
+because it is called for *every* event Krita sends and the path for the
+ones it ignores has to be one type comparison and out. It stands down for
+auto-repeat, for a manga with no bindings, for a closed docker, for a
+focused text widget when the key carries no Ctrl/Alt/Meta (that is typing),
+and for anything inside a `QKeySequenceEdit` — `in_key_recorder` walks
+*upwards* there, because whether the focus lands on the field or on its
+internal line edit is a Qt-version detail, and the hook would otherwise
+swallow the very key press the field is waiting to record. Anything that raises is treated as "not mine", because
+a bug in this path would eat typing across the whole application.
+
 ### Script comments
 
 Notes from a Word/Google-Docs script, shown against the line they belong to.
 
 - `comments.py` (model + docx reader), `gdocs.py` (.gdoc → export/OAuth),
-  `gauth.py` (OAuth PKCE)
+  `gauth.py` (OAuth PKCE), `drivefs.py` (.gdoc → doc id without reading it)
 - UI: the Google panel in Setup; the comments panel in the Type tab
+
+**A .gdoc can no longer be read at all.** Current Google Drive for Desktop
+answers every read of one with `ERROR_INVALID_FUNCTION` — `[Errno 22] Invalid
+argument` in Python, "Incorrect function" in PowerShell, and the same for a
+plain file copy. `os.stat()` still reports the file happily, so it looks like a
+TypeR bug and is not one. `drivefs.py` therefore looks the id up in the Drive
+client's own SQLite index (`DriveFS/<account>/metadata_sqlite_db` under
+`%LOCALAPPDATA%/Google`), matching the file name and then walking
+`stable_parents` against the folders in the path — names like `TL.gdoc` repeat
+across chapters, so the folders are what tell them apart, and a tie resolves to
+nothing rather than to the wrong chapter. The drive root is deliberately left
+out of that walk: Drive localises it (`Meine Ablage` mounted as `My Drive`). If
+the index gives no single answer, TypeR asks for the document link instead —
+which needs no Drive client at all.
 
 **The default is the export path, not OAuth** — deliberately. `drive.readonly` is
 a *restricted* scope: it needs an annual security audit and, unverified, caps the

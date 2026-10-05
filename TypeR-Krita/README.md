@@ -79,7 +79,8 @@ uncluttered — nothing was removed, everything is one click away:
   unclamped** – set it to `0` to stack lines on one baseline or well past `100`
   to spread them as far apart as you like.
 - **Presets** – Manga → Character → style preset; save/delete/import/export
-  live in the **⋯** menu next to the preset list.
+  live in the **⋯** menu next to the preset list, and each preset can be
+  given a **keybind** that switches to it from anywhere in Krita.
 - **Setup** – interface language, the "Layout & sizes" panel, and behavior
   toggles like **"Replace previously inserted line"** (re-inserting a line
   replaces its earlier layer instead of stacking a copy; default on) and
@@ -345,6 +346,18 @@ stray markup inside a bubble:
   `Name (Character)`). This is only a view – the stored data and
   import/export format stay the same, so you can switch back and forth
   freely; new presets are then saved under the manga's default character.
+- **Preset keybinds** – give a style a key and press it when the speaker
+  changes, instead of walking the character and preset dropdowns every time.
+  The field sits under the preset list: select a preset, press the
+  combination, done — the key then shows up next to that preset as
+  `Normal Talk  [Ctrl+Alt+2]`. Pressing it switches the **character and the
+  style together**, so `Hizashi → Kuromiya` is one key — and it works with
+  the **canvas focused**, without clicking into the docker first. Typing is
+  never swallowed: while a text field has the focus, a binding without
+  Ctrl/Alt/Meta is left alone. Keybinds belong to the **manga**, so the same
+  handful of keys is free again in the next series; one key per style and
+  one style per key, so re-using a key simply moves it. Prefer a modifier
+  (`Ctrl+Alt+1` …): a bare letter collides with Krita's own tool shortcuts.
 - **Progress tracking:** inserted lines are marked green in the table; each
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to

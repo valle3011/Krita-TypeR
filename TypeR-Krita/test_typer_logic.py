@@ -1476,5 +1476,147 @@ check("_word_is_conj flags a leading conjunction",
       LO._word_is_conj("but") and LO._word_is_conj("and")
       and not LO._word_is_conj("homework"))
 
+# --- preset keybinds --------------------------------------------------------
+_kb = LP.clean_keybinds({
+    "Serie": {"Ctrl+Alt+1": ["Hizashi", "Normal Talk"],
+              "Ctrl+Alt+2": ["Kuromiya", "Normal Talk"]},
+    "Andere": {"Ctrl+Alt+1": ["Bob", "Shout"]},
+})
+check("keybinds: a stored map survives the read",
+      _kb["Serie"]["Ctrl+Alt+2"] == ["Kuromiya", "Normal Talk"])
+check("keybinds: the same key is free again in another manga",
+      _kb["Andere"]["Ctrl+Alt+1"] == ["Bob", "Shout"])
+check("keybinds: junk is dropped, not raised over",
+      LP.clean_keybinds({"A": {"K": ["c"], "": ["c", "n"], "K2": ["c", ""]},
+                         "B": "nope"}) == {}
+      and LP.clean_keybinds(None) == {} and LP.clean_keybinds([1]) == {})
+
+check("keybinds: keybind_for finds the key of a preset",
+      LP.keybind_for(_kb, "Serie", "Kuromiya", "Normal Talk") == "Ctrl+Alt+2"
+      and LP.keybind_for(_kb, "Serie", "Hizashi", "Shout") == ""
+      and LP.keybind_for(_kb, "Serie", "Kuromiya", "") == "")
+check("keybinds: keybind_target reports what a key already drives",
+      LP.keybind_target(_kb, "Serie", "Ctrl+Alt+1") == ("Hizashi", "Normal Talk")
+      and LP.keybind_target(_kb, "Serie", "Ctrl+Alt+9") == ("", ""))
+
+# one key per preset: re-binding moves it rather than leaving two
+LP.set_keybind(_kb, "Serie", "Ctrl+Alt+7", "Hizashi", "Normal Talk")
+check("keybinds: a preset keeps only its newest key",
+      LP.keybind_for(_kb, "Serie", "Hizashi", "Normal Talk") == "Ctrl+Alt+7"
+      and "Ctrl+Alt+1" not in _kb["Serie"])
+# one preset per key: taking a used key takes it away from the other preset
+LP.set_keybind(_kb, "Serie", "Ctrl+Alt+7", "Kuromiya", "Normal Talk")
+check("keybinds: a key taken over leaves its old preset unbound",
+      LP.keybind_for(_kb, "Serie", "Kuromiya", "Normal Talk") == "Ctrl+Alt+7"
+      and LP.keybind_for(_kb, "Serie", "Hizashi", "Normal Talk") == "")
+check("keybinds: the same name under two characters stays two presets",
+      LP.keybind_target(_kb, "Serie", "Ctrl+Alt+7")[0] == "Kuromiya")
+
+LP.set_keybind(_kb, "Serie", "", "Kuromiya", "Normal Talk")
+check("keybinds: an empty key only unbinds, and an empty manga drops out",
+      "Serie" not in _kb)
+check("keybinds: binding nothing is a no-op",
+      LP.set_keybind({}, "Serie", "Ctrl+Alt+1", "Hizashi", "") == {}
+      and LP.set_keybind({}, "", "Ctrl+Alt+1", "Hizashi", "Talk") == {})
+
+_kb2 = LP.clean_keybinds({"Serie": {
+    "F5": ["Hizashi", "Talk"], "F6": ["Hizashi", "Shout"],
+    "F7": ["Kuromiya", "Talk"]}})
+check("keybinds: keybinds_of lists one manga, sorted by key",
+      LP.keybinds_of(_kb2, "Serie")
+      == [("F5", "Hizashi", "Talk"), ("F6", "Hizashi", "Shout"),
+          ("F7", "Kuromiya", "Talk")]
+      and LP.keybinds_of(_kb2, "Nichts") == [])
+LP.drop_keybinds(_kb2, "Serie", "Hizashi", "Shout")
+check("keybinds: deleting a preset drops only its key",
+      sorted(_kb2["Serie"]) == ["F5", "F7"])
+LP.drop_keybinds(_kb2, "Serie", "Hizashi")
+check("keybinds: deleting a character drops all of theirs",
+      sorted(_kb2["Serie"]) == ["F7"])
+LP.drop_keybinds(_kb2, "Serie")
+check("keybinds: deleting the manga drops the whole block",
+      _kb2 == {} and LP.drop_keybinds({}, "Weg") == {})
+
+
+# --- .gdoc -> document id when Drive refuses to read the file ---------------
+# Drive for Desktop answers every read of a .gdoc with [Errno 22], so the id
+# has to come from the client's local index instead. The index is stood in for
+# here: a two-table SQLite file with the same shape.
+import shutil
+import sqlite3
+import tempfile
+
+_dfspec = importlib.util.spec_from_file_location(
+    "drivefs", os.path.join(_HERE, "typer_kr", "drivefs.py"))
+DF = importlib.util.module_from_spec(_dfspec)
+_dfspec.loader.exec_module(DF)
+
+_tmpdir = tempfile.mkdtemp(prefix="typer_drivefs_")
+
+
+def _fake_index(rows):
+    """rows: (stable_id, title, is_folder, cloud_id, parent, trashed)."""
+    p = os.path.join(_tmpdir, "index_%d.db" % len(os.listdir(_tmpdir)))
+    con = sqlite3.connect(p)
+    con.execute("CREATE TABLE items (stable_id INTEGER, id TEXT, "
+                "trashed INTEGER, is_folder INTEGER, local_title TEXT)")
+    con.execute("CREATE TABLE stable_parents (item_stable_id INTEGER, "
+                "parent_stable_id INTEGER)")
+    for sid, title, is_folder, cloud, parent, trashed in rows:
+        con.execute("INSERT INTO items VALUES (?,?,?,?,?)",
+                    (sid, cloud, trashed, is_folder, title))
+        if parent is not None:
+            con.execute("INSERT INTO stable_parents VALUES (?,?)", (sid, parent))
+    con.commit()
+    con.close()
+    return p
+
+
+# "Meine Ablage" on purpose: Drive localises the root, while the mount is
+# always called "My Drive" — so the walk must survive the mismatch.
+_DB = _fake_index([
+    (1, "Meine Ablage", 1, "root", None, 0),
+    (2, "Ch. 19 RAW", 1, "f2", 1, 0),
+    (3, "Chapter 22-23", 1, "f3", 1, 0),
+    (4, "Ch. 22 Part 1", 1, "f4", 3, 0),
+    (5, "Ch. 23 Part 1", 1, "f5", 3, 0),
+    (10, "TL.gdoc", 0, "DOC_A", 4, 0),
+    (11, "TL.gdoc", 0, "DOC_B", 5, 0),
+    (12, "Ch. 19 TL.gdoc", 0, "DOC_C", 2, 0),
+    (13, "gone.gdoc", 0, "DOC_D", 2, 1),
+])
+_MY = os.path.join("G:" + os.sep, "My Drive")
+
+check("drivefs: a uniquely named .gdoc resolves",
+      DF.resolve_doc_id(os.path.join(_MY, "Ch. 19 RAW", "Ch. 19 TL.gdoc"),
+                        [_DB]) == "DOC_C")
+check("drivefs: same name in two folders is told apart by the folder",
+      DF.resolve_doc_id(os.path.join(_MY, "Chapter 22-23", "Ch. 22 Part 1",
+                                     "TL.gdoc"), [_DB]) == "DOC_A"
+      and DF.resolve_doc_id(os.path.join(_MY, "Chapter 22-23", "Ch. 23 Part 1",
+                                         "TL.gdoc"), [_DB]) == "DOC_B")
+check("drivefs: a tie is refused rather than guessed",
+      DF.resolve_doc_id(os.path.join("G:" + os.sep, "Elsewhere", "TL.gdoc"),
+                        [_DB]) == "")
+check("drivefs: a trashed document is not offered",
+      DF.resolve_doc_id(os.path.join(_MY, "Ch. 19 RAW", "gone.gdoc"),
+                        [_DB]) == "")
+check("drivefs: an unknown name gives nothing",
+      DF.resolve_doc_id(os.path.join(_MY, "Ch. 19 RAW", "nope.gdoc"),
+                        [_DB]) == "")
+check("drivefs: no Drive client at all gives nothing",
+      DF.resolve_doc_id(os.path.join(_MY, "Ch. 19 RAW", "Ch. 19 TL.gdoc"),
+                        []) == "")
+check("drivefs: an unreadable index is skipped, not raised",
+      DF.resolve_doc_id(os.path.join(_MY, "Ch. 19 RAW", "Ch. 19 TL.gdoc"),
+                        [os.path.join(_tmpdir, "not_a_db")]) == "")
+
+_name, _folders = DF.path_parts(os.path.join(_MY, "Ch. 19 RAW",
+                                             "Ch. 19 TL.gdoc"))
+check("drivefs: path_parts lists the folders from the file outwards",
+      _name == "Ch. 19 TL.gdoc" and _folders[:2] == ["Ch. 19 RAW", "My Drive"])
+
+shutil.rmtree(_tmpdir, ignore_errors=True)
+
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

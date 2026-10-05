@@ -34,7 +34,7 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 
 from ._qt import (Qt, pyqtSignal, QRectF, QEvent, QPoint, QPointF,
-                          QMimeData, QTimer, QRect, QSize)
+                          QMimeData, QTimer, QRect, QSize, QObject)
 from ._qt import (QColor, QFont, QFontMetricsF, QImage, QPainter,
                          QPainterPath, QBrush, QPen, QPixmap, QTextCursor, QDrag,
                          QCursor, QKeySequence, QPolygonF, QIcon)
@@ -46,7 +46,8 @@ from ._qt import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
     QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
     QDialog, QButtonGroup, QDialogButtonBox, QApplication,
-    QShortcut, QLayout, QStackedWidget,
+    QShortcut, QLayout, QStackedWidget, QKeySequenceEdit, QTextEdit,
+    QAbstractSpinBox,
 )
 
 # Drag & drop mime type carrying a panel id while a PanelBox is dragged by
@@ -118,6 +119,85 @@ except Exception:
 # (i.e. the user clicked into them first); otherwise the wheel event is passed
 # on so the surrounding scroll area scrolls instead.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Preset keybinds: an application-wide key watcher
+#
+# A QShortcut is the obvious way to do this and does not work here. Krita's
+# canvas input manager takes key events for itself before Qt's shortcut map is
+# ever consulted, so a preset key only fired after clicking into the docker
+# first - which defeats the point, since the hands are on the canvas exactly
+# when the speaker changes.
+#
+# Qt walks the *application's* event filters before any filter installed on the
+# receiving widget, so watching there sees the key wherever the focus is. Two
+# event types matter: ShortcutOverride, which is Qt asking "is this a shortcut
+# or is someone typing?" - accepting it takes the key away from Krita's own
+# actions - and the KeyPress that follows, which is where the preset is
+# actually applied.
+# ---------------------------------------------------------------------------
+
+def key_event_string(ev):
+    """Qt's own spelling of a key event's combination, e.g. "Ctrl+Alt+1".
+
+    The same spelling QKeySequenceEdit stored, so matching a binding is a
+    plain dict lookup rather than a comparison of modifier bits.
+    """
+    try:
+        combo = ev.keyCombination()              # Qt 6
+    except AttributeError:                       # Qt 5: modifiers | key
+        combo = int(ev.modifiers()) | int(ev.key())
+    return QKeySequence(combo).toString()
+
+
+def key_has_modifier(ev):
+    """True for Ctrl/Alt/Meta - i.e. "this was meant as a shortcut"."""
+    m = ev.modifiers()
+    return bool(m & (Qt.KeyboardModifier.ControlModifier
+                     | Qt.KeyboardModifier.AltModifier
+                     | Qt.KeyboardModifier.MetaModifier))
+
+
+# widgets where an unmodified key is someone typing, not a shortcut
+TYPING_WIDGETS = (QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox)
+
+
+def in_key_recorder(widget):
+    """True when the focus sits inside a QKeySequenceEdit.
+
+    Walked upwards rather than compared, because whether the focus lands on
+    the field itself or on its internal line edit is a Qt-version detail, and
+    getting it wrong makes re-binding an already-bound key impossible: the
+    hook would swallow the very key press the field is waiting to record.
+    """
+    while widget is not None:
+        if isinstance(widget, QKeySequenceEdit):
+            return True
+        widget = widget.parentWidget()
+    return False
+
+
+class PresetKeyHook(QObject):
+    """Watches every key in Krita for one of the docker's preset keybinds.
+
+    Its own object rather than a branch in the docker's event filter: this is
+    called for *every* event Krita sends, so the path for the ones it does not
+    care about has to be one type comparison and out.
+    """
+
+    def __init__(self, docker):
+        super().__init__(docker)          # dies with the docker, filter and all
+        self._docker = docker
+
+    def eventFilter(self, obj, ev):
+        try:
+            et = ev.type()
+            if et != QEvent.Type.KeyPress and et != QEvent.Type.ShortcutOverride:
+                return False
+            return self._docker.handle_preset_key(ev, et)
+        except Exception:                 # never let a bug here eat typing
+            return False
+
+
 class NoScrollComboBox(QComboBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -277,6 +357,12 @@ LANG = {
         "st_g_out": "Signed out.",
         "st_g_loading": "Fetching the document from Google \u2026",
         "st_g_loaded": "Loaded {name}: {n} lines, {c} comments.",
+        "g_ask_id_title": "Google Doc",
+        "g_ask_id_prompt": ("TypeR could not read this .gdoc \u2014 Google Drive no "
+                            "longer lets any program\nread these shortcut files, and "
+                            "it is not in Drive's local index either.\n\nOpen the "
+                            "document in your browser and paste its link here:"),
+        "st_g_bad_link": "That is not a Google Docs link.",
         "g_image_label": "Or: comments on a Drive image as the script",
         "g_image_ph": "paste the image's Drive share link",
         "g_image_btn": "Load image comments",
@@ -400,6 +486,22 @@ LANG = {
         "st_preset_saved": "Preset ‘{name}’ saved.",
         "st_preset_applied": "Preset ‘{name}’ applied.",
         "st_preset_deleted": "Preset ‘{name}’ deleted.",
+        "preset_key": "Keybind:",
+        "preset_key_tip": ("Press a key combination to switch to this "
+                           "character + style from anywhere in Krita — no "
+                           "need to walk the dropdowns when the speaker "
+                           "changes.\n\nKeybinds belong to this manga, so "
+                           "the same keys are free again in the next series. "
+                           "One key per style, one style per key.\n\nUse a "
+                           "modifier (Ctrl+Alt+1 …): a bare letter will "
+                           "collide with Krita’s own tool shortcuts."),
+        "preset_key_clear_tip": "Remove this keybind",
+        "st_key_set": "{key} now switches to ‘{name}’.",
+        "st_key_moved": "{key} switches to ‘{name}’ now (it was on "
+                        "‘{old}’).",
+        "st_key_cleared": "Keybind for ‘{name}’ removed.",
+        "st_key_applied": "{char} — ‘{name}’.",
+        "st_key_gone": "‘{name}’ no longer exists; its keybind was removed.",
         "st_preset_none": "No preset selected.",
         "st_preset_name_empty": "Please enter a name.",
         "st_preset_exported": "Exported {n} preset(s).",
@@ -1079,6 +1181,13 @@ LANG = {
         "st_g_out": "Abgemeldet.",
         "st_g_loading": "Dokument wird von Google geholt \u2026",
         "st_g_loaded": "{name} geladen: {n} Zeilen, {c} Kommentare.",
+        "g_ask_id_title": "Google-Doc",
+        "g_ask_id_prompt": ("TypeR konnte diese .gdoc nicht lesen \u2014 Google Drive "
+                            "l\u00e4sst diese\nVerkn\u00fcpfungsdateien von keinem Programm "
+                            "mehr lesen, und im lokalen\nDrive-Index steht sie auch "
+                            "nicht.\n\n\u00d6ffne das Dokument im Browser und f\u00fcge hier "
+                            "seinen Link ein:"),
+        "st_g_bad_link": "Das ist kein Google-Docs-Link.",
         "g_image_label": "Oder: Kommentare auf einem Drive-Bild als Skript",
         "g_image_ph": "Freigabe-Link des Bildes einfügen",
         "g_image_btn": "Bild-Kommentare laden",
@@ -1203,6 +1312,24 @@ LANG = {
         "col_purpose": "Wofür",
         "st_preset_saved": "Preset ‚{name}‘ gespeichert.",
         "st_preset_applied": "Preset ‚{name}‘ angewendet.",
+        "preset_key": "Tastenkürzel:",
+        "preset_key_tip": ("Tastenkombination drücken, um von überall in "
+                           "Krita auf diese Figur + diesen Stil zu wechseln "
+                           "— kein Klicken durch die Auswahllisten, wenn "
+                           "jemand anderes spricht.\n\nKürzel gehören "
+                           "zu diesem Manga, in der nächsten Serie sind "
+                           "dieselben Tasten also wieder frei. Ein Kürzel "
+                           "pro Stil, ein Stil pro Kürzel.\n\nNimm eine "
+                           "Modifikatortaste "
+                           "(Strg+Alt+1 …): ein bloßer Buchstabe kollidiert "
+                           "mit Kritas eigenen Werkzeug-Kürzeln."),
+        "preset_key_clear_tip": "Dieses Kürzel entfernen",
+        "st_key_set": "{key} wechselt jetzt zu ‚{name}‘.",
+        "st_key_moved": "{key} wechselt jetzt zu ‚{name}‘ (lag vorher auf "
+                        "‚{old}‘).",
+        "st_key_cleared": "Kürzel für ‚{name}‘ entfernt.",
+        "st_key_applied": "{char} — ‚{name}‘.",
+        "st_key_gone": "‚{name}‘ gibt es nicht mehr; Kürzel entfernt.",
         "st_preset_deleted": "Preset ‚{name}‘ gelöscht.",
         "st_preset_none": "Kein Preset gewählt.",
         "st_preset_name_empty": "Bitte einen Namen eingeben.",
@@ -5516,6 +5643,11 @@ class TyperDocker(DockWidget):
         # Who the main characters are, per manga: they head the character and
         # preset dropdowns instead of being buried in a long alphabetical list.
         self._main_chars_map = self._load_main_chars()
+        # {manga: {key: [character, preset]}}, so a change of speaker is one
+        # key press on the canvas. Read live by the key hook below, which is
+        # installed once the docker's state is complete.
+        self._keybinds = self._load_keybinds()
+        self._key_hook = None
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
         # session list stay decoupled (reordering tabs is harmless). The live
@@ -5961,6 +6093,22 @@ class TyperDocker(DockWidget):
         self.preset_menu_btn.setMenu(preset_menu)
         preset_row.addWidget(self.preset_menu_btn)
         lay_presets.addLayout(preset_row)
+        # Keybind for the preset selected above: press the combination into the
+        # field and it switches to that character + style from anywhere in
+        # Krita. One field rather than a list, because a binding is a property
+        # of the preset on screen — see LP.set_keybind for the two rules that
+        # makes possible.
+        key_row = QHBoxLayout()
+        self.lbl_preset_key = QLabel()
+        key_row.addWidget(self.lbl_preset_key)
+        self.preset_key_edit = QKeySequenceEdit()
+        self.preset_key_edit.editingFinished.connect(self._on_preset_key_edited)
+        key_row.addWidget(self.preset_key_edit, 1)
+        self.preset_key_clear_btn = QToolButton()
+        self.preset_key_clear_btn.setText("✕")
+        self.preset_key_clear_btn.clicked.connect(self.on_preset_key_clear)
+        key_row.addWidget(self.preset_key_clear_btn)
+        lay_presets.addLayout(key_row)
         # (no trailing stretch: this is a compact panel inside the Type tab)
 
         # --- load a file + script input (Type tab) ---
@@ -6743,6 +6891,7 @@ class TyperDocker(DockWidget):
         self._apply_preset_mode()          # show/hide the character level
         self._update_text_preview()
         self._init_first_session()         # start with one empty "Untitled" tab
+        self._install_key_hook()           # preset keybinds, from anywhere
 
     # -- language --
 
@@ -7406,6 +7555,9 @@ class TyperDocker(DockWidget):
         self.auto_char_chk.setToolTip(t("auto_char_tip"))
         self.auto_manga_chk.setText(t("auto_manga"))
         self.auto_manga_chk.setToolTip(t("auto_manga_tip"))
+        self.lbl_preset_key.setText(t("preset_key"))
+        self.preset_key_edit.setToolTip(t("preset_key_tip"))
+        self.preset_key_clear_btn.setToolTip(t("preset_key_clear_tip"))
         self.preset_menu_btn.setToolTip(t("preset_actions"))
         self.preset_save_act.setText(t("preset_save"))
         self.preset_del_act.setText(t("preset_del"))
@@ -9584,6 +9736,8 @@ class TyperDocker(DockWidget):
         del self._groups[g]
         if self._main_chars_map.pop(g, None) is not None:
             self._save_main_chars()
+        LP.drop_keybinds(self._keybinds, g)
+        self._save_keybinds()
         self._char = ""
         self._ensure_levels()
         self._save_groups()
@@ -9649,6 +9803,8 @@ class TyperDocker(DockWidget):
             return
         del self._groups[self._group][ch]
         self._forget_main_char(ch)
+        LP.drop_keybinds(self._keybinds, self._group, ch)
+        self._save_keybinds()
         self._char = ""
         self._ensure_levels()
         self._save_groups()
@@ -9661,14 +9817,16 @@ class TyperDocker(DockWidget):
         """Rebuild the preset dropdown. Character mode lists the current
         character's presets (item data = name); simple mode lists every preset
         of the manga (item data = (character, name), duplicate names get a
-        '(Character)' suffix)."""
+        '(Character)' suffix). A bound key is shown after the label, which is
+        the only place the bindings of a manga can be read at a glance."""
+        keyed = self._keyed_label
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
         self.preset_combo.addItem(self._tr("preset_none"), None)
         if self._by_char():
             for name in sorted(self._cur_presets().keys(),
                                key=lambda s: s.lower()):
-                self.preset_combo.addItem(name, name)
+                self.preset_combo.addItem(keyed(name, self._char, name), name)
         else:
             # simple mode lists every character's presets in one dropdown, so
             # the main characters' styles go to the top of it
@@ -9679,8 +9837,9 @@ class TyperDocker(DockWidget):
                 if prev_main and not is_main:
                     self.preset_combo.insertSeparator(self.preset_combo.count())
                 prev_main = is_main
-                self.preset_combo.addItem("★ " + label if is_main else label,
-                                          (ch, name))
+                self.preset_combo.addItem(
+                    keyed("★ " + label if is_main else label, ch, name),
+                    (ch, name))
         if select is not None:
             # manual match: findData compares QVariants, which is unreliable
             # for python tuples
@@ -9689,15 +9848,155 @@ class TyperDocker(DockWidget):
                     self.preset_combo.setCurrentIndex(i)
                     break
         self.preset_combo.blockSignals(False)
+        # the key field follows whatever ended up selected; the bindings
+        # themselves need no rebuild - the key hook reads them live
+        self._sync_preset_key_edit()
+
+    def _keyed_label(self, label, char, name):
+        """`label` with its bound key appended, if it has one."""
+        key = LP.keybind_for(self._keybinds, self._group, char, name)
+        return "%s  [%s]" % (label, key) if key else label
 
     def _on_preset_selected(self):
         ch, name = self._preset_ref(self.preset_combo.currentData())
+        self._sync_preset_key_edit()   # the key field follows the selection
         presets = self._cur_chars().get(ch, {})
         if name and name in presets:
             self._apply_preset(presets[name])
             self._record_preset_usage(self._group, ch, name)
             self._save_last_manga()
             self._set_status(self._tr("st_preset_applied").format(name=name))
+
+    # ---- preset keybinds ----
+    def _load_keybinds(self):
+        """{manga: {key: [character, preset]}} from the settings."""
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "presetKeys", "")
+            return LP.clean_keybinds(json.loads(raw) if raw else {})
+        except Exception:
+            return {}
+
+    def _save_keybinds(self):
+        try:
+            Krita.instance().writeSetting("typer_kr", "presetKeys",
+                                          json.dumps(self._keybinds))
+        except Exception:
+            pass
+
+    def _sync_preset_key_edit(self):
+        """Show the selected preset's key (blank when it has none)."""
+        edit = getattr(self, "preset_key_edit", None)
+        if edit is None:
+            return
+        ch, name = self._preset_ref(self.preset_combo.currentData())
+        key = LP.keybind_for(self._keybinds, self._group, ch, name)
+        edit.blockSignals(True)
+        edit.setKeySequence(QKeySequence(key) if key else QKeySequence())
+        edit.blockSignals(False)
+        edit.setEnabled(bool(name))
+
+    def _on_preset_key_edited(self):
+        """Bind what was pressed to the preset currently on screen."""
+        ch, name = self._preset_ref(self.preset_combo.currentData())
+        if not name:
+            self._sync_preset_key_edit()
+            self._set_status(self._tr("st_preset_none"), error=True)
+            return
+        # QKeySequenceEdit records up to four combinations; a binding is one
+        # key press, so only the first counts.
+        key = self.preset_key_edit.keySequence().toString().split(",")[0].strip()
+        if not key:
+            # editingFinished also fires on a plain focus loss, so an empty
+            # field is only an unbind when there was something to unbind
+            if LP.keybind_for(self._keybinds, self._group, ch, name):
+                self.on_preset_key_clear()
+            return
+        taken = LP.keybind_target(self._keybinds, self._group, key)
+        LP.set_keybind(self._keybinds, self._group, key, ch, name)
+        self._save_keybinds()
+        self._refresh_presets_combo(
+            select=name if self._by_char() else (ch, name))
+        if taken[1] and taken != (ch, name):
+            self._set_status(self._tr("st_key_moved").format(
+                key=key, old=taken[1], name=name))
+        else:
+            self._set_status(self._tr("st_key_set").format(key=key, name=name))
+
+    def on_preset_key_clear(self):
+        ch, name = self._preset_ref(self.preset_combo.currentData())
+        if not name:
+            self._sync_preset_key_edit()
+            return
+        LP.set_keybind(self._keybinds, self._group, "", ch, name)
+        self._save_keybinds()
+        self._refresh_presets_combo(
+            select=name if self._by_char() else (ch, name))
+        self._set_status(self._tr("st_key_cleared").format(name=name))
+
+    def _install_key_hook(self):
+        """Start watching Krita's keys for this docker's preset bindings."""
+        if self._key_hook is not None:
+            return
+        app = QApplication.instance()
+        if app is None:
+            return                                  # no GUI (import-time only)
+        self._key_hook = PresetKeyHook(self)
+        app.installEventFilter(self._key_hook)
+
+    def handle_preset_key(self, ev, et):
+        """One key seen anywhere in Krita. True = swallowed by TypeR.
+
+        Reads `_keybinds` live, so there is nothing to rebuild when a binding
+        or the manga changes; the guards below are what keeps an
+        application-wide watcher from being a nuisance.
+        """
+        if ev.isAutoRepeat():
+            return False
+        binds = self._keybinds.get(self._group) or {}
+        if not binds:
+            return False
+        win = self.window()
+        if win is None or not win.isVisible():
+            return False                            # docker closed / torn down
+        ref = binds.get(key_event_string(ev))
+        if not ref:
+            return False
+        focus = QApplication.focusWidget()
+        if in_key_recorder(focus):
+            return False                            # a key being recorded
+        if isinstance(focus, TYPING_WIDGETS) and not key_has_modifier(ev):
+            return False                            # that is typing, not a key
+        if et == QEvent.Type.ShortcutOverride:
+            # "not a shortcut - send it on as a key press", which takes it
+            # away from Krita's own actions and hands it to the branch below
+            ev.accept()
+            return False
+        self._trigger_keybind(str(ref[0]), str(ref[1]))
+        return True
+
+    def _trigger_keybind(self, char, name):
+        """A bound key was pressed: switch to that character and style."""
+        presets = self._cur_chars().get(char, {})
+        if name not in presets:
+            # renamed or deleted behind the binding's back — drop the dead key
+            # rather than leaving one that quietly does nothing
+            LP.drop_keybinds(self._keybinds, self._group, char, name)
+            self._save_keybinds()
+            self._refresh_presets_combo()
+            self._set_status(self._tr("st_key_gone").format(name=name),
+                             error=True)
+            return
+        if self._by_char() and char and char != self._char:
+            self._char = char
+            self._refresh_chars_combo(select=char)
+        self._apply_preset(presets[name])
+        self._record_preset_usage(self._group, char, name)
+        self._save_last_manga()
+        self._refresh_presets_combo(
+            select=name if self._by_char() else (char, name))
+        self._set_status(self._tr("st_key_applied").format(
+            char=char, name=name) if char else
+            self._tr("st_preset_applied").format(name=name))
 
     def on_preset_save(self):
         _ch, current = self._preset_ref(self.preset_combo.currentData())
@@ -9728,6 +10027,8 @@ class TyperDocker(DockWidget):
             self._set_status(self._tr("st_preset_none"), error=True)
             return
         del self._groups[self._group][ch][name]
+        LP.drop_keybinds(self._keybinds, self._group, ch, name)
+        self._save_keybinds()
         self._save_groups()
         self._refresh_presets_combo()
         self._set_status(self._tr("st_preset_deleted").format(name=name))
@@ -10446,13 +10747,34 @@ class TyperDocker(DockWidget):
         self._set_status(self._tr("st_g_loaded").format(
             name=os.path.basename(path), n=len(self._pairs), c=len(cs)))
 
+    def _ask_doc_id(self):
+        """Last resort: have the user paste the document's link.
+
+        Needed because Drive can refuse to let *anything* read a .gdoc (see
+        drivefs.py). A link works with no Drive client involved at all.
+        """
+        text, ok = QInputDialog.getText(
+            self.widget(), self._tr("g_ask_id_title"),
+            self._tr("g_ask_id_prompt"))
+        if not ok:
+            return ""
+        doc_id = LP.drive_file_id(text)
+        if not doc_id:
+            self._set_status(self._tr("st_g_bad_link"), error=True)
+        return doc_id
+
     def _load_gdoc(self, path):
         """Fetch a Google Doc script (and its comments) into a new tab."""
         try:
             doc_id = GD.read_stub(path)
-        except ValueError as e:
-            self._set_status(str(e), error=True)
+        except FileNotFoundError:
+            self._set_status(self._tr("st_not_found"), error=True)
             return
+        except ValueError:
+            # nothing legible in the shortcut — the link is the way in
+            doc_id = self._ask_doc_id()
+            if not doc_id:
+                return
         tok = self._g_ready_token()
         if tok is None:
             self._offer_export(doc_id)

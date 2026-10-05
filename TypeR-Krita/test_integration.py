@@ -1681,5 +1681,222 @@ if imported:
         import traceback
         traceback.print_exc()
 
+# --- preset keybinds: one key switches speaker + style ---------------------
+if imported:
+    try:
+        from PyQt6.QtGui import QKeySequence, QKeyEvent
+        from PyQt6.QtCore import Qt as _Qt, QEvent as _QEvent
+        from PyQt6.QtWidgets import QPlainTextEdit as _QPlainTextEdit
+    except ImportError:
+        from PyQt5.QtGui import QKeySequence, QKeyEvent
+        from PyQt5.QtCore import Qt as _Qt, QEvent as _QEvent
+        from PyQt5.QtWidgets import QPlainTextEdit as _QPlainTextEdit
+
+if imported:
+    try:
+        _KR_APP._settings.pop(("typer_kr", "presetKeys"), None)
+        _kd = TK.TyperDocker()
+        _kd._groups = {
+            "Serie": {"Hizashi": {"Normal Talk": {"size": 11}},
+                      "Kuromiya": {"Normal Talk": {"size": 33}}},
+            "Andere": {"Bob": {"Shout": {"size": 44}}},
+        }
+        _kd._group = "Serie"
+        _kd._char = "Hizashi"
+        _kd._keybinds = {}
+        _kd.show()                  # the hook ignores keys for a closed docker
+        _kd._refresh_chars_combo(select="Hizashi")
+        _kd._refresh_presets_combo(select="Normal Talk")
+
+        def _bind(doc, key):
+            """What the user does: press a combination into the field."""
+            doc.preset_key_edit.setKeySequence(QKeySequence(key))
+            doc._on_preset_key_edited()
+
+        # bind Kuromiya's style while standing on Hizashi's
+        _kd._char = "Kuromiya"
+        _kd._refresh_chars_combo(select="Kuromiya")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _bind(_kd, "Ctrl+Alt+2")
+        check("a keybind is stored against the selected character + preset",
+              _kd._keybinds == {"Serie": {"Ctrl+Alt+2":
+                                          ["Kuromiya", "Normal Talk"]}})
+        check("it is written to the Krita settings",
+              json.loads(_KR_APP._settings[("typer_kr", "presetKeys")])
+              == {"Serie": {"Ctrl+Alt+2": ["Kuromiya", "Normal Talk"]}})
+        check("the preset dropdown shows the key next to the style",
+              any("[Ctrl+Alt+2]" in _kd.preset_combo.itemText(i)
+                  for i in range(_kd.preset_combo.count())))
+
+        def _key_ev(kind, key, mods, repeat=False):
+            return QKeyEvent(kind, key, mods, 0, 0, 0, "", repeat)
+
+        _CTRL_ALT = (_Qt.KeyboardModifier.ControlModifier
+                     | _Qt.KeyboardModifier.AltModifier)
+        _ev2 = _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_2, _CTRL_ALT)
+        check("a key event renders the same spelling the field stored",
+              TK.key_event_string(_ev2) == "Ctrl+Alt+2")
+        check("the docker installed an application-wide key hook",
+              _kd._key_hook is not None)
+
+        # now stand on Hizashi and press the key
+        _kd._char = "Hizashi"
+        _kd._refresh_chars_combo(select="Hizashi")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _kd.size_spin.setValue(11)
+        _kd._trigger_keybind("Kuromiya", "Normal Talk")
+        check("pressing the key switches the character",
+              _kd._char == "Kuromiya"
+              and _kd.char_combo.currentData() == "Kuromiya")
+        check("pressing the key applies that character's style",
+              _kd.size_spin.value() == 33)
+        check("and selects the preset it came from",
+              _kd._preset_ref(_kd.preset_combo.currentData())[1] == "Normal Talk")
+        check("the use is counted like a hand-picked preset",
+              _kd._preset_usage["Serie"]["Kuromiya"]["Normal Talk"] >= 1)
+
+        # a second preset on the same key takes it over
+        _kd._char = "Hizashi"
+        _kd._refresh_chars_combo(select="Hizashi")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _bind(_kd, "Ctrl+Alt+2")
+        check("re-using a key moves it instead of binding it twice",
+              _kd._keybinds["Serie"] == {"Ctrl+Alt+2": ["Hizashi",
+                                                        "Normal Talk"]})
+        check("the status line says which preset lost the key",
+              "Kuromiya" in _kd.status.text() or "Normal Talk" in _kd.status.text())
+
+        # bindings are per manga: the same key is free in the next series
+        _kd._group = "Andere"
+        _kd._char = "Bob"
+        _kd._refresh_chars_combo(select="Bob")
+        _kd._refresh_presets_combo(select="Shout")
+        check("a key bound in another manga is left alone",
+              _kd._key_hook.eventFilter(
+                  None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_2,
+                                _CTRL_ALT)) is False)
+        _bind(_kd, "Ctrl+Alt+2")
+        check("the same key binds again in the other manga",
+              _kd._keybinds["Andere"] == {"Ctrl+Alt+2": ["Bob", "Shout"]}
+              and _kd._keybinds["Serie"] == {"Ctrl+Alt+2": ["Hizashi",
+                                                            "Normal Talk"]})
+
+        # clearing, and a binding whose preset is gone
+        _kd.on_preset_key_clear()
+        check("the ✕ button unbinds the selected preset",
+              "Andere" not in _kd._keybinds
+              and _kd.preset_key_edit.keySequence().isEmpty())
+        _kd._group = "Serie"
+        _kd._char = "Hizashi"
+        _kd._refresh_chars_combo(select="Hizashi")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _kd.on_preset_delete()
+        check("deleting a preset takes its keybind with it",
+              _kd._keybinds.get("Serie", {}) == {})
+
+        # a binding left over from an older session points nowhere: pressing
+        # it says so once and cleans itself up
+        _kd._keybinds = {"Serie": {"Ctrl+Alt+5": ["Kuromiya", "Weg"]}}
+        _kd._trigger_keybind("Kuromiya", "Weg")
+        check("a dead keybind removes itself instead of doing nothing",
+              _kd._keybinds.get("Serie", {}) == {})
+
+        # --- the key hook: the press itself, wherever the focus is -------
+        _kd._char = "Kuromiya"
+        _kd._refresh_chars_combo(select="Kuromiya")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _bind(_kd, "Ctrl+Alt+3")
+        _kd._char = "Hizashi"
+        _kd._refresh_chars_combo(select="Hizashi")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _kd.size_spin.setValue(11)
+
+        _CTRL_ALT3 = lambda: _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_3,
+                                     _CTRL_ALT)
+        check("the hook swallows a bound key and applies the preset",
+              _kd._key_hook.eventFilter(None, _CTRL_ALT3()) is True
+              and _kd._char == "Kuromiya" and _kd.size_spin.value() == 33)
+        check("an unbound key passes straight through",
+              _kd._key_hook.eventFilter(
+                  None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_9,
+                                _CTRL_ALT)) is False)
+        check("a non-key event is not even looked at",
+              _kd._key_hook.eventFilter(
+                  None, _QEvent(_QEvent.Type.MouseMove)) is False)
+        check("auto-repeat does not re-apply the preset",
+              _kd._key_hook.eventFilter(
+                  None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_3,
+                                _CTRL_ALT, True)) is False)
+
+        # ShortcutOverride is accepted but passed on: that is what takes the
+        # key away from Krita's own actions without consuming it here
+        _over = _key_ev(_QEvent.Type.ShortcutOverride, _Qt.Key.Key_3, _CTRL_ALT)
+        _over.ignore()
+        check("ShortcutOverride for a bound key is claimed, not consumed",
+              _kd._key_hook.eventFilter(None, _over) is False
+              and _over.isAccepted())
+
+        # typing must never be eaten: an unmodified binding is ignored while a
+        # text field has the focus
+        _bind(_kd, "F9")
+        _typing = _QPlainTextEdit()
+        _typing.show()
+        _typing.setFocus()
+        _app.processEvents()
+        _f9 = lambda: _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_F9,
+                              _Qt.KeyboardModifier.NoModifier)
+        check("a bare key is left to the text field that has the focus",
+              _app.focusWidget() is _typing          # precondition, not a pass
+              and _kd._key_hook.eventFilter(None, _f9()) is False)
+        _typing.hide()
+        _typing.setParent(None)
+        _typing.deleteLater()
+        # a modified key, so only the recorder guard can be what saves it:
+        # the focus lands on the field's internal line edit, not on the
+        # QKeySequenceEdit, so this only passes if the guard walks upwards
+        _bind(_kd, "Ctrl+Alt+4")
+        for _i in range(_kd.main_tabs.count()):     # the field's own tab first
+            _kd.main_tabs.setCurrentIndex(_i)
+            _app.processEvents()
+            if _kd.preset_key_edit.isVisible():
+                break
+        _kd.raise_()            # the text field above took the activation
+        _kd.activateWindow()
+        _kd.preset_key_edit.setFocus()
+        _app.processEvents()
+        _focus = _app.focusWidget()
+        check("the key being recorded is not stolen by its own binding",
+              _focus is not None and _focus is not _kd
+              and TK.in_key_recorder(_focus)
+              and _kd._key_hook.eventFilter(
+                  None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_4,
+                                _CTRL_ALT)) is False)
+        _kd.preset_key_edit.clearFocus()
+        _app.processEvents()
+
+        _kd._char = "Kuromiya"
+        _kd._refresh_chars_combo(select="Kuromiya")
+        _kd._refresh_presets_combo(select="Normal Talk")
+        _bind(_kd, "Ctrl+Alt+3")
+        _kd2 = TK.TyperDocker()
+        check("bindings are read back on the next start",
+              _kd2._load_keybinds()
+              == {"Serie": {"Ctrl+Alt+3": ["Kuromiya", "Normal Talk"]}})
+        _kd.hide()
+        _kd2.deleteLater()
+        _kd.deleteLater()
+    except Exception:                               # pragma: no cover
+        check("preset keybind suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# Flush the pending deleteLater()s while the QApplication is still alive:
+# the dockers own event filters installed on it, and letting those objects
+# be destroyed at interpreter shutdown instead crashes inside Qt's teardown.
+try:
+    _app.processEvents()
+except Exception:
+    pass
+
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

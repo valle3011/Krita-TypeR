@@ -5,8 +5,10 @@ Drive:
 
     {"doc_id": "1JCX54…", "email": "you@gmail.com"}
 
-so the text has to be fetched. Two endpoints are involved, because neither
-gives both halves:
+— and on current Drive for Desktop not even that, since the client refuses to
+let anything read those bytes (drivefs.py has the details and the way round
+it). Either way the text has to be fetched. Two endpoints are involved,
+because neither gives both halves:
 
 * **Docs API** `documents.get` → the paragraphs.
 * **Drive API** `comments.list` → the comments. Drive's `anchor` field is
@@ -22,6 +24,7 @@ replies and the resolved flag.
 import json
 import urllib.parse
 
+from . import drivefs
 from . import gauth
 from .comments import Comment
 
@@ -42,12 +45,30 @@ def is_gdoc(path):
 def read_stub(path):
     """The document id inside a .gdoc shortcut.
 
+    Current Google Drive for Desktop refuses to hand out the bytes of a .gdoc
+    at all — every read fails with `[Errno 22] Invalid argument`, for any
+    program, not just this one. When that happens the id is looked up in the
+    client's own local index instead (see drivefs.py); only if that comes up
+    empty is there nothing left to do but ask for the link.
+
     Raises ValueError with something readable, because "it didn't work" is
-    useless when the file looks like a document to the user.
+    useless when the file looks like a document to the user — every one of
+    those is a case where a pasted link still saves the day. A missing file
+    is not, so FileNotFoundError comes through as itself.
     """
     try:
         with open(path, "r", encoding="utf-8") as fh:
             d = json.load(fh)
+    except FileNotFoundError:
+        raise                          # a gone file is not a broken shortcut
+    except OSError as e:
+        doc_id = drivefs.resolve_doc_id(path)
+        if doc_id:
+            return doc_id
+        raise ValueError(
+            "Google Drive will not let anything read this .gdoc (%s), and the "
+            "document could not be identified from Drive's local index "
+            "either. Open it in the browser and paste its link instead." % e)
     except Exception as e:
         raise ValueError("Could not read the .gdoc shortcut: %s" % e)
     doc_id = d.get("doc_id") or d.get("resource_id") or ""
