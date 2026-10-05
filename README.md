@@ -63,7 +63,8 @@ always present; the extra tabs can be shown or hidden on the **Setup** tab.
 
 - **Type** – the everyday loop: load script, pick a line in the JP/EN table,
   navigate, edit the active line, pick font + color, live preview, the preset
-  picker (**Manga → Character → style**), **Insert** and **TextShapR**.
+  picker (**Manga → Character → style**, each style assignable to a
+  **keybind**), **Insert** and **TextShapR**.
 - **Style** – bold/italic/underline, alignment, letter case, smart punctuation,
   size / padding / line spacing, **outline** (inner + a second/outer outline)
   and **shadow** (each with a small settings popup), auto-fit, round bubble,
@@ -77,6 +78,8 @@ always present; the extra tabs can be shown or hidden on the **Setup** tab.
 
 - **TextShapR** – pick from several auto-fitted shape candidates for the current
   line (see *TextShapR* below).
+- **Batch** – set a whole page at once: mark the bubbles, pair each with its
+  line, fill them all in one run (see *Batch* below).
 - **SFX** – a dedicated helper for sound-effect lettering: textures, double and
   soft/blurred outlines, rotation, its own presets (see *SFX helper* below).
 - **Fonts** – star fonts and sort them into your own categories (see *Font
@@ -109,8 +112,19 @@ size that fits the current selection.
 
 - **Mode bar:** **Balanced** (evenly balanced lines), **Round** (fit the
   ellipse of a round bubble), **Tall** (more lines / narrow block first),
-  **Wide** (fewer lines first) — plus **Hyphenation** as a toggle that splits
-  long words at correct syllable points so narrower shapes become possible.
+  **Wide** (fewer lines first). Two independent toggles sit alongside:
+  **Hyphenation** splits long words at correct syllable points so narrower
+  shapes become possible, and **De-hyphenate** rejoins words the *source* text
+  broke across a line (e.g. `embar- rassing` → `embarrassing`, but keeping a
+  real compound like `Spider- Man` → `Spider-Man`) before reshaping — the two
+  can be combined to clean up badly wrapped source text and re-break it cleanly.
+- The recommended (★) card is the **best-looking** shape, not merely the
+  largest that fits. Candidates are ranked by a typographic quality score that
+  rewards a comfortable fill of the bubble, even/balanced lines and a good
+  block-vs-bubble aspect, **prefers line breaks that land at clause punctuation**
+  (`. , ; : ! ?`), keeps lines within a comfortable reading measure, and avoids a
+  cramped edge-to-edge block, a lone stub line, or a leftover last line.
+  Near-identical shapes are dropped so the cards are all distinct choices.
 - **Numbered cards** (2 columns): click one to select it (blue frame), or press
   **1–9/0**. **Apply** inserts the selected shape as a text layer, **Apply +
   next** also advances to the next unit, **Shift+number** does both at once.
@@ -123,6 +137,57 @@ size that fits the current selection.
   (recognized by the `TypeR NN — ` name prefix, so your own layers are never
   touched). This applies to the normal Insert too and can be turned off with
   **"Replace previously inserted line"** on the **Setup** tab (default: on).
+
+---
+
+## Batch: fill a whole page in one go
+
+The everyday loop places one line at a time. The **Batch** tab does a whole page
+instead: mark the bubbles, pair each with its line, press one button, and every
+line is set into its bubble with the shape TextShapR recommends. It can be
+hidden with **Enable Batch tab** in Setup.
+
+1. **Mark the bubbles.** Open the **Batch** tab — the open page appears in the
+   view. Then either drag boxes onto it with **Edit boxes**, or use the
+   selection: hold **Shift** and drag the marquee over one balloon after
+   another, then press **From selection** — a selection made of several parts is
+   split into one box per part.
+   - **Toggle shape** flips a box round ↔ rectangular, **Mark SFX** turns it
+     into a sound effect (those are skipped when lines are assigned), and
+     **Set order** lets you click the boxes into the order you want.
+2. **Pair the lines.** **Assign lines** maps the script's lines onto the bubbles
+   1:1 in the order they are numbered. SFX boxes are skipped without using up a
+   line.
+   - With **This page only** on (default) the batch draws from the current
+     page's lines; switch it off to use the whole script.
+   - The table is editable: pick a different line for any bubble, or use
+     **Insert gap** / **Remove gap** when a bubble carries no dialogue and
+     everything below has shifted by one.
+   - Faster than the dropdowns: select rows (Ctrl/Shift, or **Select all**) and
+     press **Take current line** — they get the Type tab's current line and the
+     ones after it. Or switch on **Assign by clicking** and simply click the
+     lines in the Type tab's table: each one goes to the selected bubble and the
+     batch steps to the next. The filter box narrows what the dropdowns offer.
+   - Clicking a row highlights that bubble in the page view.
+3. **A line that should look different (optional).** Switch on **Style per
+   line** and the table grows a **Font** and a **Preset** column. Leave them
+   empty and the line uses the style from the Type/Style tabs, exactly as
+   before; fill one in and just that line whispers, shouts, or reads as a sign.
+   Select several rows and press **Assign current style** to stamp what you have
+   set up in the Type/Style tabs onto all of them, or **Use current style** to
+   take the override away again. Your own settings are restored when the run
+   ends.
+4. **Fill all bubbles.** Each bubble is fitted individually and gets the ★
+   shape. **Stop** interrupts the run; what is already placed stays.
+   - **Review each** pauses at every bubble with the shape cards up so you pick
+     the shape yourself — applying one continues the run.
+   - **Undo batch** deletes exactly the layers the last run created, and nothing
+     else on the page.
+
+Because the batch uses the normal insert path, everything else applies
+unchanged: the `TypeR NN — …` layer naming, the green "done" marks, replacing a
+line instead of stacking it, and **Match size** on the TextShapR tab — worth
+switching on for a batch so the whole page keeps one text size.
 
 ---
 
@@ -140,9 +205,10 @@ You can keep several scripts open at once. Each loaded script gets its own
   last one leaves an empty *Untitled* tab.
 - Tabs show the **file name**; **double-click** a tab to give it your own name.
   The full path is shown as a tooltip. Tabs can be dragged to reorder.
-- **Remembered across restarts:** the open script tabs — their order, text,
-  parsed JP/EN units, current line and green "done" marks — are restored when
-  Krita starts again, so you pick up exactly where you left off.
+- **Remembered across restarts:** the open tabs — their order, the script text,
+  the parsed units, the current line and the green "done" marks — are saved
+  automatically and reopened the next time you start Krita. The files are **not**
+  re-read, so your progress is kept exactly. (Empty *Untitled* tabs are skipped.)
 
 Note: re-running *Analyze* on a tab re-parses it and resets that tab's "done"
 marks.
@@ -264,13 +330,33 @@ stray markup inside a bubble:
   turning the outline off switches its second outline off too. Widths are exact
   (a width of 10 is 10 px, not doubled) and line spacing is fully unclamped.
 - **Presets** in three levels – **Manga → Character → style preset** – that can
-  be saved, switched, imported and exported as `.json`. Not every manga needs
+  be saved, switched, imported and exported as `.json`, or **imported straight
+  from an Excel font guide** (a sheet with a *Character* column and a column per
+  style — each cell is the font — becomes a preset per character; via the **⋯**
+  menu next to the preset list). Not every manga needs
   per-character fonts: turning **"Organize presets by character"** off (Setup
   tab) hides the character level, and the preset dropdown directly lists **all
   text presets of the manga** (duplicate names are shown as
   `Name (Character)`). This is only a view – the stored data and
   import/export format stay the same, so you can switch back and forth
   freely; new presets are then saved under the manga's default character.
+- **Preset keybinds** – give a style a key and press it when the speaker
+  changes, instead of walking the character and preset dropdowns every time.
+  The field sits under the preset list: select a preset, press the combination,
+  done — the key then shows up next to that preset as
+  `Normal Talk  [Ctrl+Alt+2]`. Pressing it switches the **character and the
+  style together**, so `Hizashi → Kuromiya` is one key — and it works with the
+  **canvas focused**, without clicking into the docker first. Typing is never
+  swallowed: while a text field has the focus, a binding without Ctrl/Alt/Meta
+  is left alone. Keybinds belong to the **manga**, so the same handful of keys
+  is free again in the next series; one key per style and one style per key, so
+  re-using a key simply moves it. Prefer a modifier (`Ctrl+Alt+1` …): a bare
+  letter collides with Krita's own tool shortcuts.
+- **Batch placement (Batch tab)** – mark a page's bubbles, pair each with its
+  line and fill them all in one run, each fitted individually with the ★ shape
+  — with a review mode that stops at every bubble, optional per-line font and
+  preset overrides, and an **Undo batch** that removes exactly what the run
+  created (see *Batch* above).
 - **Progress tracking:** inserted lines are marked green in the table; each
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
@@ -361,6 +447,17 @@ installed; everything ships with the plugin. Pick the language in the
 offered); “Auto” uses the interface language when its patterns exist, otherwise
 a small accent heuristic, otherwise English.
 
+### De-hyphenation (the inverse)
+
+Source scripts sometimes already contain hyphenated line breaks (from OCR or an
+earlier typeset), e.g. `embar-` / `rassing`. The **De-hyphenate** toggle in
+TextShapR rejoins these before reshaping, so old break points don't get frozen
+into the new bubble: `embar- rassing` → `embarrassing`. A capitalised
+continuation is treated as a real compound and kept hyphenated
+(`Spider- Man` → `Spider-Man`), and an ordinary in-word hyphen (`X-ray`) is left
+alone. Combine it with **Hyphenation** to strip bad source breaks and re-break
+the text cleanly for the current bubble.
+
 ---
 
 ## Project layout
@@ -369,11 +466,30 @@ a small accent heuristic, otherwise English.
 | --- | --- |
 | `typer_kr/typer_kr.py` | Docker UI, readers, text-layer insertion |
 | `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
-| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation**, **TextShapR shape candidates** |
+| `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation / de-hyphenation**, **TextShapR shape candidates + quality scoring** |
+| `typer_kr/bubbles.py` | Bubble geometry: reading order, round/rect shape, bubble↔line mapping (the Batch tab) |
+| `typer_kr/drivefs.py` | The document id behind a `.gdoc` Google Drive refuses to read |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
+| `typer_kr/sfx/` | The SFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
 | `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |
 | `typer_kr.desktop` | Krita plugin descriptor |
+
+### Tests
+
+Run the whole suite from the `TypeR-Krita` folder (no real Krita needed; PyQt is
+only used by the integration part):
+
+```
+python run_tests.py
+```
+
+It runs static checks (`py_compile`, `pyflakes`, plus a guard against
+PyQt6-incompatible spellings) and six suites — pure layout and script logic,
+metamorphic/property/boundary/regression checks, SVG structure + i18n integrity,
+font favourites, tolerant font-family matching, and a Krita-stub integration
+suite that drives the real insert path, font picker, keybinds and session
+persistence headless.
 
 All code comments and docstrings are in English. The user interface is
 available in **English, German, Spanish, French, Portuguese and Italian**
