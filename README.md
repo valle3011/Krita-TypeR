@@ -49,44 +49,46 @@ Then, however you installed:
    **Settings → Configure Krita → Python Plugin Manager → "TypeR for Krita"**.
 2. Restart Krita and open the docker via **Settings → Dockers → TypeR for Krita**.
 
-See [`TypeR-Krita/README.md`](TypeR-Krita/README.md) for the full manual.
-
 ---
 
 ## The docker: tabs
 
 The docker is organized into tabs so the everyday workflow stays uncluttered —
-nothing was removed, everything is one click away. The three core tabs are
-always present; the extra tabs can be shown or hidden on the **Setup** tab.
-
-**Core**
+nothing was removed, everything is one click away. **Type**, **Style** and
+**Setup** are always there; the rest can be switched on and off under
+**⚗ Experimental** on the Setup tab (all on by default).
 
 - **Type** – the everyday loop: load script, pick a line in the JP/EN table,
   navigate, edit the active line, pick font + color, live preview, the preset
-  picker (**Manga → Character → style**, each style assignable to a
-  **keybind**), **Insert** and **TextShapR**.
+  picker (**Manga → Character → style**, with save/delete/import/export in the
+  **⋯** menu beside it and a **keybind** per style), **Insert** and
+  **TextShapR**.
 - **Style** – bold/italic/underline, alignment, letter case, smart punctuation,
-  size / padding / line spacing, **outline** (inner + a second/outer outline)
-  and **shadow** (each with a small settings popup), auto-fit, round bubble,
-  hyphenation.
+  size / padding / line spacing, outline and shadow (each with a small
+  settings popup), auto-fit, round bubble, hyphenation. **Line spacing is
+  unclamped** – set it to `0` to stack lines on one baseline or well past `100`
+  to spread them as far apart as you like.
 - **Setup** – interface language, the "Layout & sizes" panel, behavior toggles
   like **"Replace previously inserted line"** (re-inserting a line replaces its
   earlier layer instead of stacking a copy; default on) and **"Organize presets
-  by character"** (default on), plus the switches that show/hide the extra tabs.
-
-**Extra (toggle on the Setup tab)**
-
-- **TextShapR** – pick from several auto-fitted shape candidates for the current
-  line (see *TextShapR* below).
+  by character"** (see *Presets* below; default on), plus the
+  **⚗ Experimental** switches that show and hide the tabs below.
 - **Batch** – set a whole page at once: mark the bubbles, pair each with its
   line, fill them all in one run (see *Batch* below).
+- **TextShapR** – pick from several auto-fitted shape candidates for the current
+  line (see *TextShapR* below).
 - **SFX** – a dedicated helper for sound-effect lettering: textures, double and
   soft/blurred outlines, rotation, its own presets (see *SFX helper* below).
 - **Fonts** – star fonts and sort them into your own categories (see *Font
   favourites* below).
 
+A **BubblR** tab with automatic bubble detection exists in the source but is
+locked off in a release build, so you will not see it or its switch. The Batch
+tab never needed it.
+
 The last-used tab is remembered across restarts, and tabs can be **renamed and
 reordered** (enable *customize* on the Setup tab, then drag / double-click).
+Panels can be moved between tabs too — see *Layout & sizes*.
 
 ## Quick start (auto mode – recommended)
 
@@ -144,14 +146,18 @@ size that fits the current selection.
 
 The everyday loop places one line at a time. The **Batch** tab does a whole page
 instead: mark the bubbles, pair each with its line, press one button, and every
-line is set into its bubble with the shape TextShapR recommends. It can be
-hidden with **Enable Batch tab** in Setup.
+line is set into its bubble with the shape TextShapR recommends.
+
+The tab stands on its own — it shows the open page, carries its own marking
+tools, and needs no automatic bubble detection at all. It can be hidden with
+**Enable Batch tab** in Setup.
 
 1. **Mark the bubbles.** Open the **Batch** tab — the open page appears in the
    view. Then either drag boxes onto it with **Edit boxes**, or use the
    selection: hold **Shift** and drag the marquee over one balloon after
    another, then press **From selection** — a selection made of several parts is
-   split into one box per part.
+   split into one box per part. (A development build also has **Detect**, which
+   proposes the boxes automatically; a release build does not.)
    - **Toggle shape** flips a box round ↔ rectangular, **Mark SFX** turns it
      into a sound effect (those are skipped when lines are assigned), and
      **Set order** lets you click the boxes into the order you want.
@@ -161,8 +167,8 @@ hidden with **Enable Batch tab** in Setup.
    - With **This page only** on (default) the batch draws from the current
      page's lines; switch it off to use the whole script.
    - The table is editable: pick a different line for any bubble, or use
-     **Insert gap** / **Remove gap** when a bubble carries no dialogue and
-     everything below has shifted by one.
+     **Insert gap** / **Remove gap** when a bubble was detected that carries no
+     dialogue and everything below has shifted by one.
    - Faster than the dropdowns: select rows (Ctrl/Shift, or **Select all**) and
      press **Take current line** — they get the Type tab's current line and the
      ones after it. Or switch on **Assign by clicking** and simply click the
@@ -205,13 +211,13 @@ You can keep several scripts open at once. Each loaded script gets its own
   last one leaves an empty *Untitled* tab.
 - Tabs show the **file name**; **double-click** a tab to give it your own name.
   The full path is shown as a tooltip. Tabs can be dragged to reorder.
+
 - **Remembered across restarts:** the open tabs — their order, the script text,
   the parsed units, the current line and the green "done" marks — are saved
   automatically and reopened the next time you start Krita. The files are **not**
   re-read, so your progress is kept exactly. (Empty *Untitled* tabs are skipped.)
 
-Note: re-running *Analyze* on a tab re-parses it and resets that tab's "done"
-marks.
+Re-running *Analyze* on a tab re-parses it and resets that tab's "done" marks.
 
 ## Pages ("Page N" markers)
 
@@ -324,11 +330,12 @@ stray markup inside a bubble:
   as the inserted layer.
 - **Styling:** bold / italic / underline, per-word bold via `**…**`, horizontal
   and vertical alignment, letter case (Normal / UPPERCASE / lowercase), smart
-  punctuation, line spacing and inner padding.
-- **Outline** and **drop shadow** for readability on busy backgrounds, including
-  a **second (outer) outline** for the classic white/black/white double edge —
-  turning the outline off switches its second outline off too. Widths are exact
-  (a width of 10 is 10 px, not doubled) and line spacing is fully unclamped.
+  punctuation, **freely adjustable line spacing** (from `0` to far above `100`%)
+  and inner padding.
+- **Outline** (with an optional **second, outer outline** for a double rim —
+  e.g. white outside, black inside, coloured text on top) and a **drop shadow**
+  for readability on busy backgrounds. The outline width is the *visible*
+  thickness; turning the outline off turns the second one off with it.
 - **Presets** in three levels – **Manga → Character → style preset** – that can
   be saved, switched, imported and exported as `.json`, or **imported straight
   from an Excel font guide** (a sheet with a *Character* column and a column per
@@ -342,21 +349,16 @@ stray markup inside a bubble:
   freely; new presets are then saved under the manga's default character.
 - **Preset keybinds** – give a style a key and press it when the speaker
   changes, instead of walking the character and preset dropdowns every time.
-  The field sits under the preset list: select a preset, press the combination,
-  done — the key then shows up next to that preset as
+  The field sits under the preset list: select a preset, press the
+  combination, done — the key then shows up next to that preset as
   `Normal Talk  [Ctrl+Alt+2]`. Pressing it switches the **character and the
-  style together**, so `Hizashi → Kuromiya` is one key — and it works with the
-  **canvas focused**, without clicking into the docker first. Typing is never
-  swallowed: while a text field has the focus, a binding without Ctrl/Alt/Meta
-  is left alone. Keybinds belong to the **manga**, so the same handful of keys
-  is free again in the next series; one key per style and one style per key, so
-  re-using a key simply moves it. Prefer a modifier (`Ctrl+Alt+1` …): a bare
-  letter collides with Krita's own tool shortcuts.
-- **Batch placement (Batch tab)** – mark a page's bubbles, pair each with its
-  line and fill them all in one run, each fitted individually with the ★ shape
-  — with a review mode that stops at every bubble, optional per-line font and
-  preset overrides, and an **Undo batch** that removes exactly what the run
-  created (see *Batch* above).
+  style together**, so `Hizashi → Kuromiya` is one key — and it works with
+  the **canvas focused**, without clicking into the docker first. Typing is
+  never swallowed: while a text field has the focus, a binding without
+  Ctrl/Alt/Meta is left alone. Keybinds belong to the **manga**, so the same
+  handful of keys is free again in the next series; one key per style and
+  one style per key, so re-using a key simply moves it. Prefer a modifier
+  (`Ctrl+Alt+1` …): a bare letter collides with Krita's own tool shortcuts.
 - **Progress tracking:** inserted lines are marked green in the table; each
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
@@ -467,10 +469,10 @@ the text cleanly for the current bubble.
 | `typer_kr/typer_kr.py` | Docker UI, readers, text-layer insertion |
 | `typer_kr/langpair.py` | Language detection, JP/EN pairing, **Page** markers |
 | `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation / de-hyphenation**, **TextShapR shape candidates + quality scoring** |
-| `typer_kr/bubbles.py` | Bubble geometry: reading order, round/rect shape, bubble↔line mapping (the Batch tab) |
+| `typer_kr/bubbles.py` | BubblR: speech-bubble detection, reading order, round/rect shape, bubble↔unit mapping |
 | `typer_kr/drivefs.py` | The document id behind a `.gdoc` Google Drive refuses to read |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
-| `typer_kr/sfx/` | The SFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
+| `typer_kr/sfx/` | The MangaSFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
 | `typer_kr/Manual.html` | In-app manual (shown by Krita's plugin manager) |
 | `typer_kr.desktop` | Krita plugin descriptor |
