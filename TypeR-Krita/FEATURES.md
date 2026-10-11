@@ -419,10 +419,30 @@ A key that switches straight to "Kuromiya, normal talk" — character and
 style in one press — instead of two dropdowns per change of speaker.
 
 - `langpair.py` → `clean_keybinds` / `set_keybind` / `drop_keybinds` /
-  `keybind_for` / `keybind_target` / `keybinds_of` (Qt-free, tested)
+  `keybind_for` / `keybind_target` / `keybinds_of`, and for sequences
+  `keybind_steps` / `keybind_index` / `keybind_match` (Qt-free, tested)
 - `typer_kr.py` → `PresetKeyHook` / `handle_preset_key`, `_trigger_keybind`,
   the `QKeySequenceEdit` row under the preset dropdown
 - Stored in kritarc as `presetKeys`: `{manga: {key: [character, preset]}}`
+
+**A binding can be a sequence** — `A` for Akarie, `A, B` for Akarie bold —
+which is what makes bare letters usable: a family of styles shares a leading
+key instead of needing a different modifier combination each. The store
+keeps each binding as a tuple of presses (`keybind_steps`) and the hook
+matches press by press, so the comparison does not depend on how Qt spells
+the separator. `keybind_match` answers both halves of the question at once:
+whether the presses so far *are* a binding, and whether a longer one
+continues past them.
+
+Both can be true, which is the interesting case. Rather than make every
+single press wait out a timeout to find out whether a second one follows,
+the shorter style is applied straight away and the longer one overwrites it
+when its next press arrives — applying a preset only moves the docker's own
+controls, so doing it twice is free. The one thing that would notice is the
+usage counter the default-preset picker learns from, so the superseded count
+is withdrawn again (`_record_preset_usage(..., n=-1)`). A press that
+continues nothing ends the sequence and is passed on untouched; a sequence
+left half-typed expires after `CHORD_TIMEOUT_MS`.
 
 **Per manga, not per plugin**, because the same few keys have to be free
 again in the next series, where those characters do not exist. **One key

@@ -738,8 +738,15 @@ def default_preset_for(preset_names, usage=None):
 # The binding belongs to a *manga*: the same handful of keys has to be free
 # again in the next series, where those characters do not exist. Stored as
 # ``{manga: {key: [character, preset]}}`` — the key string is whatever Qt
-# renders a shortcut as ("Ctrl+Alt+1"), kept verbatim so it can go straight
-# back into a QKeySequence.
+# renders a shortcut as, kept verbatim so it can go straight back into a
+# QKeySequence.
+#
+# A key can be a *sequence* of presses, which Qt spells comma-separated:
+# ``"A"`` is one press, ``"A, B"`` is A and then B. That is what lets a family
+# of styles share a leading key — ``A`` for Akarie, ``A, B`` for Akarie bold —
+# so the store keeps each binding's presses as a tuple of steps and the key
+# hook matches press by press. Comparing steps rather than the whole string
+# also keeps the matching independent of how Qt spells the separator.
 #
 # Two rules keep the mapping a mapping, in both directions: one key drives one
 # preset, and one preset answers to one key. Binding a key that is taken moves
@@ -818,6 +825,44 @@ def keybind_for(binds, manga, char, name):
         if str(ref[0]) == str(char) and str(ref[1]) == str(name):
             return k
     return ""
+
+
+def keybind_steps(key):
+    """A binding's key as its individual presses.
+
+    ``"Ctrl+Alt+1"`` -> ``("Ctrl+Alt+1",)``, ``"A, B"`` -> ``("A", "B")``.
+    """
+    return tuple(p.strip() for p in str(key or "").split(",") if p.strip())
+
+
+def keybind_index(binds, manga):
+    """``{steps tuple: (character, preset)}`` for one manga.
+
+    The form the key hook matches against: it sees one press at a time and has
+    to know both whether what it has is a binding and whether a longer one
+    starts the same way.
+    """
+    out = {}
+    for key, ref in (binds.get(str(manga)) or {}).items():
+        steps = keybind_steps(key)
+        if steps:
+            out[steps] = (str(ref[0]), str(ref[1]))
+    return out
+
+
+def keybind_match(index, steps):
+    """What the presses so far amount to: ``(ref, more)``.
+
+    `ref` is the ``(character, preset)`` these presses are exactly bound to, or
+    None. `more` says whether some binding continues past them, i.e. whether it
+    is worth waiting for another press. Both can be true at once - that is the
+    point of `A` / `A, B` - and the caller decides what to do with that; both
+    false means the presses are nothing to do with TypeR.
+    """
+    steps = tuple(steps)
+    n = len(steps)
+    more = any(k[:n] == steps and len(k) > n for k in index)
+    return index.get(steps), more
 
 
 def keybind_target(binds, manga, key):

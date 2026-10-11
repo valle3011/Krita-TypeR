@@ -1874,6 +1874,89 @@ if imported:
         _kd.preset_key_edit.clearFocus()
         _app.processEvents()
 
+        # --- sequences: A for Akarie, A then B for Akarie bold -----------
+        import time as _time
+        _kd._groups["Serie"]["Akarie"] = {"Normal": {"size": 12},
+                                          "Bold": {"size": 40}}
+        _kd._keybinds = {}
+        _kd._reset_chord()
+        if _app.focusWidget() is not None:
+            _app.focusWidget().clearFocus()        # bare keys, so no text field
+            _app.processEvents()
+        _kd._char = "Akarie"
+        _kd._refresh_chars_combo(select="Akarie")
+        _kd._refresh_presets_combo(select="Normal")
+        _bind(_kd, "A")
+        _kd._refresh_presets_combo(select="Bold")
+        _bind(_kd, "A, B")
+        check("a sequence is stored with both of its presses",
+              _kd._keybinds["Serie"] == {"A": ["Akarie", "Normal"],
+                                         "A, B": ["Akarie", "Bold"]})
+        check("the dropdown shows the sequence as Qt spells it",
+              any("[A, B]" in _kd.preset_combo.itemText(i)
+                  for i in range(_kd.preset_combo.count())))
+
+        def _press(key):
+            return _key_ev(_QEvent.Type.KeyPress, key,
+                           _Qt.KeyboardModifier.NoModifier)
+
+        _A, _B, _Z = _Qt.Key.Key_A, _Qt.Key.Key_B, _Qt.Key.Key_Z
+        _was = int(_kd._preset_usage.get("Serie", {})
+                   .get("Akarie", {}).get("Normal", 0))
+        _kd.size_spin.setValue(11)
+        check("the first press applies the short binding straight away",
+              _kd._key_hook.eventFilter(None, _press(_A)) is True
+              and _kd.size_spin.value() == 12)
+        check("and keeps the sequence open for a second press",
+              _kd._chord == ["A"] and _kd._chord_timer.isActive())
+        check("the second press switches to the longer binding",
+              _kd._key_hook.eventFilter(None, _press(_B)) is True
+              and _kd.size_spin.value() == 40 and _kd._chord == [])
+        check("the style passed through on the way is not counted as used",
+              int(_kd._preset_usage["Serie"]["Akarie"].get("Normal", 0)) == _was)
+        check("the style actually asked for is",
+              int(_kd._preset_usage["Serie"]["Akarie"].get("Bold", 0)) >= 1)
+
+        # a press that continues nothing ends the sequence and is Krita's again
+        _kd.size_spin.setValue(11)
+        _kd._key_hook.eventFilter(None, _press(_A))
+        check("a press that continues nothing is left to Krita",
+              _kd._key_hook.eventFilter(None, _press(_Z)) is False
+              and _kd._chord == [])
+        check("what the first press applied stays applied",
+              _kd.size_spin.value() == 12)
+
+        _kd._key_hook.eventFilter(None, _press(_A))
+        check("pressing the first key again restarts the sequence",
+              _kd._key_hook.eventFilter(None, _press(_A)) is True
+              and _kd._chord == ["A"])
+
+        # a prefix that is not a binding of its own: nothing to apply yet
+        _kd._keybinds = {"Serie": {"A, B": ["Akarie", "Bold"]}}
+        _kd._reset_chord()
+        _kd.size_spin.setValue(11)
+        check("a prefix that is no binding is swallowed without applying",
+              _kd._key_hook.eventFilter(None, _press(_A)) is True
+              and _kd.size_spin.value() == 11 and _kd._chord == ["A"])
+        check("its second press applies the sequence",
+              _kd._key_hook.eventFilter(None, _press(_B)) is True
+              and _kd.size_spin.value() == 40)
+
+        # and it gives up on its own if the second press never comes
+        _saved_timeout = TK.CHORD_TIMEOUT_MS
+        TK.CHORD_TIMEOUT_MS = 50
+        _kd._reset_chord()
+        _kd._key_hook.eventFilter(None, _press(_A))
+        _deadline = _time.time() + 3
+        while _kd._chord and _time.time() < _deadline:
+            _app.processEvents()
+            _time.sleep(0.01)
+        check("a half-typed sequence gives up after the timeout",
+              _kd._chord == [])
+        TK.CHORD_TIMEOUT_MS = _saved_timeout
+
+        _kd._keybinds = {}
+        _kd._reset_chord()
         _kd._char = "Kuromiya"
         _kd._refresh_chars_combo(select="Kuromiya")
         _kd._refresh_presets_combo(select="Normal Talk")

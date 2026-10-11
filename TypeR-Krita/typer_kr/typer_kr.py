@@ -134,7 +134,18 @@ except Exception:
 # or is someone typing?" - accepting it takes the key away from Krita's own
 # actions - and the KeyPress that follows, which is where the preset is
 # actually applied.
+#
+# Bindings can be sequences (A, then B), so the match happens one press at a
+# time: a press that only starts a longer binding is swallowed and remembered
+# until the next one completes something, ends the sequence, or CHORD_TIMEOUT_MS
+# passes.
 # ---------------------------------------------------------------------------
+
+#: How long a half-typed sequence waits for its next press. Any press that
+#: cannot continue it ends it immediately, so this only has to cover a pause
+#: between two deliberate presses.
+CHORD_TIMEOUT_MS = 1200
+
 
 def key_event_string(ev):
     """Qt's own spelling of a key event's combination, e.g. "Ctrl+Alt+1".
@@ -490,11 +501,16 @@ LANG = {
         "preset_key_tip": ("Press a key combination to switch to this "
                            "character + style from anywhere in Krita — no "
                            "need to walk the dropdowns when the speaker "
-                           "changes.\n\nKeybinds belong to this manga, so "
+                           "changes.\n\nTwo presses in a row become a "
+                           "sequence: A for Akarie, A then B for Akarie bold. "
+                           "Both can be bound at once — A applies Akarie "
+                           "straight away and B right after switches it to the "
+                           "bold one.\n\nKeybinds belong to this manga, so "
                            "the same keys are free again in the next series. "
-                           "One key per style, one style per key.\n\nUse a "
-                           "modifier (Ctrl+Alt+1 …): a bare letter will "
-                           "collide with Krita’s own tool shortcuts."),
+                           "One key per style, one style per key.\n\nA bare "
+                           "letter takes that key away from Krita’s own tool "
+                           "shortcut while this manga is selected; a modifier "
+                           "(Ctrl+Alt+1 …) never collides."),
         "preset_key_clear_tip": "Remove this keybind",
         "st_key_set": "{key} now switches to ‘{name}’.",
         "st_key_moved": "{key} switches to ‘{name}’ now (it was on "
@@ -1316,13 +1332,18 @@ LANG = {
         "preset_key_tip": ("Tastenkombination drücken, um von überall in "
                            "Krita auf diese Figur + diesen Stil zu wechseln "
                            "— kein Klicken durch die Auswahllisten, wenn "
-                           "jemand anderes spricht.\n\nKürzel gehören "
-                           "zu diesem Manga, in der nächsten Serie sind "
-                           "dieselben Tasten also wieder frei. Ein Kürzel "
-                           "pro Stil, ein Stil pro Kürzel.\n\nNimm eine "
-                           "Modifikatortaste "
-                           "(Strg+Alt+1 …): ein bloßer Buchstabe kollidiert "
-                           "mit Kritas eigenen Werkzeug-Kürzeln."),
+                           "jemand anderes spricht.\n\nZwei Tasten "
+                           "hintereinander werden eine Folge: A für Akarie, "
+                           "A dann B für Akarie fett. Beides geht "
+                           "gleichzeitig — A wendet sofort Akarie an, ein "
+                           "direkt folgendes B schaltet auf die fette "
+                           "Variante.\n\nKürzel gehören zu diesem Manga, "
+                           "in der nächsten Serie sind dieselben Tasten also "
+                           "wieder frei. Ein Kürzel pro Stil, ein Stil pro "
+                           "Kürzel.\n\nEin bloßer Buchstabe nimmt diese "
+                           "Taste Kritas eigenem Werkzeug-Kürzel weg, solange "
+                           "dieses Manga gewählt ist; eine Modifikatortaste "
+                           "(Strg+Alt+1 …) kollidiert nie."),
         "preset_key_clear_tip": "Dieses Kürzel entfernen",
         "st_key_set": "{key} wechselt jetzt zu ‚{name}‘.",
         "st_key_moved": "{key} wechselt jetzt zu ‚{name}‘ (lag vorher auf "
@@ -5648,6 +5669,12 @@ class TyperDocker(DockWidget):
         # installed once the docker's state is complete.
         self._keybinds = self._load_keybinds()
         self._key_hook = None
+        # a sequence binding in progress: the presses so far, the preset a
+        # shorter binding already applied on the way through (so a longer one
+        # can take its usage count back), and the timeout that gives up
+        self._chord = []
+        self._chord_applied = None
+        self._chord_timer = None
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
         # session list stay decoupled (reordering tabs is harmless). The live
@@ -7396,14 +7423,19 @@ class TyperDocker(DockWidget):
         except Exception:
             pass
 
-    def _record_preset_usage(self, manga, char, preset):
+    def _record_preset_usage(self, manga, char, preset, n=1):
         """Count that `preset` was used for (manga, char) so the default-preset
-        picker can learn the most-used style over time."""
+        picker can learn the most-used style over time.
+
+        `n` can be negative to take a count back: a sequence binding applies
+        the shorter style on its way to the longer one, and that was never the
+        style the user asked for.
+        """
         if not (manga and char and preset):
             return
         by_manga = self._preset_usage.setdefault(manga, {})
         by_char = by_manga.setdefault(char, {})
-        by_char[preset] = int(by_char.get(preset, 0)) + 1
+        by_char[preset] = max(0, int(by_char.get(preset, 0)) + n)
         self._save_preset_usage()
 
     def _apply_default_preset(self):
@@ -9902,9 +9934,10 @@ class TyperDocker(DockWidget):
             self._sync_preset_key_edit()
             self._set_status(self._tr("st_preset_none"), error=True)
             return
-        # QKeySequenceEdit records up to four combinations; a binding is one
-        # key press, so only the first counts.
-        key = self.preset_key_edit.keySequence().toString().split(",")[0].strip()
+        # Whatever the field recorded, sequence and all: QKeySequenceEdit
+        # collects up to four presses and finishes on Qt's own input interval,
+        # so "A" stays one press and a deliberate A-then-B becomes "A, B".
+        key = self.preset_key_edit.keySequence().toString().strip()
         if not key:
             # editingFinished also fires on a plain focus loss, so an empty
             # field is only an unbind when there was something to unbind
@@ -9943,6 +9976,20 @@ class TyperDocker(DockWidget):
         self._key_hook = PresetKeyHook(self)
         app.installEventFilter(self._key_hook)
 
+    def _start_chord_timer(self):
+        """Give up on a half-typed sequence after a pause."""
+        if self._chord_timer is None:
+            self._chord_timer = QTimer(self.widget() or self)
+            self._chord_timer.setSingleShot(True)
+            self._chord_timer.timeout.connect(self._reset_chord)
+        self._chord_timer.start(CHORD_TIMEOUT_MS)
+
+    def _reset_chord(self):
+        self._chord = []
+        self._chord_applied = None
+        if self._chord_timer is not None:
+            self._chord_timer.stop()
+
     def handle_preset_key(self, ev, et):
         """One key seen anywhere in Krita. True = swallowed by TypeR.
 
@@ -9952,15 +9999,27 @@ class TyperDocker(DockWidget):
         """
         if ev.isAutoRepeat():
             return False
-        binds = self._keybinds.get(self._group) or {}
-        if not binds:
+        index = LP.keybind_index(self._keybinds, self._group)
+        if not index:
             return False
         win = self.window()
         if win is None or not win.isVisible():
-            return False                            # docker closed / torn down
-        ref = binds.get(key_event_string(ev))
-        if not ref:
             return False
+        step = key_event_string(ev)
+        if not step:
+            return False
+        steps = self._chord + [step]
+        ref, more = LP.keybind_match(index, steps)
+        if ref is None and not more and self._chord:
+            # the sequence in progress leads nowhere, but this press may still
+            # start one of its own - which is also how pressing the same first
+            # key twice restarts instead of dead-ending
+            self._reset_chord()
+            steps = [step]
+            ref, more = LP.keybind_match(index, steps)
+        if ref is None and not more:
+            self._reset_chord()
+            return False                            # nothing of ours
         focus = QApplication.focusWidget()
         if in_key_recorder(focus):
             return False                            # a key being recorded
@@ -9968,14 +10027,32 @@ class TyperDocker(DockWidget):
             return False                            # that is typing, not a key
         if et == QEvent.Type.ShortcutOverride:
             # "not a shortcut - send it on as a key press", which takes it
-            # away from Krita's own actions and hands it to the branch below
+            # away from Krita's own actions and hands it to the branch below.
+            # No state changes here: the KeyPress for this same key follows.
             ev.accept()
             return False
-        self._trigger_keybind(str(ref[0]), str(ref[1]))
+        if ref is not None:
+            # When this press both completes a binding and starts a longer one,
+            # the shorter style is applied now and the longer one overwrites it
+            # if its next press arrives - so a plain single press stays instant
+            # instead of waiting out the timeout.
+            self._trigger_keybind(ref[0], ref[1],
+                                  supersedes=self._chord_applied)
+        if more:
+            self._chord = steps
+            self._chord_applied = ref
+            self._start_chord_timer()
+        else:
+            self._reset_chord()
         return True
 
-    def _trigger_keybind(self, char, name):
-        """A bound key was pressed: switch to that character and style."""
+    def _trigger_keybind(self, char, name, supersedes=None):
+        """A bound key was pressed: switch to that character and style.
+
+        `supersedes` is the (character, preset) a shorter binding of the same
+        sequence applied a moment ago; its usage count is taken back, since it
+        was never the style being asked for.
+        """
         presets = self._cur_chars().get(char, {})
         if name not in presets:
             # renamed or deleted behind the binding's back — drop the dead key
@@ -9991,6 +10068,9 @@ class TyperDocker(DockWidget):
             self._refresh_chars_combo(select=char)
         self._apply_preset(presets[name])
         self._record_preset_usage(self._group, char, name)
+        if supersedes and tuple(supersedes) != (char, name):
+            self._record_preset_usage(self._group, supersedes[0],
+                                      supersedes[1], n=-1)
         self._save_last_manga()
         self._refresh_presets_combo(
             select=name if self._by_char() else (char, name))

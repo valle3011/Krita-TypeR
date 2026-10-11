@@ -371,8 +371,21 @@ stray markup inside a bubble:
   never swallowed: while a text field has the focus, a binding without
   Ctrl/Alt/Meta is left alone. Keybinds belong to the **manga**, so the same
   handful of keys is free again in the next series; one key per style and
-  one style per key, so re-using a key simply moves it. Prefer a modifier
-  (`Ctrl+Alt+1` …): a bare letter collides with Krita's own tool shortcuts.
+  one style per key, so re-using a key simply moves it.
+- **Two-press sequences** – press two keys into the field one after the other
+  and the binding becomes a sequence: `A` for Akarie, `A` then `B` for Akarie
+  bold, written `[A, B]` in the list. A whole family of styles can share a
+  leading key that way, which is what makes bare letters practical instead of
+  having to remember a different modifier combination per style. **The short
+  and the long binding can both exist:** `A` applies Akarie immediately and a
+  `B` right after switches it to the bold one — so the single press is never
+  slowed down waiting to see whether a second one follows. Any key that
+  continues nothing ends the sequence and goes to Krita as usual, and a
+  sequence left half-typed gives up after about a second.
+
+  A bare letter does take that key away from Krita's own tool shortcut while
+  the manga owning it is selected. Use a modifier (`Ctrl+Alt+1` …) where that
+  matters — sequences work with those too (`Ctrl+Alt+1, B`).
 - **Progress tracking:** inserted lines are marked green in the table; each
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to
