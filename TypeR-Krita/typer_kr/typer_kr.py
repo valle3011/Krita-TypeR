@@ -185,12 +185,13 @@ def modifier_prefix(ev):
 def combo_string(ev, held):
     """What is held down right now, spelled as one binding: "Ctrl+A+B".
 
-    `held` is the set of non-modifier keys currently down, `ev` the press that
-    completed it (its modifiers are the ones that count). The key names are
-    sorted so that holding A and pressing B is the same binding as holding B
-    and pressing A - the gesture does not depend on which finger landed first.
+    `held` is the non-modifier keys currently down **in the order they were
+    pressed**, `ev` the press that completed it (its modifiers are the ones
+    that count). The order is kept rather than sorted, so "A+B" means A down
+    first and is a different binding from "B+A" - two styles can share a pair
+    of keys and be told apart by which one you reach for first.
     """
-    names = sorted(key_name(k) for k in held if key_name(k))
+    names = [n for n in (key_name(k) for k in held) if n]
     if not names:
         return ""
     prefix = modifier_prefix(ev)
@@ -227,7 +228,7 @@ class KeyChordEdit(QLineEdit):
         self.setReadOnly(True)
         self._combo = ""
         self._before = ""           # what Esc goes back to
-        self._held = set()
+        self._held = []             # in press order: that is part of the key
         self._recording = False
 
     # -- what the field holds --------------------------------------------
@@ -238,7 +239,7 @@ class KeyChordEdit(QLineEdit):
         """Show a stored binding. Does not emit - this is not a recording."""
         self._combo = str(key or "").strip()
         self._recording = False
-        self._held.clear()
+        self._held = []
         self._render()
 
     def is_recording(self):
@@ -269,9 +270,10 @@ class KeyChordEdit(QLineEdit):
             return                  # a held key, not another one
         if not self._recording:
             self._before = self._combo
-            self._held.clear()
+            self._held = []
             self._recording = True
-        self._held.add(ev.key())
+        if ev.key() not in self._held:
+            self._held.append(ev.key())
         combo = combo_string(ev, self._held)
         if combo:
             self._combo = combo     # grows as more keys go down, never shrinks
@@ -280,7 +282,7 @@ class KeyChordEdit(QLineEdit):
 
     def keyReleaseEvent(self, ev):
         if not ev.isAutoRepeat():
-            self._held.discard(ev.key())
+            self._held = [k for k in self._held if k != ev.key()]
             if self._recording and not self._held:
                 self._finish()      # the last key is up: that was the gesture
         ev.accept()
@@ -294,7 +296,7 @@ class KeyChordEdit(QLineEdit):
         if not self._recording:
             return
         self._recording = False
-        self._held.clear()
+        self._held = []
         self._render()
         self.chordRecorded.emit()
 
@@ -303,7 +305,7 @@ class KeyChordEdit(QLineEdit):
         recorded."""
         if self._recording:
             self._recording = False
-            self._held.clear()
+            self._held = []
             self._combo = self._before
             self._render()
         self.clearFocus()
@@ -651,8 +653,9 @@ LANG = {
                            "changes.\n\nClick the field and hold the "
                            "keys down together, the way you would press "
                            "Ctrl+C; letting go records it. Ordinary letters "
-                           "work too, so A+B means hold A and press B. Esc "
-                           "puts back what was there.\n\nA for Akarie and "
+                           "work too, so A+B means hold A and press B — and "
+                           "the order counts, so B+A is a different keybind. "
+                           "Esc puts back what was there.\n\nA for Akarie and "
                            "A+B for Akarie bold can both be bound: holding A "
                            "applies Akarie at once, and adding B while it is "
                            "still down switches to the bold one.\n\n"
@@ -1487,8 +1490,10 @@ LANG = {
                            "jemand anderes spricht.\n\nFeld anklicken "
                            "und die Tasten zusammen halten, so wie du Strg+C "
                            "drückst; Loslassen nimmt auf. Normale Buchstaben "
-                           "gehen auch: A+B heißt A halten und B drücken. "
-                           "Esc stellt das Vorherige wieder her.\n\nA für "
+                           "gehen auch: A+B heißt A halten und B drücken — "
+                           "und die Reihenfolge zählt, B+A ist ein anderes "
+                           "Kürzel. Esc stellt das Vorherige wieder "
+                           "her.\n\nA für "
                            "Akarie und A+B für Akarie fett lassen sich "
                            "beide belegen: A halten wendet sofort Akarie an, "
                            "und B dazu, während A noch unten ist, schaltet "
@@ -5825,10 +5830,11 @@ class TyperDocker(DockWidget):
         # installed once the docker's state is complete.
         self._keybinds = self._load_keybinds()
         self._key_hook = None
-        # the keys held down right now, and the preset a smaller combination
-        # already applied while they were (so a bigger one can take its usage
-        # count back) - see handle_preset_key
-        self._held = set()
+        # the keys held down right now, in the order they were pressed (the
+        # order is part of the binding), and the preset a smaller combination
+        # already applied while they were, so a bigger one can take its usage
+        # count back - see handle_preset_key
+        self._held = []
         self._held_applied = None
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
@@ -10138,14 +10144,14 @@ class TyperDocker(DockWidget):
         if et == QEvent.Type.WindowDeactivate:
             # whatever was down when the window went away is not held any more
             # as far as this machine is concerned
-            self._held.clear()
+            self._held = []
             self._held_applied = None
             return False
         if ev.key() in MODIFIER_KEYS:
             return False                            # half a press
         if et == QEvent.Type.KeyRelease:
             if not ev.isAutoRepeat():
-                self._held.discard(ev.key())
+                self._held = [k for k in self._held if k != ev.key()]
                 if not self._held:
                     self._held_applied = None       # the gesture is over
             return False
@@ -10159,8 +10165,9 @@ class TyperDocker(DockWidget):
             return False                            # docker closed / torn down
         # ShortcutOverride comes first and the KeyPress for the same key right
         # after, so only the press is allowed to change what is held
-        held = set(self._held)
-        held.add(ev.key())
+        held = list(self._held)
+        if ev.key() not in held:
+            held.append(ev.key())
         ref = binds.get(combo_string(ev, held))
         if not ref:
             if et == QEvent.Type.KeyPress:

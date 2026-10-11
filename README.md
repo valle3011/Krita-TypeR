@@ -361,10 +361,11 @@ stray markup inside a bubble:
 - **Combinations of any keys** – click the keybind field and hold the keys
   down together, exactly the way you press `Ctrl+C`; letting go records it.
   The difference is that ordinary letters count too, so `A+B` means *hold A and
-  press B* and is shown as `[A+B]` next to the style. The order your fingers
-  land in does not matter, and **Esc** puts back whatever was bound before
-  (it is the one key that cannot be bound; clicking in and straight back out
-  changes nothing).
+  press B* and is shown as `[A+B]` next to the style. **The order matters:**
+  `A+B` is A down first, and `B+A` is a different binding — so the same pair of
+  keys can carry two styles, told apart by which one you reach for first.
+  **Esc** puts back whatever was bound before (it is the one key that cannot be
+  bound; clicking in and straight back out changes nothing).
 
   A whole family of styles can share a key that way, which is what makes bare
   letters practical instead of having to remember a different modifier

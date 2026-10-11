@@ -433,14 +433,15 @@ a modifier.
 
 That restriction is Qt's, and it is why the docker does the bookkeeping: an
 ordinary letter is not a modifier, so no key event ever reports "A and B". The
-hook keeps the set of non-modifier keys currently down and spells out what is
-held (`combo_string`), taking the modifier prefix from Qt's own rendering of
-the event rather than from a table of modifier names. Key names are sorted, so
-which finger landed first does not change the binding. Matching is then a dict
-lookup, with no partial state and no timeout — the earlier attempt at this read
-the request as a *sequence* of presses and needed both. Releases are watched as
-closely as presses, and `WindowDeactivate` clears everything: a key that was
-down during an Alt-Tab would otherwise stay held for good.
+hook keeps the non-modifier keys currently down **in the order they were
+pressed** and spells out what is held (`combo_string`), taking the modifier
+prefix from Qt's own rendering of the event rather than from a table of
+modifier names. The order is kept rather than sorted, so `A+B` and `B+A` are
+different bindings and one pair of keys can carry two styles. Matching is then
+a dict lookup, with no partial state and no timeout — the earlier attempt at
+this read the request as a *sequence* of presses and needed both. Releases are
+watched as closely as presses, and `WindowDeactivate` clears everything: a key
+that was down during an Alt-Tab would otherwise stay held for good.
 
 **`KeyChordEdit` replaces `QKeySequenceEdit`** because a QKeySequence can only
 express what Qt calls a shortcut — modifiers plus one key — and cannot hold

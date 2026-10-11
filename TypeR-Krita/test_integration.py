@@ -1837,7 +1837,7 @@ if imported:
               _kd._key_hook.eventFilter(
                   None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_3,
                                 _CTRL_ALT, True)) is False)
-        check("nothing is held between those presses", _kd._held == set())
+        check("nothing is held between those presses", _kd._held == [])
 
         # ShortcutOverride is accepted but passed on: that is what takes the
         # key away from Krita's own actions without consuming it here
@@ -1891,7 +1891,7 @@ if imported:
         _kd._groups["Serie"]["Akarie"] = {"Normal": {"size": 12},
                                           "Bold": {"size": 40}}
         _kd._keybinds = {}
-        _kd._held = set()
+        _kd._held = []
         if _app.focusWidget() is not None:
             _app.focusWidget().clearFocus()        # bare keys, so no text field
             _app.processEvents()
@@ -1924,7 +1924,7 @@ if imported:
               and _kd.size_spin.value() == 12)
         _kd._key_hook.eventFilter(None, _up(_A))
         check("letting go leaves nothing held",
-              _kd._held == set() and _kd._held_applied is None)
+              _kd._held == [] and _kd._held_applied is None)
 
         # hold A, add B: the bigger binding takes over, like Ctrl+C does
         _was = int(_kd._preset_usage.get("Serie", {})
@@ -1932,7 +1932,7 @@ if imported:
         _kd.size_spin.setValue(11)
         _kd._key_hook.eventFilter(None, _down(_A))
         check("A is remembered as held",
-              _kd._held == {_A} and _kd.size_spin.value() == 12)
+              _kd._held == [_A] and _kd.size_spin.value() == 12)
         check("adding B while A is down applies the combination",
               _kd._key_hook.eventFilter(None, _down(_B)) is True
               and _kd.size_spin.value() == 40)
@@ -1942,25 +1942,45 @@ if imported:
               int(_kd._preset_usage["Serie"]["Akarie"].get("Bold", 0)) >= 1)
         _kd._key_hook.eventFilter(None, _up(_B))
         _kd._key_hook.eventFilter(None, _up(_A))
-        check("both releases clear what is held", _kd._held == set())
+        check("both releases clear what is held", _kd._held == [])
 
-        # the order the two keys go down in does not matter
+        # the order the keys go down in is part of the binding
         _kd.size_spin.setValue(11)
         _kd._keybinds = {"Serie": {"A+B": ["Akarie", "Bold"]}}
-        _kd._held = set()
-        check("B first, then A, is the same combination",
+        _kd._held = []
+        check("B first, then A, is NOT the same combination",
               _kd._key_hook.eventFilter(None, _down(_B)) is False
-              and _kd._key_hook.eventFilter(None, _down(_A)) is True
-              and _kd.size_spin.value() == 40)
+              and _kd._key_hook.eventFilter(None, _down(_A)) is False
+              and _kd.size_spin.value() == 11)
+        check("it is held as B+A, which simply has no binding",
+              _kd._held == [_B, _A])
         _kd._key_hook.eventFilter(None, _up(_A))
         _kd._key_hook.eventFilter(None, _up(_B))
+        # bound the other way round, the same two keys are a second binding
+        _kd._keybinds = {"Serie": {"A+B": ["Akarie", "Bold"],
+                                   "B+A": ["Akarie", "Normal"]}}
+        _kd._held = []
+        _kd._key_hook.eventFilter(None, _down(_B))
+        check("B then A reaches the binding written that way round",
+              _kd._key_hook.eventFilter(None, _down(_A)) is True
+              and _kd.size_spin.value() == 12)
+        _kd._key_hook.eventFilter(None, _up(_A))
+        _kd._key_hook.eventFilter(None, _up(_B))
+        _kd.size_spin.setValue(11)
+        _kd._key_hook.eventFilter(None, _down(_A))
+        check("and A then B still reaches the other one",
+              _kd._key_hook.eventFilter(None, _down(_B)) is True
+              and _kd.size_spin.value() == 40)
+        _kd._key_hook.eventFilter(None, _up(_B))
+        _kd._key_hook.eventFilter(None, _up(_A))
+        _kd._keybinds = {"Serie": {"A+B": ["Akarie", "Bold"]}}
 
         # a key that is part of no binding is Krita's, but still counted as
         # held, because it may yet complete one
         _kd.size_spin.setValue(11)
         check("a key that completes nothing passes through",
               _kd._key_hook.eventFilter(None, _down(_Z)) is False
-              and _kd.size_spin.value() == 11 and _kd._held == {_Z})
+              and _kd.size_spin.value() == 11 and _kd._held == [_Z])
         _kd._key_hook.eventFilter(None, _up(_Z))
 
         # auto-repeat from a held key must not re-apply anything
@@ -1976,7 +1996,7 @@ if imported:
         check("the window going inactive forgets what was held",
               _kd._key_hook.eventFilter(
                   None, _QEvent(_QEvent.Type.WindowDeactivate)) is False
-              and _kd._held == set())
+              and _kd._held == [])
 
         # --- the field: it records the gesture, not a count of presses ----
         _fld = _kd.preset_key_edit
@@ -2002,6 +2022,16 @@ if imported:
               _recorded == ["A+B"] and not _fld.is_recording()
               and _fld.text() == "A+B")
 
+        # and it records the other order as the other binding
+        _fld.set_combo("")
+        _fld.keyPressEvent(_down(_B))
+        _fld.keyPressEvent(_down(_A))
+        check("holding B first records B+A, not A+B",
+              _fld.combo() == "B+A")
+        _fld.keyReleaseEvent(_up(_A))
+        _fld.keyReleaseEvent(_up(_B))
+        check("which is what gets handed over", _recorded[-1] == "B+A")
+
         # a modifier combination records exactly as it always did
         _fld.set_combo("")
         _fld.keyPressEvent(_down(_Qt.Key.Key_C,
@@ -2014,6 +2044,7 @@ if imported:
               _recorded[-1] == "Ctrl+C")
 
         # Esc puts back what was bound; a lone modifier is not a key
+        _n_rec = len(_recorded)                # whatever happened above
         _fld.set_combo("Ctrl+Alt+9")
         _fld.keyPressEvent(_down(_A))
         _fld.keyPressEvent(_down(_Qt.Key.Key_Control,
@@ -2023,18 +2054,18 @@ if imported:
         _fld.keyPressEvent(_down(_Qt.Key.Key_Escape))
         check("Esc puts back the binding that was there",
               _fld.combo() == "Ctrl+Alt+9" and not _fld.is_recording()
-              and len(_recorded) == 2)
+              and len(_recorded) == _n_rec)   # Esc records nothing
 
         # clicking in and straight back out must not unbind anything
         _fld.focusInEvent(_QFocusEvent(_QEvent.Type.FocusIn))
         _fld.focusOutEvent(_QFocusEvent(_QEvent.Type.FocusOut))
         check("clicking in and out leaves the binding alone",
-              _fld.combo() == "Ctrl+Alt+9" and len(_recorded) == 2)
+              _fld.combo() == "Ctrl+Alt+9" and len(_recorded) == _n_rec)
         _fld.chordRecorded.disconnect()
         _fld.set_combo("")
 
         _kd._keybinds = {}
-        _kd._held = set()
+        _kd._held = []
         _kd._char = "Kuromiya"
         _kd._refresh_chars_combo(select="Kuromiya")
         _kd._refresh_presets_combo(select="Normal Talk")
