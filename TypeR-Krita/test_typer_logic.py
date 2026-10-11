@@ -1621,6 +1621,15 @@ check("whatsnew: the shipped changelog covers the shipped version",
       any(v == "1.12" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
+check("whatsnew: it goes back far enough to span several versions",
+      len(WNN.CHANGELOG) >= 3
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.12")) >= 2)
+check("whatsnew: the shipped entries are newest first",
+      [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
+      == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),
+                reverse=True))
+check("whatsnew: no version is listed twice",
+      len({v for v, _ in WNN.CHANGELOG}) == len(WNN.CHANGELOG))
 
 
 # --- .gdoc -> document id when Drive refuses to read the file ---------------

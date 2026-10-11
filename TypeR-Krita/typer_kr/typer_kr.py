@@ -222,7 +222,7 @@ class WhatsNewDialog(QDialog):
         body = QTextBrowser(self)
         body.setOpenExternalLinks(False)
         body.setHtml(self._html(tr, sections))
-        body.setMinimumSize(430, 260)
+        body.setMinimumSize(470, 330)   # several versions at once fit
         lay.addWidget(body)
         self.again_chk = QCheckBox(tr("whatsnew_again"), self)
         self.again_chk.setChecked(True)

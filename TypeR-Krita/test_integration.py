@@ -2143,9 +2143,12 @@ if imported:
         _sections = _wd._whatsnew_due()
         _dlg = TK.WhatsNewDialog(None, _wd._tr, TK.VERSION, _sections)
         _html = TK.WhatsNewDialog._html(_wd._tr, _sections)
-        check("the dialog lists the version and its lines",
-              TK.VERSION in _html and _sections[0][1][0][:20] in _html
-              and _html.count("<li") == len(_sections[0][1]))
+        check("the dialog lists every version it was given, with every line",
+              all(v in _html for v, _ in _sections)
+              and _html.count("<li") == sum(len(l) for _, l in _sections)
+              and _html.count("<h3") == len(_sections))
+        check("an older install gets more than just the newest version",
+              len(_sections) > 1 and _sections[0][0] == TK.VERSION)
         check("it offers to keep showing after the next update",
               _dlg.keep_showing() is True)
         _dlg.deleteLater()

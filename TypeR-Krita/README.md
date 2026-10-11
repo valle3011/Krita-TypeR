@@ -413,8 +413,9 @@ stray markup inside a bubble:
   ones, all from the Setup tab; the last-used tab is restored on start.
 - **What's new after an update** – a plugin updates by having its files
   replaced, so nothing normally gets a chance to say what happened. The first
-  Krita start after an update lists what changed, once per version; if you
-  skipped a version or two it covers those as well. A first install stays quiet
+  Krita start after an update lists what changed, once per version — and it
+  spans the whole gap, so going from 1.8 straight to 1.12 lists 1.9, 1.11 and
+  1.12 together rather than just the newest. A first install stays quiet
   (release notes are no greeting), and the box can be switched off on the Setup
   tab — the version is recorded either way, so turning it back on later does
   not produce a pile of old news.

@@ -47,6 +47,102 @@ CHANGELOG = [
             "nichts findet.",
         ],
     }),
+    ("1.11", {
+        "en": [
+            "Batch tab: mark a page's bubbles, pair each with its line and "
+            "fill them all in one run, each fitted with the shape TextShapR "
+            "recommends. With a review mode that stops at every bubble, "
+            "optional per-line font and preset overrides, and an Undo batch "
+            "that removes exactly what the run created.",
+            "Runs on Krita 6: the Qt binding is chosen at startup (PyQt6 on "
+            "Krita 6.0+, PyQt5 on 5.x), so the same install works on both. "
+            "The Setup tab shows which one was detected.",
+            "Fonts are found by reading the font files themselves instead of "
+            "the Windows registry, so repacked families and a family's Bold "
+            "and Italic cuts are found at last — and a name that is spelled a "
+            "little differently still reaches its font.",
+            "TextShapR takes its line count from the bubble's shape rather "
+            "than a fixed number, and ranks the candidates by how well they "
+            "read.",
+            "Main characters: mark the few who speak on every page and they "
+            "head the character and preset dropdowns.",
+            "Font bundles: favourites and presets export the actual font "
+            "files alongside the JSON and install them on the other machine. "
+            "Presets also export as an Excel table.",
+        ],
+        "de": [
+            "Stapel-Reiter: die Bubbles einer Seite markieren, jeder ihre "
+            "Zeile zuordnen und alle in einem Durchgang füllen — jede mit der "
+            "Form, die TextShapR empfiehlt. Mit Prüfmodus, der an jeder "
+            "Bubble hält, optionaler eigener Schrift und eigenem Preset pro "
+            "Zeile, und einem Rückgängig, das genau die Ebenen des Durchgangs "
+            "entfernt.",
+            "Läuft auf Krita 6: die Qt-Anbindung wird beim Start gewählt "
+            "(PyQt6 ab Krita 6.0, PyQt5 auf 5.x) — dieselbe Installation "
+            "funktioniert auf beiden. Der Reiter Einstellungen zeigt, welche "
+            "erkannt wurde.",
+            "Schriften werden aus den Schriftdateien selbst gelesen statt aus "
+            "der Windows-Registry. Dadurch werden umgepackte Familien und die "
+            "Fett- und Kursiv-Schnitte einer Familie endlich gefunden — und "
+            "ein leicht anders geschriebener Name findet trotzdem seine "
+            "Schrift.",
+            "TextShapR nimmt die Zeilenzahl aus der Form der Bubble statt aus "
+            "einer festen Zahl und bewertet die Vorschläge danach, wie gut "
+            "sie sich lesen.",
+            "Hauptcharaktere: markier die paar, die auf jeder Seite reden — "
+            "sie stehen dann oben in den Listen für Figur und Preset.",
+            "Schrift-Pakete: Favoriten und Presets exportieren die "
+            "Schriftdateien mit und installieren sie auf dem anderen Rechner. "
+            "Presets lassen sich auch als Excel-Tabelle exportieren.",
+        ],
+    }),
+    ("1.9", {
+        "en": [
+            "Fill a selection you drew yourself with a pattern or a gradient.",
+            "Screentone gradients (dense to sparse) with a direction, plus "
+            "diagonal, sand and sparkle screentones.",
+            "TextShapR: the shape you pick stays picked — changing the size, "
+            "font, colour or outline no longer silently reshapes it.",
+            "Fonts tab: adjustable preview size, and a much faster list.",
+        ],
+        "de": [
+            "Eine selbst gezogene Auswahl mit einem Muster oder Verlauf "
+            "füllen.",
+            "Rasterverläufe (dicht nach dünn) mit Richtung, dazu diagonale, "
+            "Sand- und Funkel-Raster.",
+            "TextShapR: die gewählte Form bleibt gewählt — Größe, Schrift, "
+            "Farbe oder Kontur zu ändern formt sie nicht mehr stillschweigend "
+            "um.",
+            "Fonts-Reiter: einstellbare Vorschaugröße und eine deutlich "
+            "schnellere Liste.",
+        ],
+    }),
+    ("1.8", {
+        "en": [
+            "Style tab: pattern-filled and soft/blurred outlines, and a "
+            "pattern fill for the text itself.",
+            "Pattern generator and a pattern library: make one, name it, save "
+            "it, pick it from thumbnails later.",
+            "A “Missing fonts” window in Setup, listing what a script asks "
+            "for that is not installed here.",
+            "Fonts tab: one-click star and right-click categorise straight "
+            "from the font picker.",
+            "Fixed a scrambled main-tab order, including a one-time repair of "
+            "an order that was already saved wrong.",
+        ],
+        "de": [
+            "Stil-Reiter: musterfüllte und weiche Konturen, und eine "
+            "Musterfüllung für den Text selbst.",
+            "Mustergenerator und Musterbibliothek: eines bauen, benennen, "
+            "speichern und später aus Miniaturbildern wählen.",
+            "Fenster „Fehlende Schriften“ unter Einstellungen — es listet, "
+            "was ein Skript verlangt und hier nicht installiert ist.",
+            "Fonts-Reiter: mit einem Klick zum Favoriten machen und per "
+            "Rechtsklick direkt in der Schriftauswahl einsortieren.",
+            "Die durcheinandergeratene Reiter-Reihenfolge ist behoben — "
+            "inklusive einmaliger Reparatur einer schon falsch gespeicherten.",
+        ],
+    }),
 ]
 
 
