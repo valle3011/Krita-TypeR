@@ -10316,16 +10316,27 @@ class TyperDocker(DockWidget):
         held = list(self._held)
         if ev.key() not in held:
             held.append(ev.key())
-        ref = binds.get(combo_string(ev, held))
-        if not ref:
+        combo = combo_string(ev, held)
+        ref = binds.get(combo)
+        # A key that only STARTS a bound combination has to be claimed too.
+        # Declining its ShortcutOverride leaves Krita's own shortcut to
+        # consume the press - measured: with an action bound to "A", the
+        # KeyPress for A is then never delivered at all - and the combination
+        # could never record its first key.
+        starts_longer = ref is None and any(k.startswith(combo + "+")
+                                            for k in binds)
+        if ref is None and not starts_longer:
             if et == QEvent.Type.KeyPress:
                 self._held = held       # may yet be part of a bigger one
             return False
         focus = QApplication.focusWidget()
-        if in_key_recorder(focus):
-            return False                            # a key being recorded
-        if isinstance(focus, TYPING_WIDGETS) and not key_has_modifier(ev):
-            return False                            # that is typing, not a key
+        if in_key_recorder(focus) or (isinstance(focus, TYPING_WIDGETS)
+                                      and not key_has_modifier(ev)):
+            # a key being recorded, or someone typing - but still a key that
+            # is down, so the bookkeeping has to see it
+            if et == QEvent.Type.KeyPress:
+                self._held = held
+            return False
         if et == QEvent.Type.ShortcutOverride:
             # "not a shortcut - send it on as a key press", which takes it
             # away from Krita's own actions and hands it to the branch below.
@@ -10333,6 +10344,8 @@ class TyperDocker(DockWidget):
             ev.accept()
             return False
         self._held = held
+        if ref is None:
+            return True                 # held, waiting for the rest of it
         # Holding A applies Akarie at once; adding B while it is still down
         # switches to Akarie bold. The first one was never the style being
         # asked for, so it does not get to keep its usage count.

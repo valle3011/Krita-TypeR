@@ -444,6 +444,22 @@ this read the request as a *sequence* of presses and needed both. Releases are
 watched as closely as presses, and `WindowDeactivate` clears everything: a key
 that was down during an Alt-Tab would otherwise stay held for good.
 
+**A key that only *starts* a combination has to be claimed too**, which is
+not obvious and was the first version's bug. Measured with a `QAction` bound
+to `A` — which is what a Krita tool shortcut is — declining the
+`ShortcutOverride` for A means the `KeyPress` is never delivered at all: the
+action consumes it. So the first key of `A+B` was never recorded and the
+combination could not fire. `starts_longer` tests the stored binding strings
+for the prefix and claims the press, swallowing it without applying
+anything. The cost is the one the user-facing docs already name: while that
+manga is selected, the bare letter stops reaching Krita's own tool.
+
+Every other keybind test calls `handle_preset_key`, which proves the
+bookkeeping and nothing about delivery — which is exactly how that bug got
+through. There is now one test that lets Qt deliver the events with a
+competing application shortcut on the same letters, and it fails without
+the prefix claim.
+
 **`KeyChordEdit` replaces `QKeySequenceEdit`** because a QKeySequence can only
 express what Qt calls a shortcut — modifiers plus one key — and cannot hold
 `A+B` at all. The field watches presses and releases itself: the combination

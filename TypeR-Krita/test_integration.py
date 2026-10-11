@@ -2103,6 +2103,81 @@ try:
 except Exception:
     pass
 
+# --- the hook against Krita's own shortcuts, through real event delivery ----
+# Everything above calls handle_preset_key. This lets Qt deliver the events and
+# puts an application shortcut on the same bare letters, which is what Krita's
+# tool shortcuts are: if the hook declines the ShortcutOverride for the first
+# key of a combination, that action eats the KeyPress and A+B never fires.
+if imported:
+    try:
+        from PyQt6.QtGui import QAction as _QAction
+    except ImportError:
+        from PyQt5.QtWidgets import QAction as _QAction
+    try:
+        _rd = TK.TyperDocker()
+        _rd._groups = {"S": {"Ak": {"Bold": {"size": 40}}}}
+        _rd._group = "S"
+        _rd._char = "Ak"
+        _rd._keybinds = {"S": {"A+B": ["Ak", "Bold"]}}
+        _rd._held = []
+        _rd.show()
+        _target = QWidget()
+        _target.show()
+        _target.raise_()
+        _target.activateWindow()
+        _target.setFocus()
+        _app.processEvents()
+
+        _fired = []
+
+        def _krita_action(spec):
+            _a = _QAction(_target)
+            _a.setShortcut(QKeySequence(spec))
+            _a.setShortcutContext(_Qt.ShortcutContext.ApplicationShortcut)
+            _a.triggered.connect(lambda *_x, s=spec: _fired.append(s))
+            _target.addAction(_a)
+            return _a
+
+        _acts = [_krita_action("A"), _krita_action("B")]
+        _app.processEvents()
+
+        def _type(key, kinds=(_QEvent.Type.ShortcutOverride,
+                              _QEvent.Type.KeyPress)):
+            for _kind in kinds:
+                QApplication.sendEvent(
+                    _target, _key_ev(_kind, key,
+                                     _Qt.KeyboardModifier.NoModifier))
+            _app.processEvents()
+
+        _rd.size_spin.setValue(11)
+        _type(_Qt.Key.Key_A)
+        check("the first key of a combination is kept from Krita's shortcut",
+              _rd._held == [_Qt.Key.Key_A] and _fired == [])
+        _type(_Qt.Key.Key_B)
+        check("holding A and pressing B really applies the combination",
+              _rd.size_spin.value() == 40 and _fired == [])
+        _type(_Qt.Key.Key_B, (_QEvent.Type.KeyRelease,))
+        _type(_Qt.Key.Key_A, (_QEvent.Type.KeyRelease,))
+        check("and the releases leave nothing held", _rd._held == [])
+
+        # the other half of it: a key TypeR has no use for must still work
+        _acts.append(_krita_action("Z"))
+        _app.processEvents()
+        del _fired[:]
+        _type(_Qt.Key.Key_Z)
+        check("a key with no binding still reaches Krita's own shortcut",
+              _fired == ["Z"])
+
+        _target.hide()
+        _target.deleteLater()
+        _rd.hide()
+        _rd.deleteLater()
+        _app.processEvents()
+    except Exception:                               # pragma: no cover
+        check("real-delivery keybind suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- what's new: announced once per version, and not to a new user ---------
 if imported:
     try:
