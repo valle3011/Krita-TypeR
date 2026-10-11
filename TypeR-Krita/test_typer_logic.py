@@ -1577,6 +1577,52 @@ check("keybinds: deleting the character drops its combination too",
       LP.keybinds_of(_combo, "Serie") == [("Ctrl+Alt+1", "Hiro", "Talk")])
 
 
+# --- what's new after an update --------------------------------------------
+_wspec = importlib.util.spec_from_file_location(
+    "whatsnew", os.path.join(_HERE, "typer_kr", "whatsnew.py"))
+WNN = importlib.util.module_from_spec(_wspec)
+_wspec.loader.exec_module(WNN)
+
+check("whatsnew: a version compares as numbers, not as text",
+      WNN.parse_version("1.9") < WNN.parse_version("1.11")
+      and WNN.parse_version("1.8") < WNN.parse_version("1.8.1")
+      and WNN.parse_version("1.12") == (1, 12))
+check("whatsnew: junk parses to something that loses to every version",
+      WNN.parse_version("") == () and WNN.parse_version("x") == ()
+      and WNN.parse_version(None) == ()
+      and WNN.parse_version("") < WNN.parse_version("1.0"))
+check("whatsnew: a trailing non-number stops the parse instead of raising",
+      WNN.parse_version("1.12-beta") == (1,))
+
+_CL = [("1.12", {"en": ["twelve"], "de": ["zwoelf"]}),
+       ("1.11", {"en": ["eleven"]}),
+       ("1.10", {"en": ["ten"]})]
+
+check("whatsnew: an update is told about every version it skipped",
+      [v for v, _ in WNN.entries_since("1.10", "1.12", _CL)] == ["1.12", "1.11"])
+check("whatsnew: the same version twice says nothing",
+      WNN.entries_since("1.12", "1.12", _CL) == []
+      and WNN.entries_since("1.13", "1.12", _CL) == [])
+check("whatsnew: having seen nothing shows everything",
+      [v for v, _ in WNN.entries_since("", "1.12", _CL)]
+      == ["1.12", "1.11", "1.10"])
+check("whatsnew: entries newer than what is installed are not announced",
+      [v for v, _ in WNN.entries_since("1.10", "1.11", _CL)] == ["1.11"])
+check("whatsnew: an unreadable current version announces nothing",
+      WNN.entries_since("1.10", "", _CL) == [])
+
+check("whatsnew: the lines come in the interface language",
+      WNN.lines_for(WNN.entries_since("1.11", "1.12", _CL), "de")
+      == [("1.12", ["zwoelf"])])
+check("whatsnew: an untranslated entry falls back to English",
+      WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
+      == [("1.11", ["eleven"])])
+check("whatsnew: the shipped changelog covers the shipped version",
+      any(v == "1.12" for v, _ in WNN.CHANGELOG)
+      and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
+              for e in WNN.CHANGELOG))
+
+
 # --- .gdoc -> document id when Drive refuses to read the file ---------------
 # Drive for Desktop answers every read of a .gdoc with [Errno 22], so the id
 # has to come from the client's local index instead. The index is stood in for

@@ -70,9 +70,10 @@ nothing was removed, everything is one click away. **Type**, **Style** and
   to spread them as far apart as you like.
 - **Setup** – interface language, the "Layout & sizes" panel, behavior toggles
   like **"Replace previously inserted line"** (re-inserting a line replaces its
-  earlier layer instead of stacking a copy; default on) and **"Organize presets
-  by character"** (see *Presets* below; default on), plus the
-  **⚗ Experimental** switches that show and hide the tabs below.
+  earlier layer instead of stacking a copy; default on), **"Organize presets
+  by character"** (see *Presets* below; default on) and **"Say what's new after
+  an update"** (default on), plus the **⚗ Experimental** switches that show and
+  hide the tabs below.
 - **Batch** – set a whole page at once: mark the bubbles, pair each with its
   line, fill them all in one run (see *Batch* below).
 - **TextShapR** – pick from several auto-fitted shape candidates for the current
@@ -396,6 +397,13 @@ stray markup inside a bubble:
   current line and "done" progress) come back after a Krita restart.
 - **Customizable tabs** – rename and reorder the tabs, and show/hide the extra
   ones, all from the Setup tab; the last-used tab is restored on start.
+- **What's new after an update** – a plugin updates by having its files
+  replaced, so nothing normally gets a chance to say what happened. The first
+  Krita start after an update lists what changed, once per version; if you
+  skipped a version or two it covers those as well. A first install stays quiet
+  (release notes are no greeting), and the box can be switched off on the Setup
+  tab — the version is recorded either way, so turning it back on later does
+  not produce a pile of old news.
 - **Adjustable layout** (see below) – resize or hide the bigger parts of the
   docker to taste.
 

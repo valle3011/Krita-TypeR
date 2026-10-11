@@ -74,6 +74,7 @@ from . import texttypes as TT
 from . import fontmatch as FM
 from . import gauth as GA
 from . import gdocs as GD
+from . import whatsnew as WN
 from . import comments as CM
 from . import bubbles as BB
 from . import balloons as BAL
@@ -83,7 +84,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.11"
+VERSION = "1.12"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -204,6 +205,49 @@ def key_has_modifier(ev):
     return bool(m & (Qt.KeyboardModifier.ControlModifier
                      | Qt.KeyboardModifier.AltModifier
                      | Qt.KeyboardModifier.MetaModifier))
+
+
+class WhatsNewDialog(QDialog):
+    """The one-time "this changed" box after an update.
+
+    A Krita plugin updates by having its files overwritten, so nothing ever
+    gets a chance to say what happened. This is that chance, and it is taken
+    exactly once per version: the docker records which one it has announced.
+    """
+
+    def __init__(self, parent, tr, version, sections):
+        super().__init__(parent)
+        self.setWindowTitle(tr("whatsnew_title").format(version=version))
+        lay = QVBoxLayout(self)
+        body = QTextBrowser(self)
+        body.setOpenExternalLinks(False)
+        body.setHtml(self._html(tr, sections))
+        body.setMinimumSize(430, 260)
+        lay.addWidget(body)
+        self.again_chk = QCheckBox(tr("whatsnew_again"), self)
+        self.again_chk.setChecked(True)
+        lay.addWidget(self.again_chk)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        lay.addWidget(buttons)
+
+    @staticmethod
+    def _html(tr, sections):
+        """`sections` is [(version, [line, ...]), ...], newest first."""
+        parts = []
+        for version, lines in sections:
+            parts.append("<h3 style='margin-bottom:4px'>%s %s</h3>"
+                         % (xml_escape(tr("whatsnew_version")),
+                            xml_escape(version)))
+            parts.append("<ul style='margin-top:0'>")
+            parts.extend("<li style='margin-bottom:6px'>%s</li>"
+                         % xml_escape(line) for line in lines)
+            parts.append("</ul>")
+        return "".join(parts)
+
+    def keep_showing(self):
+        return self.again_chk.isChecked()
 
 
 class KeyChordEdit(QLineEdit):
@@ -862,6 +906,14 @@ LANG = {
                          "the active line has text."),
         "shaper_no_doc": "No document open – previews use a default box.",
         # replace previously inserted layers on re-insert
+        "whatsnew_title": "What's new in TypeR {version}",
+        "whatsnew_version": "Version",
+        "whatsnew_again": "Tell me after the next update too",
+        "whatsnew_chk": "Say what's new after an update",
+        "whatsnew_chk_tip": ("A plugin updates by having its files replaced, "
+                             "so nothing gets a chance to announce itself. "
+                             "With this on, the first Krita start after an "
+                             "update lists what changed — once per version."),
         "replace_existing": "Replace previously inserted line",
         "replace_existing_tip": ("Inserting a line again first deletes the "
                                  "layer(s) TypeR created for it earlier – so "
@@ -1770,6 +1822,15 @@ LANG = {
                          "sicherstellen, dass die aktive Zeile Text hat."),
         "shaper_no_doc": "Kein Dokument offen – Vorschau nutzt eine Standard-Box.",
         # replace previously inserted layers on re-insert
+        "whatsnew_title": "Neu in TypeR {version}",
+        "whatsnew_version": "Version",
+        "whatsnew_again": "Beim nächsten Update wieder zeigen",
+        "whatsnew_chk": "Nach einem Update sagen, was neu ist",
+        "whatsnew_chk_tip": ("Ein Plugin wird aktualisiert, indem seine "
+                             "Dateien ersetzt werden — dabei kommt nichts "
+                             "dazu, sich zu melden. Mit dieser Option listet "
+                             "der erste Krita-Start nach einem Update auf, "
+                             "was sich geändert hat — einmal pro Version."),
         "replace_existing": "Bereits eingefügte Zeile ersetzen",
         "replace_existing_tip": ("Beim erneuten Einfügen einer Zeile werden die "
                                  "zuvor von TypeR dafür erstellten Ebene(n) "
@@ -5979,6 +6040,11 @@ class TyperDocker(DockWidget):
         self.replace_chk.setChecked(self._load_replace_existing())
         self.replace_chk.toggled.connect(self._on_replace_toggle)
         _sgl.addWidget(self.replace_chk)
+        # say what changed, once, after the plugin files have been replaced
+        self.whatsnew_chk = QCheckBox()
+        self.whatsnew_chk.setChecked(self._load_whatsnew_on())
+        self.whatsnew_chk.toggled.connect(self._on_whatsnew_toggle)
+        _sgl.addWidget(self.whatsnew_chk)
         # presets: with a character level (default) or one flat list per manga
         self.by_char_chk = QCheckBox()
         self.by_char_chk.setChecked(self._load_by_char())
@@ -7080,6 +7146,15 @@ class TyperDocker(DockWidget):
         self._update_text_preview()
         self._init_first_session()         # start with one empty "Untitled" tab
         self._install_key_hook()           # preset keybinds, from anywhere
+        # Deferred: a modal dialog must not run while Krita is still building
+        # its dockers, and self.widget() needs to exist to parent it. The timer
+        # belongs to the docker rather than being a bare QTimer.singleShot,
+        # which would still fire after the docker is gone and reach a deleted
+        # C++ object - a hard crash, not an exception.
+        self._whatsnew_timer = QTimer(self)
+        self._whatsnew_timer.setSingleShot(True)
+        self._whatsnew_timer.timeout.connect(self._maybe_show_whatsnew)
+        self._whatsnew_timer.start(0)
 
     # -- language --
 
@@ -7813,6 +7888,8 @@ class TyperDocker(DockWidget):
         self.insert_btn.setText(t("insert_btn"))
         self.replace_chk.setText(t("replace_existing"))
         self.replace_chk.setToolTip(t("replace_existing_tip"))
+        self.whatsnew_chk.setText(t("whatsnew_chk"))
+        self.whatsnew_chk.setToolTip(t("whatsnew_chk_tip"))
         self.by_char_chk.setText(t("presets_by_char"))
         self.main_chars_btn.setText(t("mainchar_btn"))
         self.main_chars_hint.setText(t("mainchar_hint"))
@@ -10060,6 +10137,77 @@ class TyperDocker(DockWidget):
             self._record_preset_usage(self._group, ch, name)
             self._save_last_manga()
             self._set_status(self._tr("st_preset_applied").format(name=name))
+
+    # ---- what's new after an update ----
+    def _load_whatsnew_on(self):
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "whatsNewOn", "true") != "false"
+        except Exception:
+            return True
+
+    def _on_whatsnew_toggle(self, checked):
+        try:
+            Krita.instance().writeSetting("typer_kr", "whatsNewOn",
+                                          "true" if checked else "false")
+        except Exception:
+            pass
+
+    #: Settings that only exist once TypeR has actually been used. Any of them
+    #: is proof this is an update rather than a first install.
+    _USED_BEFORE_KEYS = ("presets", "sessions", "settings", "lastManga",
+                         "tabOrder", "panelTabs", "fontFavorites")
+
+    def _whatsnew_baseline(self):
+        """Which version counts as "already announced" when none is recorded.
+
+        An installation that predates this feature has nothing recorded, and
+        that very update is the one worth announcing - so anything else TypeR
+        has ever stored counts as proof there was a previous version, and the
+        baseline is "nothing seen". A genuinely fresh install has none of it
+        and starts quiet instead of greeting a first-time user with release
+        notes.
+        """
+        app = Krita.instance()
+        for key in self._USED_BEFORE_KEYS:
+            try:
+                if (app.readSetting("typer_kr", key, "") or "").strip():
+                    return ""                 # used before -> show everything
+            except Exception:
+                pass
+        return VERSION                        # fresh install -> show nothing
+
+    def _whatsnew_due(self):
+        """What there is to announce, in the interface language, newest first.
+
+        Also records this version as announced - including when the box is
+        switched off, so turning it back on later does not produce a pile of
+        old news. Kept apart from showing it so the decision can be tested
+        without opening a modal dialog.
+        """
+        try:
+            app = Krita.instance()
+            seen = (app.readSetting("typer_kr", "seenVersion", "") or "").strip()
+            if not seen:
+                seen = self._whatsnew_baseline()
+            entries = WN.entries_since(seen, VERSION)
+            app.writeSetting("typer_kr", "seenVersion", VERSION)
+        except Exception:
+            return []
+        if not entries or not self._load_whatsnew_on():
+            return []
+        return WN.lines_for(entries, self._lang)
+
+    def _maybe_show_whatsnew(self):
+        """Announce this version's changes once, the first start after it."""
+        sections = self._whatsnew_due()
+        if not sections:
+            return
+        dlg = WhatsNewDialog(self.widget(), self._tr, VERSION, sections)
+        dlg.exec()
+        if not dlg.keep_showing():
+            self.whatsnew_chk.setChecked(False)    # also writes the setting
+        dlg.deleteLater()
 
     # ---- preset keybinds ----
     def _load_keybinds(self):

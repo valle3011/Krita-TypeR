@@ -154,12 +154,17 @@ class _App:
     def __init__(self):
         self._doc = None
         self._settings = {}                      # (group, key) -> value
+        # a second layer the suite's _settings.clear() does not reach, for the
+        # handful of values that have to hold for the whole run
+        self._defaults = {}
 
     def activeDocument(self):
         return self._doc
 
     def readSetting(self, group, key, default=""):
-        return self._settings.get((group, key), default)
+        if (group, key) in self._settings:
+            return self._settings[(group, key)]
+        return self._defaults.get((group, key), default)
 
     def writeSetting(self, group, key, val):
         self._settings[(group, key)] = val
@@ -254,6 +259,14 @@ except Exception as e:                          # pragma: no cover
     traceback.print_exc()
 
 check("typer_kr module imports headless (with a fake krita)", imported)
+
+# Every docker queues a what's-new check for the next turn of the event loop.
+# Left due, the twenty-odd dockers this suite builds would all fire theirs when
+# the pending deletes are flushed at the end and nest modal dialogs until the
+# process dies. So the suite starts out having seen this version; the block that
+# tests the feature sets it back deliberately.
+if imported:
+    _KR_APP._defaults[("typer_kr", "seenVersion")] = TK.VERSION
 if not imported:
     print("\n%d passed, %d failed" % (_pass, _fail + 1))
     sys.exit(1)
@@ -2089,6 +2102,60 @@ try:
     _app.processEvents()
 except Exception:
     pass
+
+# --- what's new: announced once per version, and not to a new user ---------
+if imported:
+    try:
+        # the suite runs with seenVersion already at the current one (see the
+        # top); this block sets it back on purpose
+        _KR_APP._settings[("typer_kr", "seenVersion")] = "1.0"
+        _wd = TK.TyperDocker()
+        _sections = _wd._whatsnew_due()
+        check("an older seen version has something to announce",
+              _sections and _sections[0][0] == TK.VERSION
+              and len(_sections[0][1]) >= 1)
+        check("and the version is recorded as announced",
+              _KR_APP._settings[("typer_kr", "seenVersion")] == TK.VERSION)
+        check("so asking again says nothing", _wd._whatsnew_due() == [])
+
+        # switched off, it still records - turning it back on must not dump
+        # a pile of old news
+        _KR_APP._settings[("typer_kr", "seenVersion")] = "1.0"
+        _wd.whatsnew_chk.setChecked(False)
+        check("switched off it announces nothing", _wd._whatsnew_due() == [])
+        check("but still records the version",
+              _KR_APP._settings[("typer_kr", "seenVersion")] == TK.VERSION)
+        _wd.whatsnew_chk.setChecked(True)
+        check("the toggle is remembered in the settings",
+              _KR_APP._settings[("typer_kr", "whatsNewOn")] == "true")
+
+        # a fresh install is not greeted with release notes
+        _KR_APP._settings.clear()
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        check("with nothing ever stored, the baseline is the current version",
+              _wd._whatsnew_baseline() == TK.VERSION)
+        _KR_APP._settings[("typer_kr", "presets")] = "{}"
+        check("anything TypeR has stored means there was a previous version",
+              _wd._whatsnew_baseline() == "")
+
+        # the dialog renders the sections (built, not exec'd: it is modal)
+        _KR_APP._settings[("typer_kr", "seenVersion")] = "1.0"
+        _sections = _wd._whatsnew_due()
+        _dlg = TK.WhatsNewDialog(None, _wd._tr, TK.VERSION, _sections)
+        _html = TK.WhatsNewDialog._html(_wd._tr, _sections)
+        check("the dialog lists the version and its lines",
+              TK.VERSION in _html and _sections[0][1][0][:20] in _html
+              and _html.count("<li") == len(_sections[0][1]))
+        check("it offers to keep showing after the next update",
+              _dlg.keep_showing() is True)
+        _dlg.deleteLater()
+        _wd.deleteLater()
+        _KR_APP._settings.clear()
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+    except Exception:                               # pragma: no cover
+        check("what's-new suite ran", False)
+        import traceback
+        traceback.print_exc()
 
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

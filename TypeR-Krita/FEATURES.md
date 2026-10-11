@@ -18,6 +18,7 @@ Line numbers drift; the names don't. Grep the name, not the number.
 | `langpair.py` | ~890 | Script parsing, JP↔EN pairing, presets |
 | `comments.py` / `gdocs.py` / `gauth.py` | ~750 | Script comments from Word/Google Docs |
 | `drivefs.py` | ~150 | The doc id behind a .gdoc Drive refuses to read. Qt-free, tested |
+| `whatsnew.py` | ~120 | The changelog + which of it is new to you. Qt-free, tested |
 | `sfx/` | ~3,400 | The SFX tab (MangaSFX, vendored as a sub-package) |
 | `sfx/modes.py` | ~230 | The five SFX strategies + kana→romaji. Qt-free, tested |
 | `sfx/rule_search.py` | ~110 | SFX keyword matching + rule search. Qt-free, tested |
@@ -497,6 +498,39 @@ and for anything inside a `QKeySequenceEdit` — `in_key_recorder` walks
 internal line edit is a Qt-version detail, and the hook would otherwise
 swallow the very key press the field is waiting to record. Anything that raises is treated as "not mine", because
 a bug in this path would eat typing across the whole application.
+
+### What's new after an update
+
+A Krita plugin updates by having its files overwritten, so there is no
+moment at which anything could announce itself. The docker compares the
+version it ships with against the last one it recorded having shown, and the
+first start after an update says what changed.
+
+- `whatsnew.py` → `CHANGELOG` plus `parse_version` / `entries_since` /
+  `lines_for` (Qt-free, tested)
+- `typer_kr.py` → `WhatsNewDialog`, `_whatsnew_due`, `_whatsnew_baseline`,
+  the "Say what's new after an update" toggle in Setup
+- Stored in kritarc as `seenVersion` and `whatsNewOn`
+
+Versions are compared as **tuples of numbers**, because the scheme counts
+past nine and as text `1.9` would sort after `1.11`. An update that skipped
+a version or two is told about all of them.
+
+**The first run of this feature is the awkward case**, and the one that
+matters: an installation that predates it has no `seenVersion`, and that
+very update is the one worth announcing — but so does a brand-new install,
+which should not be greeted with release notes. `_whatsnew_baseline` tells
+them apart by whether TypeR has ever stored anything else at all
+(`_USED_BEFORE_KEYS`). The version is recorded even when the box is switched
+off, so turning it back on later does not produce a pile of old news.
+
+Deciding and showing are deliberately separate (`_whatsnew_due` vs
+`_maybe_show_whatsnew`) so the decision can be tested without a modal
+dialog — the integration suite builds twenty-odd dockers, and with them all
+due at once the nested dialogs killed the process outright. For the same
+reason the deferred check hangs off a `QTimer` owned by the docker rather
+than a bare `QTimer.singleShot`, which would still fire after the docker was
+gone and reach a deleted C++ object.
 
 ### Script comments
 
