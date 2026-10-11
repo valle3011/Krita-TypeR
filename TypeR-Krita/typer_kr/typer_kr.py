@@ -46,7 +46,7 @@ from ._qt import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
     QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
     QDialog, QButtonGroup, QDialogButtonBox, QApplication,
-    QShortcut, QLayout, QStackedWidget, QKeySequenceEdit, QTextEdit,
+    QShortcut, QLayout, QStackedWidget, QTextEdit,
     QAbstractSpinBox,
 )
 
@@ -135,10 +135,11 @@ except Exception:
 # actions - and the KeyPress that follows, which is where the preset is
 # actually applied.
 #
-# Bindings can be sequences (A, then B), so the match happens one press at a
-# time: a press that only starts a longer binding is swallowed and remembered
-# until the next one completes something, ends the sequence, or CHORD_TIMEOUT_MS
-# passes.
+# Bindings can be sequences of any length (A, then B, then C), so the match
+# happens one press at a time: a press that only starts a longer binding is
+# swallowed and remembered until the next one completes something, ends the
+# sequence, or CHORD_TIMEOUT_MS passes. Nothing here knows how long a binding
+# is - it is a list of step strings, compared step by step.
 # ---------------------------------------------------------------------------
 
 #: How long a half-typed sequence waits for its next press. Any press that
@@ -146,12 +147,25 @@ except Exception:
 #: between two deliberate presses.
 CHORD_TIMEOUT_MS = 1200
 
+#: How long the keybind field waits after a press before deciding the sequence
+#: being recorded is finished. The same idea QKeySequenceEdit uses to know when
+#: a recording is over, and what makes a sequence of any length recordable: you
+#: keep pressing, it keeps listening.
+CHORD_RECORD_MS = 900
+
+#: Pressed on their own these are not a key, they are half of one.
+MODIFIER_KEYS = frozenset((
+    Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta,
+    Qt.Key.Key_AltGr, Qt.Key.Key_CapsLock, Qt.Key.Key_NumLock,
+    Qt.Key.Key_ScrollLock,
+))
+
 
 def key_event_string(ev):
     """Qt's own spelling of a key event's combination, e.g. "Ctrl+Alt+1".
 
-    The same spelling QKeySequenceEdit stored, so matching a binding is a
-    plain dict lookup rather than a comparison of modifier bits.
+    The same spelling KeyChordEdit records a step as, so matching a binding
+    is a plain string comparison rather than one of modifier bits.
     """
     try:
         combo = ev.keyCombination()              # Qt 6
@@ -168,20 +182,108 @@ def key_has_modifier(ev):
                      | Qt.KeyboardModifier.MetaModifier))
 
 
+class KeyChordEdit(QLineEdit):
+    """Records a keybind of any length.
+
+    QKeySequenceEdit is the obvious widget for this and stops at four presses,
+    because four is all a QKeySequence can hold - it truncates
+    ``"A, B, C, D, E"`` to ``"A, B, C, D"`` without a word. TypeR matches
+    bindings press by press out of a list of step strings, so the limit was
+    never in the matching, only in the field; this one keeps the presses as
+    those strings and never builds a QKeySequence at all.
+
+    It reads the keys itself instead of letting the line edit type them. Each
+    press appends a step, and the sequence counts as finished CHORD_RECORD_MS
+    after the last one - so there is no length to agree on in advance: keep
+    pressing and it keeps listening.
+    """
+
+    chordRecorded = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self._steps = []
+        self._fresh = True          # the next press starts a new sequence
+        self._commit = QTimer(self)
+        self._commit.setSingleShot(True)
+        self._commit.timeout.connect(self._finish)
+
+    # -- what the field holds --------------------------------------------
+    def steps(self):
+        return list(self._steps)
+
+    def set_steps(self, steps):
+        """Show a stored binding. Does not emit - this is not a recording."""
+        self._steps = [str(x) for x in (steps or []) if str(x).strip()]
+        self._fresh = True
+        self._commit.stop()
+        self.setText(", ".join(self._steps))
+
+    # -- recording -------------------------------------------------------
+    def event(self, ev):
+        # Qt asks the focus widget first whether a key is a shortcut. Claiming
+        # it is what keeps Krita's own actions (and TypeR's own bindings) from
+        # taking the keys being recorded; QKeySequenceEdit does the same.
+        if ev.type() == QEvent.Type.ShortcutOverride:
+            ev.accept()
+            return True
+        return super().event(ev)
+
+    def keyPressEvent(self, ev):
+        if ev.key() in MODIFIER_KEYS:
+            return                  # half a press, wait for the rest of it
+        if ev.key() == Qt.Key.Key_Escape:
+            # the one key that stays unbindable, so clicking into the field by
+            # accident is not a trap: it ends the recording and hands the
+            # focus back
+            self._finish()
+            self.clearFocus()
+            ev.accept()
+            return
+        step = key_event_string(ev)
+        if not step:
+            return
+        if self._fresh:
+            self._steps = []
+            self._fresh = False
+        self._steps.append(step)
+        self.setText(", ".join(self._steps))
+        self._commit.start(CHORD_RECORD_MS)
+        ev.accept()
+
+    def keyReleaseEvent(self, ev):
+        ev.accept()
+
+    def focusInEvent(self, ev):
+        self._fresh = True          # start over rather than extend what is shown
+        super().focusInEvent(ev)
+
+    def focusOutEvent(self, ev):
+        self._finish()
+        super().focusOutEvent(ev)
+
+    def _finish(self):
+        """Hand the recorded sequence over, once."""
+        self._commit.stop()
+        if not self._fresh:
+            self._fresh = True
+            self.chordRecorded.emit()
+
+
 # widgets where an unmodified key is someone typing, not a shortcut
 TYPING_WIDGETS = (QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox)
 
 
 def in_key_recorder(widget):
-    """True when the focus sits inside a QKeySequenceEdit.
+    """True when the focus sits inside a keybind field.
 
-    Walked upwards rather than compared, because whether the focus lands on
-    the field itself or on its internal line edit is a Qt-version detail, and
-    getting it wrong makes re-binding an already-bound key impossible: the
-    hook would swallow the very key press the field is waiting to record.
+    Walked upwards rather than compared: getting it wrong makes re-binding an
+    already-bound key impossible, because the hook would swallow the very key
+    press the field is waiting to record.
     """
     while widget is not None:
-        if isinstance(widget, QKeySequenceEdit):
+        if isinstance(widget, KeyChordEdit):
             return True
         widget = widget.parentWidget()
     return False
@@ -501,11 +603,13 @@ LANG = {
         "preset_key_tip": ("Press a key combination to switch to this "
                            "character + style from anywhere in Krita — no "
                            "need to walk the dropdowns when the speaker "
-                           "changes.\n\nTwo presses in a row become a "
-                           "sequence: A for Akarie, A then B for Akarie bold. "
-                           "Both can be bound at once — A applies Akarie "
-                           "straight away and B right after switches it to the "
-                           "bold one.\n\nKeybinds belong to this manga, so "
+                           "changes.\n\nKeep pressing and it becomes a "
+                           "sequence, as long as you like: A for Akarie, A "
+                           "then B for Akarie bold. Both can be bound at once "
+                           "— A applies Akarie straight away and B right "
+                           "after switches it to the bold one. Esc leaves the "
+                           "field without recording.\n\nKeybinds belong to "
+                           "this manga, so "
                            "the same keys are free again in the next series. "
                            "One key per style, one style per key.\n\nA bare "
                            "letter takes that key away from Krita’s own tool "
@@ -1332,12 +1436,13 @@ LANG = {
         "preset_key_tip": ("Tastenkombination drücken, um von überall in "
                            "Krita auf diese Figur + diesen Stil zu wechseln "
                            "— kein Klicken durch die Auswahllisten, wenn "
-                           "jemand anderes spricht.\n\nZwei Tasten "
-                           "hintereinander werden eine Folge: A für Akarie, "
-                           "A dann B für Akarie fett. Beides geht "
-                           "gleichzeitig — A wendet sofort Akarie an, ein "
-                           "direkt folgendes B schaltet auf die fette "
-                           "Variante.\n\nKürzel gehören zu diesem Manga, "
+                           "jemand anderes spricht.\n\nWeiterdrücken "
+                           "macht daraus eine Folge, so lang du willst: A "
+                           "für Akarie, A dann B für Akarie fett. Beides "
+                           "geht gleichzeitig — A wendet sofort Akarie an, "
+                           "ein direkt folgendes B schaltet auf die fette "
+                           "Variante. Esc verlässt das Feld ohne "
+                           "Aufnahme.\n\nKürzel gehören zu diesem Manga, "
                            "in der nächsten Serie sind dieselben Tasten also "
                            "wieder frei. Ein Kürzel pro Stil, ein Stil pro "
                            "Kürzel.\n\nEin bloßer Buchstabe nimmt diese "
@@ -6128,8 +6233,8 @@ class TyperDocker(DockWidget):
         key_row = QHBoxLayout()
         self.lbl_preset_key = QLabel()
         key_row.addWidget(self.lbl_preset_key)
-        self.preset_key_edit = QKeySequenceEdit()
-        self.preset_key_edit.editingFinished.connect(self._on_preset_key_edited)
+        self.preset_key_edit = KeyChordEdit()
+        self.preset_key_edit.chordRecorded.connect(self._on_preset_key_edited)
         key_row.addWidget(self.preset_key_edit, 1)
         self.preset_key_clear_btn = QToolButton()
         self.preset_key_clear_btn.setText("✕")
@@ -9922,9 +10027,7 @@ class TyperDocker(DockWidget):
             return
         ch, name = self._preset_ref(self.preset_combo.currentData())
         key = LP.keybind_for(self._keybinds, self._group, ch, name)
-        edit.blockSignals(True)
-        edit.setKeySequence(QKeySequence(key) if key else QKeySequence())
-        edit.blockSignals(False)
+        edit.set_steps(LP.keybind_steps(key))
         edit.setEnabled(bool(name))
 
     def _on_preset_key_edited(self):
@@ -9934,10 +10037,8 @@ class TyperDocker(DockWidget):
             self._sync_preset_key_edit()
             self._set_status(self._tr("st_preset_none"), error=True)
             return
-        # Whatever the field recorded, sequence and all: QKeySequenceEdit
-        # collects up to four presses and finishes on Qt's own input interval,
-        # so "A" stays one press and a deliberate A-then-B becomes "A, B".
-        key = self.preset_key_edit.keySequence().toString().strip()
+        # whatever the field recorded, however many presses that was
+        key = ", ".join(self.preset_key_edit.steps())
         if not key:
             # editingFinished also fires on a plain focus loss, so an empty
             # field is only an unbind when there was something to unbind

@@ -358,16 +358,21 @@ stray markup inside a bubble:
   Ctrl/Alt/Meta is left alone. Keybinds belong to the **manga**, so the same
   handful of keys is free again in the next series; one key per style and
   one style per key, so re-using a key simply moves it.
-- **Two-press sequences** – press two keys into the field one after the other
+- **Key sequences, as long as you like** – keep pressing keys into the field
   and the binding becomes a sequence: `A` for Akarie, `A` then `B` for Akarie
-  bold, written `[A, B]` in the list. A whole family of styles can share a
-  leading key that way, which is what makes bare letters practical instead of
-  having to remember a different modifier combination per style. **The short
-  and the long binding can both exist:** `A` applies Akarie immediately and a
-  `B` right after switches it to the bold one — so the single press is never
-  slowed down waiting to see whether a second one follows. Any key that
-  continues nothing ends the sequence and goes to Krita as usual, and a
-  sequence left half-typed gives up after about a second.
+  bold, written `[A, B]` in the list. There is no limit on the number of
+  presses (`A, B, C, D, E, F` is a perfectly good binding), and the field stops
+  listening about a second after you stop pressing. **Esc** leaves it without
+  recording anything — it is the one key that cannot be bound.
+
+  A whole family of styles can share a leading key that way, which is what
+  makes bare letters practical instead of having to remember a different
+  modifier combination per style. **The short and the long binding can both
+  exist:** `A` applies Akarie immediately and a `B` right after switches it to
+  the bold one — so the single press is never slowed down waiting to see
+  whether a second one follows. Any key that continues nothing ends the
+  sequence and goes to Krita as usual, and a sequence left half-typed gives up
+  after about a second.
 
   A bare letter does take that key away from Krita's own tool shortcut while
   the manga owning it is selected. Use a modifier (`Ctrl+Alt+1` …) where that

@@ -1710,7 +1710,8 @@ if imported:
 
         def _bind(doc, key):
             """What the user does: press a combination into the field."""
-            doc.preset_key_edit.setKeySequence(QKeySequence(key))
+            doc.preset_key_edit.set_steps(
+                [p.strip() for p in key.split(",") if p.strip()])
             doc._on_preset_key_edited()
 
         # bind Kuromiya's style while standing on Hizashi's
@@ -1785,7 +1786,7 @@ if imported:
         _kd.on_preset_key_clear()
         check("the ✕ button unbinds the selected preset",
               "Andere" not in _kd._keybinds
-              and _kd.preset_key_edit.keySequence().isEmpty())
+              and _kd.preset_key_edit.steps() == [])
         _kd._group = "Serie"
         _kd._char = "Hizashi"
         _kd._refresh_chars_combo(select="Hizashi")
@@ -1954,6 +1955,70 @@ if imported:
         check("a half-typed sequence gives up after the timeout",
               _kd._chord == [])
         TK.CHORD_TIMEOUT_MS = _saved_timeout
+
+        # --- longer than four presses, which is all a QKeySequence holds --
+        _long = ["A", "B", "C", "D", "E", "F"]
+        _kd._reset_chord()
+        _kd._keybinds = {}
+        _kd._refresh_presets_combo(select="Bold")
+        _kd.preset_key_edit.set_steps(_long)
+        check("the field keeps every press, with no four-press ceiling",
+              _kd.preset_key_edit.steps() == _long
+              and _kd.preset_key_edit.text() == "A, B, C, D, E, F")
+        _kd._on_preset_key_edited()
+        check("and stores the whole sequence",
+              _kd._keybinds["Serie"] == {"A, B, C, D, E, F":
+                                         ["Akarie", "Bold"]})
+        _kd._refresh_presets_combo(select="Bold")
+        check("a stored long sequence reads back whole",
+              _kd.preset_key_edit.steps() == _long)
+
+        _seq_keys = [_Qt.Key.Key_A, _Qt.Key.Key_B, _Qt.Key.Key_C,
+                     _Qt.Key.Key_D, _Qt.Key.Key_E, _Qt.Key.Key_F]
+        _kd.size_spin.setValue(11)
+        _swallowed = [_kd._key_hook.eventFilter(None, _press(k))
+                      for k in _seq_keys]
+        check("every press of it is swallowed", _swallowed == [True] * 6)
+        check("only the last press applies the style",
+              _kd.size_spin.value() == 40 and _kd._chord == [])
+
+        # it still bails out in the middle
+        _kd.size_spin.setValue(11)
+        for _k in _seq_keys[:4]:
+            _kd._key_hook.eventFilter(None, _press(_k))
+        check("a long sequence is still waiting after four presses",
+              _kd._chord == ["A", "B", "C", "D"])
+        check("a press that continues nothing ends it, style untouched",
+              _kd._key_hook.eventFilter(None, _press(_Qt.Key.Key_Z)) is False
+              and _kd._chord == [] and _kd.size_spin.value() == 11)
+
+        # Escape is the one key the field will not record, so clicking into it
+        # by accident is not a trap; a bare modifier is half a press, not one
+        _kd.preset_key_edit.set_steps(["A"])
+        _kd.preset_key_edit.keyPressEvent(
+            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Escape,
+                    _Qt.KeyboardModifier.NoModifier))
+        check("Escape is not recorded as a press",
+              _kd.preset_key_edit.steps() == ["A"])
+        _kd.preset_key_edit.keyPressEvent(
+            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Control,
+                    _Qt.KeyboardModifier.ControlModifier))
+        check("a modifier on its own is not recorded either",
+              _kd.preset_key_edit.steps() == ["A"])
+
+        # a fresh recording replaces what is shown instead of extending it
+        _kd.preset_key_edit.set_steps(["A", "B"])
+        _kd.preset_key_edit.keyPressEvent(
+            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_X,
+                    _Qt.KeyboardModifier.NoModifier))
+        check("a new press starts a new sequence rather than appending",
+              _kd.preset_key_edit.steps() == ["X"])
+        _kd.preset_key_edit.keyPressEvent(
+            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Y,
+                    _Qt.KeyboardModifier.NoModifier))
+        check("the presses after it do append",
+              _kd.preset_key_edit.steps() == ["X", "Y"])
+        _kd.preset_key_edit.set_steps([])
 
         _kd._keybinds = {}
         _kd._reset_chord()

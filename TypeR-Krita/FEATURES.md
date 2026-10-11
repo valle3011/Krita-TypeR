@@ -425,14 +425,25 @@ style in one press — instead of two dropdowns per change of speaker.
   the `QKeySequenceEdit` row under the preset dropdown
 - Stored in kritarc as `presetKeys`: `{manga: {key: [character, preset]}}`
 
-**A binding can be a sequence** — `A` for Akarie, `A, B` for Akarie bold —
-which is what makes bare letters usable: a family of styles shares a leading
-key instead of needing a different modifier combination each. The store
-keeps each binding as a tuple of presses (`keybind_steps`) and the hook
-matches press by press, so the comparison does not depend on how Qt spells
-the separator. `keybind_match` answers both halves of the question at once:
-whether the presses so far *are* a binding, and whether a longer one
-continues past them.
+**A binding can be a sequence of any length** — `A` for Akarie, `A, B` for
+Akarie bold — which is what makes bare letters usable: a family of styles
+shares a leading key instead of needing a different modifier combination
+each. The store keeps each binding as a tuple of presses (`keybind_steps`)
+and the hook matches press by press, so the comparison does not depend on
+how Qt spells the separator. `keybind_match` answers both halves of the
+question at once: whether the presses so far *are* a binding, and whether a
+longer one continues past them.
+
+**`QKeySequence` is not used to hold a binding**, which is where the length
+limit would come from: it holds at most four combinations and truncates
+`"A, B, C, D, E"` to `"A, B, C, D"` silently. `KeyChordEdit` replaces
+`QKeySequenceEdit` for that reason — it reads the keys itself, keeps them as
+step strings, and treats the sequence as finished `CHORD_RECORD_MS` after
+the last press, so no maximum has to be agreed on in advance. A bare
+modifier is not a press, and `Esc` is the one key it refuses to record, so
+clicking into the field by accident is not a trap. `QKeySequence` is still
+used for the one thing it is good at: spelling a single key event
+(`key_event_string`).
 
 Both can be true, which is the interesting case. Rather than make every
 single press wait out a timeout to find out whether a second one follows,
