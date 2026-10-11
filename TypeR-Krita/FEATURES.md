@@ -419,47 +419,50 @@ A key that switches straight to "Kuromiya, normal talk" — character and
 style in one press — instead of two dropdowns per change of speaker.
 
 - `langpair.py` → `clean_keybinds` / `set_keybind` / `drop_keybinds` /
-  `keybind_for` / `keybind_target` / `keybinds_of`, and for sequences
-  `keybind_steps` / `keybind_index` / `keybind_match` (Qt-free, tested)
-- `typer_kr.py` → `PresetKeyHook` / `handle_preset_key`, `_trigger_keybind`,
-  the `QKeySequenceEdit` row under the preset dropdown
+  `keybind_for` / `keybind_target` / `keybinds_of` / `combo_parts`
+  (Qt-free, tested)
+- `typer_kr.py` → `PresetKeyHook` / `handle_preset_key`, `combo_string`,
+  `_trigger_keybind`, the `KeyChordEdit` row under the preset dropdown
 - Stored in kritarc as `presetKeys`: `{manga: {key: [character, preset]}}`
 
-**A binding can be a sequence of any length** — `A` for Akarie, `A, B` for
+**A binding can name several keys held together** — `A` for Akarie, `A+B` for
 Akarie bold — which is what makes bare letters usable: a family of styles
-shares a leading key instead of needing a different modifier combination
-each. The store keeps each binding as a tuple of presses (`keybind_steps`)
-and the hook matches press by press, so the comparison does not depend on
-how Qt spells the separator. `keybind_match` answers both halves of the
-question at once: whether the presses so far *are* a binding, and whether a
-longer one continues past them.
+shares a key instead of needing a different modifier combination each. It is
+the `Ctrl+C` gesture with the restriction lifted that the first key has to be
+a modifier.
 
-**`KeyChordEdit` replaces `QKeySequenceEdit`** for two reasons, and
-`QKeySequence` never holds a binding. One is the length: a QKeySequence
-holds at most four combinations and truncates `"A, B, C, D, E"` to
-`"A, B, C, D"` silently. The other was a bug worth remembering — the
-field first copied QKeySequenceEdit and ended a recording shortly after the
-last press. At a normal pace that cuts a sequence in half: press A, look at
-the field, press B, and A has already been committed on its own, so a
-two-key binding comes out as the second key alone and the field looks like
-it can only do single keys. There is no good length for that window because
-the user cannot see it, so there is none: the field records while it has
-the focus and `Enter` (or losing focus) finishes, `Esc` restores what was
-bound before. Those two are the only keys it will not record. Nothing is
-cleared until the first press, so clicking in and back out leaves a binding
-alone — unbinding stays the ✕ button's job. A bare modifier is not a
-press. `QKeySequence` is still used for the one thing it is good at:
-spelling a single key event (`key_event_string`).
+That restriction is Qt's, and it is why the docker does the bookkeeping: an
+ordinary letter is not a modifier, so no key event ever reports "A and B". The
+hook keeps the set of non-modifier keys currently down and spells out what is
+held (`combo_string`), taking the modifier prefix from Qt's own rendering of
+the event rather than from a table of modifier names. Key names are sorted, so
+which finger landed first does not change the binding. Matching is then a dict
+lookup, with no partial state and no timeout — the earlier attempt at this read
+the request as a *sequence* of presses and needed both. Releases are watched as
+closely as presses, and `WindowDeactivate` clears everything: a key that was
+down during an Alt-Tab would otherwise stay held for good.
 
-Both can be true, which is the interesting case. Rather than make every
-single press wait out a timeout to find out whether a second one follows,
-the shorter style is applied straight away and the longer one overwrites it
-when its next press arrives — applying a preset only moves the docker's own
-controls, so doing it twice is free. The one thing that would notice is the
-usage counter the default-preset picker learns from, so the superseded count
-is withdrawn again (`_record_preset_usage(..., n=-1)`). A press that
-continues nothing ends the sequence and is passed on untouched; a sequence
-left half-typed expires after `CHORD_TIMEOUT_MS`.
+**`KeyChordEdit` replaces `QKeySequenceEdit`** because a QKeySequence can only
+express what Qt calls a shortcut — modifiers plus one key — and cannot hold
+`A+B` at all. The field watches presses and releases itself: the combination
+grows while keys go down and is handed over when the last one comes back up,
+which is the gesture being recorded, so there is nothing to confirm and no
+window to guess at. An earlier version did guess, and it is worth remembering
+why that failed: it ended a recording shortly after the last press, so at a
+normal pace the first key was committed on its own and the field looked as if
+it could only do single keys. `Esc` cancels and restores what was bound; a bare
+modifier is not a press; nothing is cleared until the first press, so clicking
+in and back out leaves a binding alone — unbinding stays the ✕ button's job.
+`QKeySequence` is still used for the one thing it is good at: spelling a single
+key event (`key_event_string`, `key_name`).
+
+A smaller combination contained in a bigger one is the interesting case:
+holding `A` applies Akarie at once and adding `B` switches to the bold one, so
+the plain key is never slowed down waiting to see whether another one joins it.
+Applying a preset only moves the docker's own controls, so doing it twice is
+free; the one thing that would notice is the usage counter the default-preset
+picker learns from, so the superseded count is withdrawn
+(`_record_preset_usage(..., n=-1)`).
 
 **Per manga, not per plugin**, because the same few keys have to be free
 again in the next series, where those characters do not exist. **One key

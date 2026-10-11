@@ -135,17 +135,12 @@ except Exception:
 # actions - and the KeyPress that follows, which is where the preset is
 # actually applied.
 #
-# Bindings can be sequences of any length (A, then B, then C), so the match
-# happens one press at a time: a press that only starts a longer binding is
-# swallowed and remembered until the next one completes something, ends the
-# sequence, or CHORD_TIMEOUT_MS passes. Nothing here knows how long a binding
-# is - it is a list of step strings, compared step by step.
+# A binding can name several keys *held together*, the way Ctrl+C is one
+# gesture: "A+B" means hold A and press B. Ordinary letters are not modifiers,
+# so no single key event ever reports that - which is why the hook keeps track
+# of what is currently down and spells the combination out itself. Matching is
+# then a dict lookup again, with no partial state to keep and no timeout.
 # ---------------------------------------------------------------------------
-
-#: How long a half-typed sequence waits for its next press. Any press that
-#: cannot continue it ends it immediately, so this only has to cover a pause
-#: between two deliberate presses.
-CHORD_TIMEOUT_MS = 1200
 
 #: Pressed on their own these are not a key, they are half of one.
 MODIFIER_KEYS = frozenset((
@@ -168,6 +163,40 @@ def key_event_string(ev):
     return QKeySequence(combo).toString()
 
 
+def key_name(key):
+    """Qt's spelling of one key on its own, e.g. "A", "F5", "+"."""
+    return QKeySequence(key).toString()
+
+
+def modifier_prefix(ev):
+    """Qt's own spelling of an event's modifiers, e.g. "Ctrl+Alt" (or "").
+
+    Taken by removing the key's own name from the end of the full spelling
+    rather than from a table of modifier names, so the set Qt recognises and
+    the order it writes them in (Meta, Ctrl, Alt, Shift) stay Qt's business.
+    """
+    full = key_event_string(ev)
+    name = key_name(ev.key())
+    if name and full.endswith(name):
+        return full[:-len(name)].rstrip("+")
+    return ""
+
+
+def combo_string(ev, held):
+    """What is held down right now, spelled as one binding: "Ctrl+A+B".
+
+    `held` is the set of non-modifier keys currently down, `ev` the press that
+    completed it (its modifiers are the ones that count). The key names are
+    sorted so that holding A and pressing B is the same binding as holding B
+    and pressing A - the gesture does not depend on which finger landed first.
+    """
+    names = sorted(key_name(k) for k in held if key_name(k))
+    if not names:
+        return ""
+    prefix = modifier_prefix(ev)
+    return "+".join(([prefix] if prefix else []) + names)
+
+
 def key_has_modifier(ev):
     """True for Ctrl/Alt/Meta - i.e. "this was meant as a shortcut"."""
     m = ev.modifiers()
@@ -177,24 +206,18 @@ def key_has_modifier(ev):
 
 
 class KeyChordEdit(QLineEdit):
-    """Records a keybind of any length, finished by the user rather than a timer.
+    """Records one key combination, the way a "press your shortcut" field does.
 
-    QKeySequenceEdit is the obvious widget for this and brings two problems.
-    It stops at four presses, because four is all a QKeySequence can hold - it
-    truncates ``"A, B, C, D, E"`` to ``"A, B, C, D"`` without a word. And it
-    decides a recording is over a moment after the last press, which at a
-    normal pace cuts a sequence in half: press A, look at the field, press B,
-    and A was already committed on its own.
+    QKeySequenceEdit would be the obvious widget and can only express what Qt
+    calls a shortcut: modifiers plus one key. A binding here may name ordinary
+    keys held together ("A+B"), which no key event reports as such, so the
+    field watches presses and releases itself and spells out what is down.
 
-    There is no good length for that window because the user cannot see it, so
-    this field does not have one. It records for as long as it has the focus
-    and **Enter** (or clicking away) finishes; **Esc** puts back what was there
-    before. Those two are the only keys it will not record, which is also what
-    keeps clicking into it by accident from being a trap.
-
-    The presses are kept as plain step strings - the same spelling
-    `key_event_string` gives a key event - and no QKeySequence is ever built,
-    so nothing here has a maximum length.
+    Nothing has to be confirmed: the combination grows while keys go down and
+    is handed over when the last one comes back up - exactly the gesture being
+    recorded. Esc cancels and puts back whatever was bound before; it is the
+    one key that cannot be recorded, which also keeps clicking into the field
+    by accident from being a trap.
     """
 
     chordRecorded = pyqtSignal()
@@ -202,28 +225,28 @@ class KeyChordEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
-        self._steps = []
-        self._before = []           # what Esc goes back to
+        self._combo = ""
+        self._before = ""           # what Esc goes back to
+        self._held = set()
         self._recording = False
 
     # -- what the field holds --------------------------------------------
-    def steps(self):
-        return list(self._steps)
+    def combo(self):
+        return self._combo
 
-    def set_steps(self, steps):
+    def set_combo(self, key):
         """Show a stored binding. Does not emit - this is not a recording."""
-        self._steps = [str(x) for x in (steps or []) if str(x).strip()]
+        self._combo = str(key or "").strip()
         self._recording = False
+        self._held.clear()
         self._render()
 
     def is_recording(self):
         return self._recording
 
     def _render(self):
-        text = ", ".join(self._steps)
-        if self._recording:
-            text = (text + " \u2026") if text else "\u2026"
-        self.setText(text)
+        self.setText((self._combo + " \u2026") if self._recording
+                     else self._combo)
 
     # -- recording -------------------------------------------------------
     def event(self, ev):
@@ -238,43 +261,40 @@ class KeyChordEdit(QLineEdit):
     def keyPressEvent(self, ev):
         if ev.key() in MODIFIER_KEYS:
             return                  # half a press, wait for the rest of it
-        if ev.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self._finish()
-            self.clearFocus()
-            ev.accept()
-            return
         if ev.key() == Qt.Key.Key_Escape:
             self._cancel()
             ev.accept()
             return
-        step = key_event_string(ev)
-        if not step:
-            return
-        if not self._recording:     # a press after a finished recording
-            self._before = list(self._steps)
-            self._steps = []
+        if ev.isAutoRepeat():
+            return                  # a held key, not another one
+        if not self._recording:
+            self._before = self._combo
+            self._held.clear()
             self._recording = True
-        self._steps.append(step)
-        self._render()
+        self._held.add(ev.key())
+        combo = combo_string(ev, self._held)
+        if combo:
+            self._combo = combo     # grows as more keys go down, never shrinks
+            self._render()
         ev.accept()
 
     def keyReleaseEvent(self, ev):
+        if not ev.isAutoRepeat():
+            self._held.discard(ev.key())
+            if self._recording and not self._held:
+                self._finish()      # the last key is up: that was the gesture
         ev.accept()
-
-    def focusInEvent(self, ev):
-        # Nothing is cleared until the first press: clicking in and back out
-        # has to leave an existing binding exactly as it was.
-        super().focusInEvent(ev)
 
     def focusOutEvent(self, ev):
         self._finish()
         super().focusOutEvent(ev)
 
     def _finish(self):
-        """Hand the recorded sequence over, once."""
+        """Hand the recorded combination over, once."""
         if not self._recording:
             return
         self._recording = False
+        self._held.clear()
         self._render()
         self.chordRecorded.emit()
 
@@ -283,7 +303,8 @@ class KeyChordEdit(QLineEdit):
         recorded."""
         if self._recording:
             self._recording = False
-            self._steps = list(self._before)
+            self._held.clear()
+            self._combo = self._before
             self._render()
         self.clearFocus()
 
@@ -317,10 +338,17 @@ class PresetKeyHook(QObject):
         super().__init__(docker)          # dies with the docker, filter and all
         self._docker = docker
 
+    #: The event types a combination is built from. Releases matter as much as
+    #: presses here, and a window going inactive is how a key that was down
+    #: during an Alt-Tab stops counting as held.
+    WATCHED = frozenset((QEvent.Type.KeyPress, QEvent.Type.KeyRelease,
+                         QEvent.Type.ShortcutOverride,
+                         QEvent.Type.WindowDeactivate))
+
     def eventFilter(self, obj, ev):
         try:
             et = ev.type()
-            if et != QEvent.Type.KeyPress and et != QEvent.Type.ShortcutOverride:
+            if et not in self.WATCHED:
                 return False
             return self._docker.handle_preset_key(ev, et)
         except Exception:                 # never let a bug here eat typing
@@ -616,19 +644,19 @@ LANG = {
         "st_preset_applied": "Preset ‘{name}’ applied.",
         "st_preset_deleted": "Preset ‘{name}’ deleted.",
         "preset_key": "Keybind:",
-        "preset_key_ph": "click, press the keys, Enter",
+        "preset_key_ph": "click, then hold the keys",
         "preset_key_tip": ("Press a key combination to switch to this "
                            "character + style from anywhere in Krita — no "
                            "need to walk the dropdowns when the speaker "
-                           "changes.\n\nClick the field and press the "
-                           "keys; it records for as long as it has the focus, "
-                           "so a binding can be a sequence of any length. "
-                           "Enter finishes it, Esc puts back what was "
-                           "there.\n\nA for Akarie, A then B for Akarie "
-                           "bold: both can be bound at once — A applies "
-                           "Akarie straight away and B right after switches "
-                           "it to the bold one.\n\nKeybinds belong to "
-                           "this manga, so "
+                           "changes.\n\nClick the field and hold the "
+                           "keys down together, the way you would press "
+                           "Ctrl+C; letting go records it. Ordinary letters "
+                           "work too, so A+B means hold A and press B. Esc "
+                           "puts back what was there.\n\nA for Akarie and "
+                           "A+B for Akarie bold can both be bound: holding A "
+                           "applies Akarie at once, and adding B while it is "
+                           "still down switches to the bold one.\n\n"
+                           "Keybinds belong to this manga, so "
                            "the same keys are free again in the next series. "
                            "One key per style, one style per key.\n\nA bare "
                            "letter takes that key away from Krita’s own tool "
@@ -1452,19 +1480,20 @@ LANG = {
         "st_preset_saved": "Preset ‚{name}‘ gespeichert.",
         "st_preset_applied": "Preset ‚{name}‘ angewendet.",
         "preset_key": "Tastenkürzel:",
-        "preset_key_ph": "klicken, Tasten drücken, Enter",
+        "preset_key_ph": "klicken, dann Tasten halten",
         "preset_key_tip": ("Tastenkombination drücken, um von überall in "
                            "Krita auf diese Figur + diesen Stil zu wechseln "
                            "— kein Klicken durch die Auswahllisten, wenn "
                            "jemand anderes spricht.\n\nFeld anklicken "
-                           "und Tasten drücken: es nimmt auf, solange es den "
-                           "Fokus hat — ein Kürzel kann also beliebig viele "
-                           "Tasten lang sein. Enter schließt ab, Esc "
-                           "stellt das Vorherige wieder her.\n\nA für "
-                           "Akarie, A dann B für Akarie fett: beides geht "
-                           "gleichzeitig — A wendet sofort Akarie an, ein "
-                           "direkt folgendes B schaltet auf die fette "
-                           "Variante.\n\nKürzel gehören zu diesem Manga, "
+                           "und die Tasten zusammen halten, so wie du Strg+C "
+                           "drückst; Loslassen nimmt auf. Normale Buchstaben "
+                           "gehen auch: A+B heißt A halten und B drücken. "
+                           "Esc stellt das Vorherige wieder her.\n\nA für "
+                           "Akarie und A+B für Akarie fett lassen sich "
+                           "beide belegen: A halten wendet sofort Akarie an, "
+                           "und B dazu, während A noch unten ist, schaltet "
+                           "auf die fette Variante.\n\nKürzel gehören zu "
+                           "diesem Manga, "
                            "in der nächsten Serie sind dieselben Tasten also "
                            "wieder frei. Ein Kürzel pro Stil, ein Stil pro "
                            "Kürzel.\n\nEin bloßer Buchstabe nimmt diese "
@@ -5796,12 +5825,11 @@ class TyperDocker(DockWidget):
         # installed once the docker's state is complete.
         self._keybinds = self._load_keybinds()
         self._key_hook = None
-        # a sequence binding in progress: the presses so far, the preset a
-        # shorter binding already applied on the way through (so a longer one
-        # can take its usage count back), and the timeout that gives up
-        self._chord = []
-        self._chord_applied = None
-        self._chord_timer = None
+        # the keys held down right now, and the preset a smaller combination
+        # already applied while they were (so a bigger one can take its usage
+        # count back) - see handle_preset_key
+        self._held = set()
+        self._held_applied = None
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
         # session list stay decoupled (reordering tabs is harmless). The live
@@ -10050,7 +10078,7 @@ class TyperDocker(DockWidget):
             return
         ch, name = self._preset_ref(self.preset_combo.currentData())
         key = LP.keybind_for(self._keybinds, self._group, ch, name)
-        edit.set_steps(LP.keybind_steps(key))
+        edit.set_combo(key)
         edit.setEnabled(bool(name))
 
     def _on_preset_key_edited(self):
@@ -10060,8 +10088,8 @@ class TyperDocker(DockWidget):
             self._sync_preset_key_edit()
             self._set_status(self._tr("st_preset_none"), error=True)
             return
-        # whatever the field recorded, however many presses that was
-        key = ", ".join(self.preset_key_edit.steps())
+        # whatever combination the field recorded
+        key = self.preset_key_edit.combo().strip()
         if not key:
             # editingFinished also fires on a plain focus loss, so an empty
             # field is only an unbind when there was something to unbind
@@ -10100,50 +10128,44 @@ class TyperDocker(DockWidget):
         self._key_hook = PresetKeyHook(self)
         app.installEventFilter(self._key_hook)
 
-    def _start_chord_timer(self):
-        """Give up on a half-typed sequence after a pause."""
-        if self._chord_timer is None:
-            self._chord_timer = QTimer(self.widget() or self)
-            self._chord_timer.setSingleShot(True)
-            self._chord_timer.timeout.connect(self._reset_chord)
-        self._chord_timer.start(CHORD_TIMEOUT_MS)
-
-    def _reset_chord(self):
-        self._chord = []
-        self._chord_applied = None
-        if self._chord_timer is not None:
-            self._chord_timer.stop()
-
     def handle_preset_key(self, ev, et):
-        """One key seen anywhere in Krita. True = swallowed by TypeR.
+        """One key event seen anywhere in Krita. True = swallowed by TypeR.
 
         Reads `_keybinds` live, so there is nothing to rebuild when a binding
         or the manga changes; the guards below are what keeps an
         application-wide watcher from being a nuisance.
         """
+        if et == QEvent.Type.WindowDeactivate:
+            # whatever was down when the window went away is not held any more
+            # as far as this machine is concerned
+            self._held.clear()
+            self._held_applied = None
+            return False
+        if ev.key() in MODIFIER_KEYS:
+            return False                            # half a press
+        if et == QEvent.Type.KeyRelease:
+            if not ev.isAutoRepeat():
+                self._held.discard(ev.key())
+                if not self._held:
+                    self._held_applied = None       # the gesture is over
+            return False
         if ev.isAutoRepeat():
             return False
-        index = LP.keybind_index(self._keybinds, self._group)
-        if not index:
+        binds = self._keybinds.get(self._group) or {}
+        if not binds:
             return False
         win = self.window()
         if win is None or not win.isVisible():
+            return False                            # docker closed / torn down
+        # ShortcutOverride comes first and the KeyPress for the same key right
+        # after, so only the press is allowed to change what is held
+        held = set(self._held)
+        held.add(ev.key())
+        ref = binds.get(combo_string(ev, held))
+        if not ref:
+            if et == QEvent.Type.KeyPress:
+                self._held = held       # may yet be part of a bigger one
             return False
-        step = key_event_string(ev)
-        if not step:
-            return False
-        steps = self._chord + [step]
-        ref, more = LP.keybind_match(index, steps)
-        if ref is None and not more and self._chord:
-            # the sequence in progress leads nowhere, but this press may still
-            # start one of its own - which is also how pressing the same first
-            # key twice restarts instead of dead-ending
-            self._reset_chord()
-            steps = [step]
-            ref, more = LP.keybind_match(index, steps)
-        if ref is None and not more:
-            self._reset_chord()
-            return False                            # nothing of ours
         focus = QApplication.focusWidget()
         if in_key_recorder(focus):
             return False                            # a key being recorded
@@ -10155,27 +10177,20 @@ class TyperDocker(DockWidget):
             # No state changes here: the KeyPress for this same key follows.
             ev.accept()
             return False
-        if ref is not None:
-            # When this press both completes a binding and starts a longer one,
-            # the shorter style is applied now and the longer one overwrites it
-            # if its next press arrives - so a plain single press stays instant
-            # instead of waiting out the timeout.
-            self._trigger_keybind(ref[0], ref[1],
-                                  supersedes=self._chord_applied)
-        if more:
-            self._chord = steps
-            self._chord_applied = ref
-            self._start_chord_timer()
-        else:
-            self._reset_chord()
+        self._held = held
+        # Holding A applies Akarie at once; adding B while it is still down
+        # switches to Akarie bold. The first one was never the style being
+        # asked for, so it does not get to keep its usage count.
+        self._trigger_keybind(ref[0], ref[1], supersedes=self._held_applied)
+        self._held_applied = (str(ref[0]), str(ref[1]))
         return True
 
     def _trigger_keybind(self, char, name, supersedes=None):
         """A bound key was pressed: switch to that character and style.
 
-        `supersedes` is the (character, preset) a shorter binding of the same
-        sequence applied a moment ago; its usage count is taken back, since it
-        was never the style being asked for.
+        `supersedes` is the (character, preset) a smaller combination applied
+        while the same keys were going down; its usage count is taken back,
+        since it was never the style being asked for.
         """
         presets = self._cur_chars().get(char, {})
         if name not in presets:

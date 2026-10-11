@@ -1712,8 +1712,7 @@ if imported:
 
         def _bind(doc, key):
             """What the user does: press a combination into the field."""
-            doc.preset_key_edit.set_steps(
-                [p.strip() for p in key.split(",") if p.strip()])
+            doc.preset_key_edit.set_combo(key)
             doc._on_preset_key_edited()
 
         # bind Kuromiya's style while standing on Hizashi's
@@ -1730,6 +1729,8 @@ if imported:
         check("the preset dropdown shows the key next to the style",
               any("[Ctrl+Alt+2]" in _kd.preset_combo.itemText(i)
                   for i in range(_kd.preset_combo.count())))
+
+        import time as _time
 
         def _key_ev(kind, key, mods, repeat=False):
             return QKeyEvent(kind, key, mods, 0, 0, 0, "", repeat)
@@ -1788,7 +1789,7 @@ if imported:
         _kd.on_preset_key_clear()
         check("the ✕ button unbinds the selected preset",
               "Andere" not in _kd._keybinds
-              and _kd.preset_key_edit.steps() == [])
+              and _kd.preset_key_edit.combo() == "")
         _kd._group = "Serie"
         _kd._char = "Hizashi"
         _kd._refresh_chars_combo(select="Hizashi")
@@ -1816,13 +1817,19 @@ if imported:
 
         _CTRL_ALT3 = lambda: _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_3,
                                      _CTRL_ALT)
+        def _release(key, mods=_CTRL_ALT):
+            _kd._key_hook.eventFilter(
+                None, _key_ev(_QEvent.Type.KeyRelease, key, mods))
+
         check("the hook swallows a bound key and applies the preset",
               _kd._key_hook.eventFilter(None, _CTRL_ALT3()) is True
               and _kd._char == "Kuromiya" and _kd.size_spin.value() == 33)
+        _release(_Qt.Key.Key_3)
         check("an unbound key passes straight through",
               _kd._key_hook.eventFilter(
                   None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_9,
                                 _CTRL_ALT)) is False)
+        _release(_Qt.Key.Key_9)
         check("a non-key event is not even looked at",
               _kd._key_hook.eventFilter(
                   None, _QEvent(_QEvent.Type.MouseMove)) is False)
@@ -1830,6 +1837,7 @@ if imported:
               _kd._key_hook.eventFilter(
                   None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_3,
                                 _CTRL_ALT, True)) is False)
+        check("nothing is held between those presses", _kd._held == set())
 
         # ShortcutOverride is accepted but passed on: that is what takes the
         # key away from Krita's own actions without consuming it here
@@ -1851,6 +1859,7 @@ if imported:
         check("a bare key is left to the text field that has the focus",
               _app.focusWidget() is _typing          # precondition, not a pass
               and _kd._key_hook.eventFilter(None, _f9()) is False)
+        _release(_Qt.Key.Key_F9, _Qt.KeyboardModifier.NoModifier)
         _typing.hide()
         _typing.setParent(None)
         _typing.deleteLater()
@@ -1874,15 +1883,15 @@ if imported:
               and _kd._key_hook.eventFilter(
                   None, _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_4,
                                 _CTRL_ALT)) is False)
+        _release(_Qt.Key.Key_4)
         _kd.preset_key_edit.clearFocus()
         _app.processEvents()
 
-        # --- sequences: A for Akarie, A then B for Akarie bold -----------
-        import time as _time
+        # --- combinations: A for Akarie, A+B (held together) for bold -----
         _kd._groups["Serie"]["Akarie"] = {"Normal": {"size": 12},
                                           "Bold": {"size": 40}}
         _kd._keybinds = {}
-        _kd._reset_chord()
+        _kd._held = set()
         if _app.focusWidget() is not None:
             _app.focusWidget().clearFocus()        # bare keys, so no text field
             _app.processEvents()
@@ -1891,183 +1900,141 @@ if imported:
         _kd._refresh_presets_combo(select="Normal")
         _bind(_kd, "A")
         _kd._refresh_presets_combo(select="Bold")
-        _bind(_kd, "A, B")
-        check("a sequence is stored with both of its presses",
+        _bind(_kd, "A+B")
+        check("a combination is stored like any other key",
               _kd._keybinds["Serie"] == {"A": ["Akarie", "Normal"],
-                                         "A, B": ["Akarie", "Bold"]})
-        check("the dropdown shows the sequence as Qt spells it",
-              any("[A, B]" in _kd.preset_combo.itemText(i)
+                                         "A+B": ["Akarie", "Bold"]})
+        check("the dropdown shows the combination next to the style",
+              any("[A+B]" in _kd.preset_combo.itemText(i)
                   for i in range(_kd.preset_combo.count())))
 
-        def _press(key):
+        def _down(key, mods=None):
             return _key_ev(_QEvent.Type.KeyPress, key,
-                           _Qt.KeyboardModifier.NoModifier)
+                           mods or _Qt.KeyboardModifier.NoModifier)
+
+        def _up(key, mods=None):
+            return _key_ev(_QEvent.Type.KeyRelease, key,
+                           mods or _Qt.KeyboardModifier.NoModifier)
 
         _A, _B, _Z = _Qt.Key.Key_A, _Qt.Key.Key_B, _Qt.Key.Key_Z
+        # press A on its own: the small binding, start to finish
+        _kd.size_spin.setValue(11)
+        check("pressing A applies the single-key binding",
+              _kd._key_hook.eventFilter(None, _down(_A)) is True
+              and _kd.size_spin.value() == 12)
+        _kd._key_hook.eventFilter(None, _up(_A))
+        check("letting go leaves nothing held",
+              _kd._held == set() and _kd._held_applied is None)
+
+        # hold A, add B: the bigger binding takes over, like Ctrl+C does
         _was = int(_kd._preset_usage.get("Serie", {})
                    .get("Akarie", {}).get("Normal", 0))
         _kd.size_spin.setValue(11)
-        check("the first press applies the short binding straight away",
-              _kd._key_hook.eventFilter(None, _press(_A)) is True
-              and _kd.size_spin.value() == 12)
-        check("and keeps the sequence open for a second press",
-              _kd._chord == ["A"] and _kd._chord_timer.isActive())
-        check("the second press switches to the longer binding",
-              _kd._key_hook.eventFilter(None, _press(_B)) is True
-              and _kd.size_spin.value() == 40 and _kd._chord == [])
+        _kd._key_hook.eventFilter(None, _down(_A))
+        check("A is remembered as held",
+              _kd._held == {_A} and _kd.size_spin.value() == 12)
+        check("adding B while A is down applies the combination",
+              _kd._key_hook.eventFilter(None, _down(_B)) is True
+              and _kd.size_spin.value() == 40)
         check("the style passed through on the way is not counted as used",
               int(_kd._preset_usage["Serie"]["Akarie"].get("Normal", 0)) == _was)
         check("the style actually asked for is",
               int(_kd._preset_usage["Serie"]["Akarie"].get("Bold", 0)) >= 1)
+        _kd._key_hook.eventFilter(None, _up(_B))
+        _kd._key_hook.eventFilter(None, _up(_A))
+        check("both releases clear what is held", _kd._held == set())
 
-        # a press that continues nothing ends the sequence and is Krita's again
+        # the order the two keys go down in does not matter
         _kd.size_spin.setValue(11)
-        _kd._key_hook.eventFilter(None, _press(_A))
-        check("a press that continues nothing is left to Krita",
-              _kd._key_hook.eventFilter(None, _press(_Z)) is False
-              and _kd._chord == [])
-        check("what the first press applied stays applied",
-              _kd.size_spin.value() == 12)
-
-        _kd._key_hook.eventFilter(None, _press(_A))
-        check("pressing the first key again restarts the sequence",
-              _kd._key_hook.eventFilter(None, _press(_A)) is True
-              and _kd._chord == ["A"])
-
-        # a prefix that is not a binding of its own: nothing to apply yet
-        _kd._keybinds = {"Serie": {"A, B": ["Akarie", "Bold"]}}
-        _kd._reset_chord()
-        _kd.size_spin.setValue(11)
-        check("a prefix that is no binding is swallowed without applying",
-              _kd._key_hook.eventFilter(None, _press(_A)) is True
-              and _kd.size_spin.value() == 11 and _kd._chord == ["A"])
-        check("its second press applies the sequence",
-              _kd._key_hook.eventFilter(None, _press(_B)) is True
+        _kd._keybinds = {"Serie": {"A+B": ["Akarie", "Bold"]}}
+        _kd._held = set()
+        check("B first, then A, is the same combination",
+              _kd._key_hook.eventFilter(None, _down(_B)) is False
+              and _kd._key_hook.eventFilter(None, _down(_A)) is True
               and _kd.size_spin.value() == 40)
+        _kd._key_hook.eventFilter(None, _up(_A))
+        _kd._key_hook.eventFilter(None, _up(_B))
 
-        # and it gives up on its own if the second press never comes
-        _saved_timeout = TK.CHORD_TIMEOUT_MS
-        TK.CHORD_TIMEOUT_MS = 50
-        _kd._reset_chord()
-        _kd._key_hook.eventFilter(None, _press(_A))
-        _deadline = _time.time() + 3
-        while _kd._chord and _time.time() < _deadline:
-            _app.processEvents()
-            _time.sleep(0.01)
-        check("a half-typed sequence gives up after the timeout",
-              _kd._chord == [])
-        TK.CHORD_TIMEOUT_MS = _saved_timeout
-
-        # --- longer than four presses, which is all a QKeySequence holds --
-        _long = ["A", "B", "C", "D", "E", "F"]
-        _kd._reset_chord()
-        _kd._keybinds = {}
-        _kd._refresh_presets_combo(select="Bold")
-        _kd.preset_key_edit.set_steps(_long)
-        check("the field keeps every press, with no four-press ceiling",
-              _kd.preset_key_edit.steps() == _long
-              and _kd.preset_key_edit.text() == "A, B, C, D, E, F")
-        _kd._on_preset_key_edited()
-        check("and stores the whole sequence",
-              _kd._keybinds["Serie"] == {"A, B, C, D, E, F":
-                                         ["Akarie", "Bold"]})
-        _kd._refresh_presets_combo(select="Bold")
-        check("a stored long sequence reads back whole",
-              _kd.preset_key_edit.steps() == _long)
-
-        _seq_keys = [_Qt.Key.Key_A, _Qt.Key.Key_B, _Qt.Key.Key_C,
-                     _Qt.Key.Key_D, _Qt.Key.Key_E, _Qt.Key.Key_F]
+        # a key that is part of no binding is Krita's, but still counted as
+        # held, because it may yet complete one
         _kd.size_spin.setValue(11)
-        _swallowed = [_kd._key_hook.eventFilter(None, _press(k))
-                      for k in _seq_keys]
-        check("every press of it is swallowed", _swallowed == [True] * 6)
-        check("only the last press applies the style",
-              _kd.size_spin.value() == 40 and _kd._chord == [])
+        check("a key that completes nothing passes through",
+              _kd._key_hook.eventFilter(None, _down(_Z)) is False
+              and _kd.size_spin.value() == 11 and _kd._held == {_Z})
+        _kd._key_hook.eventFilter(None, _up(_Z))
 
-        # it still bails out in the middle
+        # auto-repeat from a held key must not re-apply anything
         _kd.size_spin.setValue(11)
-        for _k in _seq_keys[:4]:
-            _kd._key_hook.eventFilter(None, _press(_k))
-        check("a long sequence is still waiting after four presses",
-              _kd._chord == ["A", "B", "C", "D"])
-        check("a press that continues nothing ends it, style untouched",
-              _kd._key_hook.eventFilter(None, _press(_Qt.Key.Key_Z)) is False
-              and _kd._chord == [] and _kd.size_spin.value() == 11)
+        _kd._key_hook.eventFilter(None, _down(_B))
+        _kd._key_hook.eventFilter(None, _down(_A))
+        _kd.size_spin.setValue(11)
+        check("auto-repeat of a held key changes nothing",
+              _kd._key_hook.eventFilter(
+                  None, _key_ev(_QEvent.Type.KeyPress, _A,
+                                _Qt.KeyboardModifier.NoModifier, True)) is False
+              and _kd.size_spin.value() == 11)
+        check("the window going inactive forgets what was held",
+              _kd._key_hook.eventFilter(
+                  None, _QEvent(_QEvent.Type.WindowDeactivate)) is False
+              and _kd._held == set())
 
-        # Escape is the one key the field will not record, so clicking into it
-        # by accident is not a trap; a bare modifier is half a press, not one
-        _kd.preset_key_edit.set_steps(["A"])
-        _kd.preset_key_edit.keyPressEvent(
-            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Escape,
-                    _Qt.KeyboardModifier.NoModifier))
-        check("Escape is not recorded as a press",
-              _kd.preset_key_edit.steps() == ["A"])
-        _kd.preset_key_edit.keyPressEvent(
-            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Control,
-                    _Qt.KeyboardModifier.ControlModifier))
-        check("a modifier on its own is not recorded either",
-              _kd.preset_key_edit.steps() == ["A"])
-
-        # a fresh recording replaces what is shown instead of extending it
-        _kd.preset_key_edit.set_steps(["A", "B"])
-        _kd.preset_key_edit.keyPressEvent(
-            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_X,
-                    _Qt.KeyboardModifier.NoModifier))
-        check("a new press starts a new sequence rather than appending",
-              _kd.preset_key_edit.steps() == ["X"])
-        _kd.preset_key_edit.keyPressEvent(
-            _key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Y,
-                    _Qt.KeyboardModifier.NoModifier))
-        check("the presses after it do append",
-              _kd.preset_key_edit.steps() == ["X", "Y"])
-
-        # --- the recording has no hidden time window ---------------------
-        # This is the bug the field shipped with: it used to decide a sequence
-        # was over shortly after the last press, so two keys at a normal pace
-        # came out as the second one alone.
+        # --- the field: it records the gesture, not a count of presses ----
         _fld = _kd.preset_key_edit
-        _fld.set_steps([])
-        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_A,
-                                   _Qt.KeyboardModifier.NoModifier))
-        _slow = _time.time() + 1.5                 # far longer than any window
+        _recorded = []
+        _fld.chordRecorded.connect(lambda: _recorded.append(_fld.combo()))
+        _fld.set_combo("")
+        _fld.keyPressEvent(_down(_A))
+        check("the field shows the first key and keeps listening",
+              _fld.combo() == "A" and _fld.is_recording()
+              and _fld.text().endswith("\u2026"))
+        _slow = _time.time() + 1.5             # no hidden window any more
         while _time.time() < _slow:
             _app.processEvents()
             _time.sleep(0.01)
-        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_B,
-                                   _Qt.KeyboardModifier.NoModifier))
-        check("a slow second press still joins the same sequence",
-              _fld.steps() == ["A", "B"] and _fld.is_recording())
-        check("and the field shows that it is still recording",
-              _fld.text().endswith("\u2026"))
+        _fld.keyPressEvent(_down(_B))
+        check("a second key held down joins the same combination",
+              _fld.combo() == "A+B" and _recorded == [])
+        _fld.keyReleaseEvent(_up(_B))
+        check("letting go of one key is not the end of it",
+              _recorded == [] and _fld.is_recording())
+        _fld.keyReleaseEvent(_up(_A))
+        check("letting go of the last key hands the combination over",
+              _recorded == ["A+B"] and not _fld.is_recording()
+              and _fld.text() == "A+B")
 
-        _recorded = []
-        _fld.chordRecorded.connect(lambda: _recorded.append(_fld.steps()))
-        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Return,
-                                   _Qt.KeyboardModifier.NoModifier))
-        check("Enter finishes the recording and hands it over",
-              _recorded == [["A", "B"]] and not _fld.is_recording()
-              and _fld.text() == "A, B")
+        # a modifier combination records exactly as it always did
+        _fld.set_combo("")
+        _fld.keyPressEvent(_down(_Qt.Key.Key_C,
+                                _Qt.KeyboardModifier.ControlModifier))
+        check("Ctrl+C is recorded as Ctrl+C",
+              _fld.combo() == "Ctrl+C")
+        _fld.keyReleaseEvent(_up(_Qt.Key.Key_C,
+                                 _Qt.KeyboardModifier.ControlModifier))
+        check("and is handed over when the key comes up",
+              _recorded[-1] == "Ctrl+C")
 
-        # Esc puts back what was there instead of recording
-        _fld.set_steps(["Ctrl+Alt+9"])
-        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_A,
-                                   _Qt.KeyboardModifier.NoModifier))
-        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Escape,
-                                   _Qt.KeyboardModifier.NoModifier))
+        # Esc puts back what was bound; a lone modifier is not a key
+        _fld.set_combo("Ctrl+Alt+9")
+        _fld.keyPressEvent(_down(_A))
+        _fld.keyPressEvent(_down(_Qt.Key.Key_Control,
+                                 _Qt.KeyboardModifier.ControlModifier))
+        check("a modifier on its own is not recorded",
+              _fld.combo() == "A")
+        _fld.keyPressEvent(_down(_Qt.Key.Key_Escape))
         check("Esc puts back the binding that was there",
-              _fld.steps() == ["Ctrl+Alt+9"] and not _fld.is_recording()
-              and len(_recorded) == 1)
+              _fld.combo() == "Ctrl+Alt+9" and not _fld.is_recording()
+              and len(_recorded) == 2)
 
         # clicking in and straight back out must not unbind anything
         _fld.focusInEvent(_QFocusEvent(_QEvent.Type.FocusIn))
         _fld.focusOutEvent(_QFocusEvent(_QEvent.Type.FocusOut))
         check("clicking in and out leaves the binding alone",
-              _fld.steps() == ["Ctrl+Alt+9"] and len(_recorded) == 1)
+              _fld.combo() == "Ctrl+Alt+9" and len(_recorded) == 2)
         _fld.chordRecorded.disconnect()
-        _fld.set_steps([])
+        _fld.set_combo("")
 
         _kd._keybinds = {}
-        _kd._reset_chord()
+        _kd._held = set()
         _kd._char = "Kuromiya"
         _kd._refresh_chars_combo(select="Kuromiya")
         _kd._refresh_presets_combo(select="Normal Talk")

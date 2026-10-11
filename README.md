@@ -358,27 +358,23 @@ stray markup inside a bubble:
   Ctrl/Alt/Meta is left alone. Keybinds belong to the **manga**, so the same
   handful of keys is free again in the next series; one key per style and
   one style per key, so re-using a key simply moves it.
-- **Key sequences, as long as you like** – click the keybind field and press
-  the keys; it records for as long as it has the focus, and **Enter** finishes.
-  The binding becomes a sequence: `A` for Akarie, `A` then `B` for Akarie bold,
-  written `[A, B]` in the list. There is no limit on the number of presses
-  (`A, B, C, D, E, F` is a perfectly good binding) and no time limit between
-  them — take as long as you like. **Esc** puts back whatever was bound
-  before. Enter and Esc are therefore the only two keys that cannot themselves
-  be bound; clicking in and straight back out changes nothing.
+- **Combinations of any keys** – click the keybind field and hold the keys
+  down together, exactly the way you press `Ctrl+C`; letting go records it.
+  The difference is that ordinary letters count too, so `A+B` means *hold A and
+  press B* and is shown as `[A+B]` next to the style. The order your fingers
+  land in does not matter, and **Esc** puts back whatever was bound before
+  (it is the one key that cannot be bound; clicking in and straight back out
+  changes nothing).
 
-  A whole family of styles can share a leading key that way, which is what
-  makes bare letters practical instead of having to remember a different
-  modifier combination per style. **The short and the long binding can both
-  exist:** `A` applies Akarie immediately and a `B` right after switches it to
-  the bold one — so the single press is never slowed down waiting to see
-  whether a second one follows. Any key that continues nothing ends the
-  sequence and goes to Krita as usual, and a sequence left half-typed gives up
-  after about a second.
+  A whole family of styles can share a key that way, which is what makes bare
+  letters practical instead of having to remember a different modifier
+  combination per style. **The small and the large binding can both exist:**
+  `A` applies Akarie the moment you press it, and adding `B` while A is still
+  down switches to the bold one.
 
   A bare letter does take that key away from Krita's own tool shortcut while
   the manga owning it is selected. Use a modifier (`Ctrl+Alt+1` …) where that
-  matters — sequences work with those too (`Ctrl+Alt+1, B`).
+  matters — those combine as well (`Ctrl+Alt+A+B`).
 - **Progress tracking:** inserted lines are marked green in the table; each
   layer gets a descriptive name like `TypeR 03 — DON'T MOVE`.
 - Larger, comfortable **script input box** so a pasted/parsed script is easy to

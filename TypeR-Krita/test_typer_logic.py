@@ -1538,51 +1538,43 @@ check("keybinds: deleting the manga drops the whole block",
       _kb2 == {} and LP.drop_keybinds({}, "Weg") == {})
 
 
-# sequence bindings: a key can be several presses, and a short binding can be
-# the start of a longer one (A = Akarie, A then B = Akarie bold)
-check("keybinds: a key splits into its presses",
-      LP.keybind_steps("A, B") == ("A", "B")
-      and LP.keybind_steps("Ctrl+Alt+1") == ("Ctrl+Alt+1",)
-      and LP.keybind_steps("A,B") == ("A", "B")
-      and LP.keybind_steps("") == () and LP.keybind_steps(None) == ())
+# combination bindings: several keys held together are one binding, and a
+# smaller one can be contained in a bigger (A = Akarie, A+B = Akarie bold)
+check("keybinds: a combination splits into its keys",
+      LP.combo_parts("Ctrl+A+B") == ("Ctrl", "A", "B")
+      and LP.combo_parts("Ctrl+Alt+1") == ("Ctrl", "Alt", "1")
+      and LP.combo_parts("A") == ("A",)
+      and LP.combo_parts("") == () and LP.combo_parts(None) == ())
 
-_seq = LP.clean_keybinds({"Serie": {
+_combo = LP.clean_keybinds({"Serie": {
     "A": ["Akarie", "Normal"],
-    "A, B": ["Akarie", "Bold"],
-    "A, C": ["Akarie", "Shout"],
+    "A+B": ["Akarie", "Bold"],
     "Ctrl+Alt+1": ["Hiro", "Talk"],
 }})
-_ix = LP.keybind_index(_seq, "Serie")
-check("keybinds: the index is keyed by presses, not by spelling",
-      _ix[("A", "B")] == ("Akarie", "Bold")
-      and _ix[("Ctrl+Alt+1",)] == ("Hiro", "Talk")
-      and len(_ix) == 4)
+check("keybinds: a combination is stored as one key, like any other",
+      LP.keybind_for(_combo, "Serie", "Akarie", "Bold") == "A+B"
+      and LP.keybind_target(_combo, "Serie", "A+B") == ("Akarie", "Bold"))
+check("keybinds: the smaller combination keeps its own binding",
+      LP.keybind_for(_combo, "Serie", "Akarie", "Normal") == "A")
 
-check("keybinds: a first press that is also a binding reports both",
-      LP.keybind_match(_ix, ("A",)) == (("Akarie", "Normal"), True))
-check("keybinds: the finished sequence reports only itself",
-      LP.keybind_match(_ix, ("A", "B")) == (("Akarie", "Bold"), False))
-check("keybinds: a sequence that leads nowhere reports nothing",
-      LP.keybind_match(_ix, ("A", "Z")) == (None, False)
-      and LP.keybind_match(_ix, ("Z",)) == (None, False))
-check("keybinds: a single binding is not treated as a prefix",
-      LP.keybind_match(_ix, ("Ctrl+Alt+1",)) == (("Hiro", "Talk"), False))
+# bindings written by the version that recorded sequences say "these two keys",
+# which is what a combination of the same keys says now
+check("keybinds: an old sequence binding is carried over as a combination",
+      LP.clean_keybinds({"S": {"A, B": ["Ak", "Bold"]}})
+      == {"S": {"A+B": ["Ak", "Bold"]}})
+check("keybinds: a plain binding is left exactly as it was",
+      LP.clean_keybinds({"S": {"Ctrl+Alt+2": ["Ak", "Bold"]}})
+      == {"S": {"Ctrl+Alt+2": ["Ak", "Bold"]}})
 
-# a prefix that is NOT a binding of its own: waiting, with nothing to apply yet
-_ix2 = LP.keybind_index(LP.clean_keybinds(
-    {"Serie": {"A, B": ["Akarie", "Bold"]}}), "Serie")
-check("keybinds: a bare prefix waits without applying anything",
-      LP.keybind_match(_ix2, ("A",)) == (None, True))
-check("keybinds: an index of another manga matches nothing",
-      LP.keybind_index(_seq, "Andere") == {}
-      and LP.keybind_match({}, ("A",)) == (None, False))
-
-# the store's own rules still hold for sequences
-LP.set_keybind(_seq, "Serie", "A, B", "Akarie", "Normal")
-check("keybinds: a sequence can take a key over from a single press",
-      LP.keybind_for(_seq, "Serie", "Akarie", "Normal") == "A, B"
-      and LP.keybind_for(_seq, "Serie", "Akarie", "Bold") == ""
-      and "A" not in _seq["Serie"])
+# the store's own rules hold for combinations too
+LP.set_keybind(_combo, "Serie", "A+B", "Akarie", "Normal")
+check("keybinds: a combination can take a key over from a single one",
+      LP.keybind_for(_combo, "Serie", "Akarie", "Normal") == "A+B"
+      and LP.keybind_for(_combo, "Serie", "Akarie", "Bold") == ""
+      and "A" not in _combo["Serie"])
+LP.drop_keybinds(_combo, "Serie", "Akarie")
+check("keybinds: deleting the character drops its combination too",
+      LP.keybinds_of(_combo, "Serie") == [("Ctrl+Alt+1", "Hiro", "Talk")])
 
 
 # --- .gdoc -> document id when Drive refuses to read the file ---------------
