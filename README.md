@@ -358,12 +358,14 @@ stray markup inside a bubble:
   Ctrl/Alt/Meta is left alone. Keybinds belong to the **manga**, so the same
   handful of keys is free again in the next series; one key per style and
   one style per key, so re-using a key simply moves it.
-- **Key sequences, as long as you like** – keep pressing keys into the field
-  and the binding becomes a sequence: `A` for Akarie, `A` then `B` for Akarie
-  bold, written `[A, B]` in the list. There is no limit on the number of
-  presses (`A, B, C, D, E, F` is a perfectly good binding), and the field stops
-  listening about a second after you stop pressing. **Esc** leaves it without
-  recording anything — it is the one key that cannot be bound.
+- **Key sequences, as long as you like** – click the keybind field and press
+  the keys; it records for as long as it has the focus, and **Enter** finishes.
+  The binding becomes a sequence: `A` for Akarie, `A` then `B` for Akarie bold,
+  written `[A, B]` in the list. There is no limit on the number of presses
+  (`A, B, C, D, E, F` is a perfectly good binding) and no time limit between
+  them — take as long as you like. **Esc** puts back whatever was bound
+  before. Enter and Esc are therefore the only two keys that cannot themselves
+  be bound; clicking in and straight back out changes nothing.
 
   A whole family of styles can share a leading key that way, which is what
   makes bare letters practical instead of having to remember a different

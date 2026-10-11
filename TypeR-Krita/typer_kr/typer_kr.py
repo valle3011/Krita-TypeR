@@ -147,12 +147,6 @@ except Exception:
 #: between two deliberate presses.
 CHORD_TIMEOUT_MS = 1200
 
-#: How long the keybind field waits after a press before deciding the sequence
-#: being recorded is finished. The same idea QKeySequenceEdit uses to know when
-#: a recording is over, and what makes a sequence of any length recordable: you
-#: keep pressing, it keeps listening.
-CHORD_RECORD_MS = 900
-
 #: Pressed on their own these are not a key, they are half of one.
 MODIFIER_KEYS = frozenset((
     Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta,
@@ -183,19 +177,24 @@ def key_has_modifier(ev):
 
 
 class KeyChordEdit(QLineEdit):
-    """Records a keybind of any length.
+    """Records a keybind of any length, finished by the user rather than a timer.
 
-    QKeySequenceEdit is the obvious widget for this and stops at four presses,
-    because four is all a QKeySequence can hold - it truncates
-    ``"A, B, C, D, E"`` to ``"A, B, C, D"`` without a word. TypeR matches
-    bindings press by press out of a list of step strings, so the limit was
-    never in the matching, only in the field; this one keeps the presses as
-    those strings and never builds a QKeySequence at all.
+    QKeySequenceEdit is the obvious widget for this and brings two problems.
+    It stops at four presses, because four is all a QKeySequence can hold - it
+    truncates ``"A, B, C, D, E"`` to ``"A, B, C, D"`` without a word. And it
+    decides a recording is over a moment after the last press, which at a
+    normal pace cuts a sequence in half: press A, look at the field, press B,
+    and A was already committed on its own.
 
-    It reads the keys itself instead of letting the line edit type them. Each
-    press appends a step, and the sequence counts as finished CHORD_RECORD_MS
-    after the last one - so there is no length to agree on in advance: keep
-    pressing and it keeps listening.
+    There is no good length for that window because the user cannot see it, so
+    this field does not have one. It records for as long as it has the focus
+    and **Enter** (or clicking away) finishes; **Esc** puts back what was there
+    before. Those two are the only keys it will not record, which is also what
+    keeps clicking into it by accident from being a trap.
+
+    The presses are kept as plain step strings - the same spelling
+    `key_event_string` gives a key event - and no QKeySequence is ever built,
+    so nothing here has a maximum length.
     """
 
     chordRecorded = pyqtSignal()
@@ -204,10 +203,8 @@ class KeyChordEdit(QLineEdit):
         super().__init__(parent)
         self.setReadOnly(True)
         self._steps = []
-        self._fresh = True          # the next press starts a new sequence
-        self._commit = QTimer(self)
-        self._commit.setSingleShot(True)
-        self._commit.timeout.connect(self._finish)
+        self._before = []           # what Esc goes back to
+        self._recording = False
 
     # -- what the field holds --------------------------------------------
     def steps(self):
@@ -216,9 +213,17 @@ class KeyChordEdit(QLineEdit):
     def set_steps(self, steps):
         """Show a stored binding. Does not emit - this is not a recording."""
         self._steps = [str(x) for x in (steps or []) if str(x).strip()]
-        self._fresh = True
-        self._commit.stop()
-        self.setText(", ".join(self._steps))
+        self._recording = False
+        self._render()
+
+    def is_recording(self):
+        return self._recording
+
+    def _render(self):
+        text = ", ".join(self._steps)
+        if self._recording:
+            text = (text + " \u2026") if text else "\u2026"
+        self.setText(text)
 
     # -- recording -------------------------------------------------------
     def event(self, ev):
@@ -233,30 +238,32 @@ class KeyChordEdit(QLineEdit):
     def keyPressEvent(self, ev):
         if ev.key() in MODIFIER_KEYS:
             return                  # half a press, wait for the rest of it
-        if ev.key() == Qt.Key.Key_Escape:
-            # the one key that stays unbindable, so clicking into the field by
-            # accident is not a trap: it ends the recording and hands the
-            # focus back
+        if ev.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._finish()
             self.clearFocus()
+            ev.accept()
+            return
+        if ev.key() == Qt.Key.Key_Escape:
+            self._cancel()
             ev.accept()
             return
         step = key_event_string(ev)
         if not step:
             return
-        if self._fresh:
+        if not self._recording:     # a press after a finished recording
+            self._before = list(self._steps)
             self._steps = []
-            self._fresh = False
+            self._recording = True
         self._steps.append(step)
-        self.setText(", ".join(self._steps))
-        self._commit.start(CHORD_RECORD_MS)
+        self._render()
         ev.accept()
 
     def keyReleaseEvent(self, ev):
         ev.accept()
 
     def focusInEvent(self, ev):
-        self._fresh = True          # start over rather than extend what is shown
+        # Nothing is cleared until the first press: clicking in and back out
+        # has to leave an existing binding exactly as it was.
         super().focusInEvent(ev)
 
     def focusOutEvent(self, ev):
@@ -265,11 +272,20 @@ class KeyChordEdit(QLineEdit):
 
     def _finish(self):
         """Hand the recorded sequence over, once."""
-        self._commit.stop()
-        if not self._fresh:
-            self._fresh = True
-            self.chordRecorded.emit()
+        if not self._recording:
+            return
+        self._recording = False
+        self._render()
+        self.chordRecorded.emit()
 
+    def _cancel(self):
+        """Esc: put back what was there, or just leave if nothing was being
+        recorded."""
+        if self._recording:
+            self._recording = False
+            self._steps = list(self._before)
+            self._render()
+        self.clearFocus()
 
 # widgets where an unmodified key is someone typing, not a shortcut
 TYPING_WIDGETS = (QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox)
@@ -600,15 +616,18 @@ LANG = {
         "st_preset_applied": "Preset ‘{name}’ applied.",
         "st_preset_deleted": "Preset ‘{name}’ deleted.",
         "preset_key": "Keybind:",
+        "preset_key_ph": "click, press the keys, Enter",
         "preset_key_tip": ("Press a key combination to switch to this "
                            "character + style from anywhere in Krita — no "
                            "need to walk the dropdowns when the speaker "
-                           "changes.\n\nKeep pressing and it becomes a "
-                           "sequence, as long as you like: A for Akarie, A "
-                           "then B for Akarie bold. Both can be bound at once "
-                           "— A applies Akarie straight away and B right "
-                           "after switches it to the bold one. Esc leaves the "
-                           "field without recording.\n\nKeybinds belong to "
+                           "changes.\n\nClick the field and press the "
+                           "keys; it records for as long as it has the focus, "
+                           "so a binding can be a sequence of any length. "
+                           "Enter finishes it, Esc puts back what was "
+                           "there.\n\nA for Akarie, A then B for Akarie "
+                           "bold: both can be bound at once — A applies "
+                           "Akarie straight away and B right after switches "
+                           "it to the bold one.\n\nKeybinds belong to "
                            "this manga, so "
                            "the same keys are free again in the next series. "
                            "One key per style, one style per key.\n\nA bare "
@@ -1433,16 +1452,19 @@ LANG = {
         "st_preset_saved": "Preset ‚{name}‘ gespeichert.",
         "st_preset_applied": "Preset ‚{name}‘ angewendet.",
         "preset_key": "Tastenkürzel:",
+        "preset_key_ph": "klicken, Tasten drücken, Enter",
         "preset_key_tip": ("Tastenkombination drücken, um von überall in "
                            "Krita auf diese Figur + diesen Stil zu wechseln "
                            "— kein Klicken durch die Auswahllisten, wenn "
-                           "jemand anderes spricht.\n\nWeiterdrücken "
-                           "macht daraus eine Folge, so lang du willst: A "
-                           "für Akarie, A dann B für Akarie fett. Beides "
-                           "geht gleichzeitig — A wendet sofort Akarie an, "
-                           "ein direkt folgendes B schaltet auf die fette "
-                           "Variante. Esc verlässt das Feld ohne "
-                           "Aufnahme.\n\nKürzel gehören zu diesem Manga, "
+                           "jemand anderes spricht.\n\nFeld anklicken "
+                           "und Tasten drücken: es nimmt auf, solange es den "
+                           "Fokus hat — ein Kürzel kann also beliebig viele "
+                           "Tasten lang sein. Enter schließt ab, Esc "
+                           "stellt das Vorherige wieder her.\n\nA für "
+                           "Akarie, A dann B für Akarie fett: beides geht "
+                           "gleichzeitig — A wendet sofort Akarie an, ein "
+                           "direkt folgendes B schaltet auf die fette "
+                           "Variante.\n\nKürzel gehören zu diesem Manga, "
                            "in der nächsten Serie sind dieselben Tasten also "
                            "wieder frei. Ein Kürzel pro Stil, ein Stil pro "
                            "Kürzel.\n\nEin bloßer Buchstabe nimmt diese "
@@ -7694,6 +7716,7 @@ class TyperDocker(DockWidget):
         self.auto_manga_chk.setToolTip(t("auto_manga_tip"))
         self.lbl_preset_key.setText(t("preset_key"))
         self.preset_key_edit.setToolTip(t("preset_key_tip"))
+        self.preset_key_edit.setPlaceholderText(t("preset_key_ph"))
         self.preset_key_clear_btn.setToolTip(t("preset_key_clear_tip"))
         self.preset_menu_btn.setToolTip(t("preset_actions"))
         self.preset_save_act.setText(t("preset_save"))

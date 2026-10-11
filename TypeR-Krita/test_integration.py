@@ -1685,10 +1685,12 @@ if imported:
 if imported:
     try:
         from PyQt6.QtGui import QKeySequence, QKeyEvent
+        from PyQt6.QtGui import QFocusEvent as _QFocusEvent
         from PyQt6.QtCore import Qt as _Qt, QEvent as _QEvent
         from PyQt6.QtWidgets import QPlainTextEdit as _QPlainTextEdit
     except ImportError:
         from PyQt5.QtGui import QKeySequence, QKeyEvent
+        from PyQt5.QtGui import QFocusEvent as _QFocusEvent
         from PyQt5.QtCore import Qt as _Qt, QEvent as _QEvent
         from PyQt5.QtWidgets import QPlainTextEdit as _QPlainTextEdit
 
@@ -2018,7 +2020,51 @@ if imported:
                     _Qt.KeyboardModifier.NoModifier))
         check("the presses after it do append",
               _kd.preset_key_edit.steps() == ["X", "Y"])
-        _kd.preset_key_edit.set_steps([])
+
+        # --- the recording has no hidden time window ---------------------
+        # This is the bug the field shipped with: it used to decide a sequence
+        # was over shortly after the last press, so two keys at a normal pace
+        # came out as the second one alone.
+        _fld = _kd.preset_key_edit
+        _fld.set_steps([])
+        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_A,
+                                   _Qt.KeyboardModifier.NoModifier))
+        _slow = _time.time() + 1.5                 # far longer than any window
+        while _time.time() < _slow:
+            _app.processEvents()
+            _time.sleep(0.01)
+        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_B,
+                                   _Qt.KeyboardModifier.NoModifier))
+        check("a slow second press still joins the same sequence",
+              _fld.steps() == ["A", "B"] and _fld.is_recording())
+        check("and the field shows that it is still recording",
+              _fld.text().endswith("\u2026"))
+
+        _recorded = []
+        _fld.chordRecorded.connect(lambda: _recorded.append(_fld.steps()))
+        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Return,
+                                   _Qt.KeyboardModifier.NoModifier))
+        check("Enter finishes the recording and hands it over",
+              _recorded == [["A", "B"]] and not _fld.is_recording()
+              and _fld.text() == "A, B")
+
+        # Esc puts back what was there instead of recording
+        _fld.set_steps(["Ctrl+Alt+9"])
+        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_A,
+                                   _Qt.KeyboardModifier.NoModifier))
+        _fld.keyPressEvent(_key_ev(_QEvent.Type.KeyPress, _Qt.Key.Key_Escape,
+                                   _Qt.KeyboardModifier.NoModifier))
+        check("Esc puts back the binding that was there",
+              _fld.steps() == ["Ctrl+Alt+9"] and not _fld.is_recording()
+              and len(_recorded) == 1)
+
+        # clicking in and straight back out must not unbind anything
+        _fld.focusInEvent(_QFocusEvent(_QEvent.Type.FocusIn))
+        _fld.focusOutEvent(_QFocusEvent(_QEvent.Type.FocusOut))
+        check("clicking in and out leaves the binding alone",
+              _fld.steps() == ["Ctrl+Alt+9"] and len(_recorded) == 1)
+        _fld.chordRecorded.disconnect()
+        _fld.set_steps([])
 
         _kd._keybinds = {}
         _kd._reset_chord()

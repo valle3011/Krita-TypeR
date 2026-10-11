@@ -434,16 +434,22 @@ how Qt spells the separator. `keybind_match` answers both halves of the
 question at once: whether the presses so far *are* a binding, and whether a
 longer one continues past them.
 
-**`QKeySequence` is not used to hold a binding**, which is where the length
-limit would come from: it holds at most four combinations and truncates
-`"A, B, C, D, E"` to `"A, B, C, D"` silently. `KeyChordEdit` replaces
-`QKeySequenceEdit` for that reason — it reads the keys itself, keeps them as
-step strings, and treats the sequence as finished `CHORD_RECORD_MS` after
-the last press, so no maximum has to be agreed on in advance. A bare
-modifier is not a press, and `Esc` is the one key it refuses to record, so
-clicking into the field by accident is not a trap. `QKeySequence` is still
-used for the one thing it is good at: spelling a single key event
-(`key_event_string`).
+**`KeyChordEdit` replaces `QKeySequenceEdit`** for two reasons, and
+`QKeySequence` never holds a binding. One is the length: a QKeySequence
+holds at most four combinations and truncates `"A, B, C, D, E"` to
+`"A, B, C, D"` silently. The other was a bug worth remembering — the
+field first copied QKeySequenceEdit and ended a recording shortly after the
+last press. At a normal pace that cuts a sequence in half: press A, look at
+the field, press B, and A has already been committed on its own, so a
+two-key binding comes out as the second key alone and the field looks like
+it can only do single keys. There is no good length for that window because
+the user cannot see it, so there is none: the field records while it has
+the focus and `Enter` (or losing focus) finishes, `Esc` restores what was
+bound before. Those two are the only keys it will not record. Nothing is
+cleared until the first press, so clicking in and back out leaves a binding
+alone — unbinding stays the ✕ button's job. A bare modifier is not a
+press. `QKeySequence` is still used for the one thing it is good at:
+spelling a single key event (`key_event_string`).
 
 Both can be true, which is the interesting case. Rather than make every
 single press wait out a timeout to find out whether a second one follows,
