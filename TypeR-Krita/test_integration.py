@@ -1852,12 +1852,13 @@ if imported:
                                 _CTRL_ALT, True)) is False)
         check("nothing is held between those presses", _kd._held == [])
 
-        # ShortcutOverride is accepted but passed on: that is what takes the
-        # key away from Krita's own actions without consuming it here
+        # ShortcutOverride is accepted AND consumed. Only accepting it leaves
+        # a filter downstream free to ignore() it again, which hands the key
+        # back to Krita's own action - the bug that made A+B do nothing.
         _over = _key_ev(_QEvent.Type.ShortcutOverride, _Qt.Key.Key_3, _CTRL_ALT)
         _over.ignore()
-        check("ShortcutOverride for a bound key is claimed, not consumed",
-              _kd._key_hook.eventFilter(None, _over) is False
+        check("ShortcutOverride for a bound key is claimed and consumed",
+              _kd._key_hook.eventFilter(None, _over) is True
               and _over.isAccepted())
 
         # typing must never be eaten: an unmodified binding is ignored while a
@@ -2111,8 +2112,10 @@ except Exception:
 if imported:
     try:
         from PyQt6.QtGui import QAction as _QAction
+        from PyQt6.QtCore import QObject
     except ImportError:
         from PyQt5.QtWidgets import QAction as _QAction
+        from PyQt5.QtCore import QObject
     try:
         _rd = TK.TyperDocker()
         _rd._groups = {"S": {"Ak": {"Bold": {"size": 40}}}}
@@ -2139,6 +2142,23 @@ if imported:
             return _a
 
         _acts = [_krita_action("A"), _krita_action("B")]
+
+        class _Spoiler(QObject):
+            """The canvas filter that wants the letter as its own shortcut.
+
+            It ignore()s the ShortcutOverride, which undoes a claim that was
+            only accepted - after which Qt's shortcut map runs and the action
+            eats the KeyPress. Installed on the widget, so it runs after the
+            application-wide hook.
+            """
+
+            def eventFilter(self, obj, ev):
+                if ev.type() == _QEvent.Type.ShortcutOverride:
+                    ev.ignore()
+                return False
+
+        _spoiler = _Spoiler()
+        _target.installEventFilter(_spoiler)
         _app.processEvents()
 
         def _type(key, kinds=(_QEvent.Type.ShortcutOverride,
@@ -2156,6 +2176,8 @@ if imported:
         _type(_Qt.Key.Key_B)
         check("holding A and pressing B really applies the combination",
               _rd.size_spin.value() == 40 and _fired == [])
+        check("even though the widget filter tried to hand B back to Krita",
+              _fired == [])
         _type(_Qt.Key.Key_B, (_QEvent.Type.KeyRelease,))
         _type(_Qt.Key.Key_A, (_QEvent.Type.KeyRelease,))
         check("and the releases leave nothing held", _rd._held == [])

@@ -157,6 +157,12 @@ BUILD = _build_stamp()
 # so no single key event ever reports that - which is why the hook keeps track
 # of what is currently down and spells the combination out itself. Matching is
 # then a dict lookup again, with no partial state to keep and no timeout.
+#
+# Two event types matter, and both have to be CONSUMED, not merely accepted.
+# ShortcutOverride is Qt asking "is this a shortcut or is someone typing?";
+# letting it travel on after accepting it lets the canvas ignore() it again and
+# hand the key back to Krita's own action, which then eats the KeyPress before
+# this hook ever sees it.
 # ---------------------------------------------------------------------------
 
 #: Pressed on their own these are not a key, they are half of one.
@@ -10354,11 +10360,17 @@ class TyperDocker(DockWidget):
                 self._held = held
             return False
         if et == QEvent.Type.ShortcutOverride:
-            # "not a shortcut - send it on as a key press", which takes it
+            # "not a shortcut - send it on as a key press", which takes the key
             # away from Krita's own actions and hands it to the branch below.
+            # Consumed rather than passed on: accepting it and letting it
+            # travel leaves any filter downstream free to ignore() it again,
+            # and the canvas does exactly that for a letter it wants as its own
+            # shortcut - after which Qt's shortcut map runs, Krita's action
+            # eats the KeyPress and this hook never sees it. That is why single
+            # keys worked while A+B did not: B is Krita's brush shortcut.
             # No state changes here: the KeyPress for this same key follows.
             ev.accept()
-            return False
+            return True
         self._held = held
         if ref is None:
             return True                 # held, waiting for the rest of it

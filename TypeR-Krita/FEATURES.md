@@ -444,6 +444,17 @@ this read the request as a *sequence* of presses and needed both. Releases are
 watched as closely as presses, and `WindowDeactivate` clears everything: a key
 that was down during an Alt-Tab would otherwise stay held for good.
 
+**The `ShortcutOverride` has to be consumed, not merely accepted** — the
+second half of the same lesson, and what made `A+B` do nothing while single
+keys worked. Accepting it and letting it travel on leaves any filter
+downstream free to `ignore()` it again, and the canvas does exactly that for
+a letter it wants as its own shortcut; Qt's shortcut map then runs, Krita's
+action eats the `KeyPress`, and the hook never sees it. Measured with an
+action bound to `B` (the brush) and a filter that ignores the override:
+accept-and-pass-on loses the press, accept-and-consume keeps it. `B`
+collides with the brush shortcut; `A` collides with nothing, which is why
+one key looked fine.
+
 **A key that only *starts* a combination has to be claimed too**, which is
 not obvious and was the first version's bug. Measured with a `QAction` bound
 to `A` — which is what a Krita tool shortcut is — declining the
