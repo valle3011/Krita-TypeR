@@ -19,6 +19,7 @@ Line numbers drift; the names don't. Grep the name, not the number.
 | `comments.py` / `gdocs.py` / `gauth.py` | ~750 | Script comments from Word/Google Docs |
 | `drivefs.py` | ~150 | The doc id behind a .gdoc Drive refuses to read. Qt-free, tested |
 | `whatsnew.py` | ~120 | The changelog + which of it is new to you. Qt-free, tested |
+| `pdftext.py` | ~565 | Reads a PDF script: text, rows, table columns. Qt-free, tested |
 | `sfx/` | ~3,400 | The SFX tab (MangaSFX, vendored as a sub-package) |
 | `sfx/modes.py` | ~230 | The five SFX strategies + kana→romaji. Qt-free, tested |
 | `sfx/rule_search.py` | ~110 | SFX keyword matching + rule search. Qt-free, tested |
@@ -525,6 +526,42 @@ and for anything inside a `QKeySequenceEdit` — `in_key_recorder` walks
 internal line edit is a Qt-version detail, and the hook would otherwise
 swallow the very key press the field is waiting to record. Anything that raises is treated as "not mine", because
 a bug in this path would eat typing across the whole application.
+
+### PDF scripts
+
+Krita's embedded Python has no PDF library and a plugin cannot install one, so
+`pdftext.py` reads the format itself: `zlib` for the compressed streams and
+plain scanning for the rest.
+
+- `pdftext.py` → `read_pdf` / `page_rows`, `column_splits`, `rows_from_runs`
+- `typer_kr.py` → the `.pdf` branch in `read_script`, the `PdfError` arm of
+  `on_load`
+
+**A PDF has no lines and no cells**, only glyph runs with a position, so they
+have to be reconstructed. Runs sharing a baseline are one row. The column
+boundary is the harder half: a fixed gap per row cannot tell a cell boundary
+from a word space — measured on the file this was written for, the widest
+within-row gap was 30 units and the real boundary 51, and betting on that got
+"Hold on, Kei-chan." split in two. What a table does give is a vertical
+corridor no text crosses, at the same x on every page, so `column_splits`
+computes corridors from run *extents* (start positions alone produce
+convincing false ones) and keeps only those recurring on half the pages or
+more. Prose has none and comes out as plain lines.
+
+**Glyph codes are not characters.** A subset font stores "Page" as
+`0x33 0x44 0x4A 0x48`; the font's ToUnicode CMap is what maps them back, and
+`/Identity-H` means two bytes per code. A font without a CMap is read as
+Latin-1, which is right for the simple fonts that omit one.
+
+Two things a regex cannot do, and both bit: a nested dictionary
+(`/Resources <<… /Font <<…>>>>` ends at its first inner `>>` for any
+non-greedy match, so no page had any fonts), and the graphics matrix — each
+table cell sits in its own `q … cm … Q`, so position comes from the CTM and
+the text matrix together, not from `Td` alone.
+
+Scans, encryption and object streams are refused by name (`PdfError.kind`,
+which the docker looks up in its own language) rather than quietly returning
+an empty or half script.
 
 ### What's new after an update
 

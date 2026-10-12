@@ -1577,6 +1577,158 @@ check("keybinds: deleting the character drops its combination too",
       LP.keybinds_of(_combo, "Serie") == [("Ctrl+Alt+1", "Hiro", "Talk")])
 
 
+# --- PDF scripts -----------------------------------------------------------
+# The fixture is written here rather than committed as a binary: a PDF small
+# enough to read in a diff is also small enough to build, and building it is
+# what documents which parts of the format the reader actually relies on.
+_pspec = importlib.util.spec_from_file_location(
+    "pdftext", os.path.join(_HERE, "typer_kr", "pdftext.py"))
+PDFT = importlib.util.module_from_spec(_pspec)
+_pspec.loader.exec_module(PDFT)
+
+
+def _pdf_bytes(pages, with_cmap=True):
+    """A minimal PDF. `pages` is [[(x, y, text), …], …], one list per page.
+
+    Text is drawn as 2-byte codes equal to the characters' code points, with a
+    ToUnicode CMap that says so - the same Type0 / Identity-H shape a word
+    processor emits, where a code is not a character until the CMap maps it.
+    """
+    objs = {}
+    n_pages = len(pages)
+    kids = " ".join("%d 0 R" % (10 + i * 2) for i in range(n_pages))
+    objs[1] = "<</Type /Catalog /Pages 2 0 R>>"
+    objs[2] = "<</Type /Pages /Count %d /Kids [%s]>>" % (n_pages, kids)
+    objs[4] = ("<</Type /Font /Subtype /Type0 /BaseFont /Fixture "
+               "/Encoding /Identity-H /DescendantFonts [7 0 R]"
+               + (" /ToUnicode 5 0 R" if with_cmap else "") + ">>")
+    objs[7] = "<</Type /Font /Subtype /CIDFontType2 /BaseFont /Fixture>>"
+    cmap = ("/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
+            "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+            "1 beginbfrange\n<0020> <007E> <0020>\nendbfrange\n"
+            "1 beginbfchar\n<3042> <3042>\nendbfchar\nendcmap\n")
+    streams = {5: cmap}
+    for i, runs in enumerate(pages):
+        body = []
+        for x, y, text in runs:
+            hexed = "".join("%04X" % ord(c) for c in text)
+            body.append("BT /F1 12 Tf 1 0 0 1 %s %s Tm <%s> Tj ET"
+                        % (x, y, hexed))
+        num = 10 + i * 2
+        objs[num] = ("<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
+                     " /Resources <</Font <</F1 4 0 R>>>>"
+                     " /Contents %d 0 R>>" % (num + 1))
+        streams[num + 1] = "\n".join(body)
+
+    out = bytearray(b"%PDF-1.4\n")
+    for num in sorted(set(objs) | set(streams)):
+        out += ("%d 0 obj\n" % num).encode("ascii")
+        if num in streams:
+            data = streams[num].encode("utf-8")
+            out += ("<</Length %d>>\nstream\n" % len(data)).encode("ascii")
+            out += data + b"\nendstream\n"
+        else:
+            out += objs[num].encode("ascii") + b"\n"
+        out += b"endobj\n"
+    out += b"trailer <</Root 1 0 R /Size 99>>\n%%EOF\n"
+    return bytes(out)
+
+
+def _write_pdf(name, pages, **kw):
+    p = os.path.join(_tmpdir_pdf, name)
+    with open(p, "wb") as fh:
+        fh.write(_pdf_bytes(pages, **kw))
+    return p
+
+
+import shutil as _shutil_pdf
+import tempfile as _tempfile_pdf
+_tmpdir_pdf = _tempfile_pdf.mkdtemp(prefix="typer_pdf_")
+
+# a two-column table: Japanese on the left, English past the corridor
+_TABLE = [
+    [(72, 700, "JP"), (300, 700, "EN")],
+    [(72, 680, "\u3042"), (300, 680, "Hello world")],
+    [(72, 660, "\u3042\u3042"), (300, 660, "Second line")],
+]
+_two_pages = _write_pdf("table.pdf", [_TABLE[0] + _TABLE[1] + _TABLE[2],
+                                      [(72, 700, "\u3042"),
+                                       (300, 700, "Page two")]])
+_txt = PDFT.read_pdf(_two_pages)
+_lines = _txt.split("\n")
+check("pdf: the glyph codes are mapped through the font's CMap",
+      "Hello world" in _txt and "\u3042" in _txt)
+check("pdf: a row comes out as source<TAB>translation",
+      _lines[1] == "\u3042\tHello world"
+      and _lines[2] == "\u3042\u3042\tSecond line")
+check("pdf: the column header row survives as its own row",
+      _lines[0] == "JP\tEN")
+check("pdf: every page is read, in order",
+      _lines[-1] == "\u3042\tPage two" and len(_lines) == 4)
+check("pdf: TypeR's own pairing then reads it as JP/EN",
+      LP.pair_lines(_lines)
+      == [("\u3042", "Hello world"), ("\u3042\u3042", "Second line"),
+          ("\u3042", "Page two")])
+
+# words inside a cell keep their spaces: a space is a run of its own, and
+# dropping it used to glue "Hello world" into "Helloworld"
+check("pdf: spaces inside a cell are kept",
+      " " in _lines[1].split("\t")[1])
+
+# one column only: no corridor, so no tabs invented
+_one = _write_pdf("prose.pdf", [[(72, 700, "Just one column"),
+                                 (72, 680, "and a second line")]])
+check("pdf: a single-column script comes out as plain lines",
+      PDFT.read_pdf(_one).split("\n") == ["Just one column",
+                                          "and a second line"])
+
+# the corridor has to be the same one across the document, not a long line
+_ragged = _write_pdf("ragged.pdf", [
+    [(72, 700, "short"), (300, 700, "right cell")],
+    [(72, 680, "short"), (300, 680, "right cell")],
+    [(72, 660, "a line that runs on and on and on and on and on")],
+])
+check("pdf: a corridor is believed when it repeats, not from one page",
+      all("\t" in l for l in PDFT.read_pdf(_ragged).split("\n")[:2]))
+
+# runs that share a baseline are one row even when drawn separately
+_split_run = _write_pdf("runs.pdf", [[(72, 700, "ab"), (84, 700, "cd"),
+                                      (300, 700, "right")]])
+check("pdf: runs on the same baseline join into one cell",
+      PDFT.read_pdf(_split_run).split("\n")[0] == "abcd\tright")
+
+# without a CMap a simple font's codes are taken as characters
+_nocmap = _write_pdf("nocmap.pdf", [[(72, 700, "AB")]], with_cmap=False)
+check("pdf: a font with no CMap still yields something rather than nothing",
+      PDFT.read_pdf(_nocmap).strip() != "")
+
+for _name, _kind, _data in (
+        ("notpdf", "notpdf", b"this is not a pdf"),
+        ("notext", "notext", b"%PDF-1.4\n1 0 obj <</Type /Catalog>> endobj\n"),
+        ("encrypted", "encrypted",
+         b"%PDF-1.4\n1 0 obj <</Type /Catalog>> endobj\n"
+         b"trailer <</Encrypt 9 0 R>>\n")):
+    _p = os.path.join(_tmpdir_pdf, _name + ".pdf")
+    with open(_p, "wb") as _fh:
+        _fh.write(_data)
+    try:
+        PDFT.read_pdf(_p)
+        _got = "no error"
+    except PDFT.PdfError as _e:
+        _got = _e.kind
+    check("pdf: %s is reported as '%s', not as a stack trace"
+          % (_name, _kind), _got == _kind)
+
+try:
+    PDFT.read_pdf(os.path.join(_tmpdir_pdf, "nope.pdf"))
+    _missing = "no error"
+except PDFT.PdfError as _e:
+    _missing = _e.kind
+check("pdf: a missing file reports 'open'", _missing == "open")
+
+_shutil_pdf.rmtree(_tmpdir_pdf, ignore_errors=True)
+
+
 # --- what's new after an update --------------------------------------------
 _wspec = importlib.util.spec_from_file_location(
     "whatsnew", os.path.join(_HERE, "typer_kr", "whatsnew.py"))
@@ -1618,12 +1770,12 @@ check("whatsnew: an untranslated entry falls back to English",
       WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
       == [("1.11", ["eleven"])])
 check("whatsnew: the shipped changelog covers the shipped version",
-      any(v == "1.12" for v, _ in WNN.CHANGELOG)
+      any(v == "1.13" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
 check("whatsnew: it goes back far enough to span several versions",
       len(WNN.CHANGELOG) >= 3
-      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.12")) >= 2)
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.13")) >= 2)
 check("whatsnew: the shipped entries are newest first",
       [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
       == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),

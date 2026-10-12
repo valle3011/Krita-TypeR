@@ -75,6 +75,7 @@ from . import texttypes as TT
 from . import fontmatch as FM
 from . import gauth as GA
 from . import gdocs as GD
+from . import pdftext as PDF
 from . import whatsnew as WN
 from . import comments as CM
 from . import bubbles as BB
@@ -85,7 +86,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.12"
+VERSION = "1.13"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -476,7 +477,7 @@ LANG = {
     "en": {
         "title": "TypeR for Krita",
         "language": "Language:",
-        "load_btn": "Load script (.docx / .odt / .txt / .gdoc)",
+        "load_btn": "Load script (.docx / .odt / .txt / .pdf / .gdoc)",
         "script_label": "Script (load a file or paste directly):",
         "editor_ph": "Paste the script here, or load a file above …",
         "skip_empty": "Skip empty lines",
@@ -847,7 +848,7 @@ LANG = {
         "color_dlg": "Choose text color",
         "outline_color_dlg": "Choose outline color",
         "file_dlg": "Choose a script file",
-        "file_filter": "Scripts (*.docx *.xlsx *.xlsm *.odt *.txt *.md *.gdoc);;All files (*.*)",
+        "file_filter": "Scripts (*.docx *.xlsx *.xlsm *.odt *.txt *.md *.pdf *.gdoc);;All files (*.*)",
         # status
         "st_no_doc": "No document is open.",
         "st_empty_line": "The active line is empty.",
@@ -860,6 +861,14 @@ LANG = {
         "st_no_content": "No text content was found in the document.",
         "st_old_doc": "The old {fmt} format can't be read directly. Please open it and save as .docx/.xlsx or .txt.",
         "st_read_fail": "Could not read the file: {exc}",
+        "st_pdf_notext": ("This PDF has no text in it \u2014 its pages are "
+                          "probably scans. Those need OCR first; or load the "
+                          "script as .docx / .txt."),
+        "st_pdf_encrypted": ("This PDF is password-protected. Save it without "
+                             "the password and load that one."),
+        "st_pdf_objstm": ("This PDF is packed in a way TypeR cannot unpack. "
+                          "Re-save it as PDF 1.4, or export the script as "
+                          ".docx."),
         "st_loaded": "Loaded: {name}  ({n} units)",
         "st_already_open": "‘{name}’ is already open – switched to its tab.",
         "tab_untitled": "Untitled",
@@ -1318,7 +1327,7 @@ LANG = {
     "de": {
         "title": "TypeR für Krita",
         "language": "Sprache:",
-        "load_btn": "Skript laden (.docx / .odt / .txt / .gdoc)",
+        "load_btn": "Skript laden (.docx / .odt / .txt / .pdf / .gdoc)",
         "script_label": "Skript (Datei laden oder direkt einfügen):",
         "editor_ph": "Hier das Skript einfügen oder oben eine Datei laden …",
         "skip_empty": "Leere Zeilen überspringen",
@@ -1715,7 +1724,7 @@ LANG = {
         "color_dlg": "Textfarbe wählen",
         "outline_color_dlg": "Konturfarbe wählen",
         "file_dlg": "Skript-Datei wählen",
-        "file_filter": "Skripte (*.docx *.xlsx *.xlsm *.odt *.txt *.md *.gdoc);;Alle Dateien (*.*)",
+        "file_filter": "Skripte (*.docx *.xlsx *.xlsm *.odt *.txt *.md *.pdf *.gdoc);;Alle Dateien (*.*)",
         # status
         "st_no_doc": "Kein geöffnetes Dokument.",
         "st_empty_line": "Die aktive Zeile ist leer.",
@@ -1728,6 +1737,14 @@ LANG = {
         "st_no_content": "Im Dokument wurde kein Textinhalt gefunden.",
         "st_old_doc": "Das alte {fmt}-Format kann nicht direkt gelesen werden. Bitte öffnen und als .docx/.xlsx oder .txt speichern.",
         "st_read_fail": "Konnte Datei nicht lesen: {exc}",
+        "st_pdf_notext": ("In diesem PDF steht kein Text \u2014 die Seiten sind "
+                          "wahrscheinlich Scans. Die brauchen erst OCR; oder "
+                          "lad das Skript als .docx / .txt."),
+        "st_pdf_encrypted": ("Dieses PDF ist passwortgeschützt. Speicher es "
+                             "ohne Passwort und lad diese Datei."),
+        "st_pdf_objstm": ("Dieses PDF ist so gepackt, dass TypeR es nicht "
+                          "auspacken kann. Speicher es als PDF 1.4, oder "
+                          "exportier das Skript als .docx."),
         "st_loaded": "Geladen: {name}  ({n} Einheiten)",
         "st_already_open": "‚{name}‘ ist schon offen – zum Tab gewechselt.",
         "tab_untitled": "Unbenannt",
@@ -2731,6 +2748,10 @@ def read_script(path):
         return _read_odt(path)
     if ext in (".xlsx", ".xlsm"):
         return _read_xlsx(path)
+    if ext == ".pdf":
+        # rows come back tab separated, which is what pair_lines() reads as
+        # source<TAB>translation - a JP/EN table arrives already paired
+        return PDF.read_pdf(path)
     if ext == ".doc":
         raise OldDocError(".doc")
     if ext == ".xls":
@@ -10969,6 +10990,11 @@ class TyperDocker(DockWidget):
         except OldDocError as exc:
             self._set_status(self._tr("st_old_doc").format(fmt=exc.fmt),
                              error=True)
+            return
+        except PDF.PdfError as exc:
+            key = "st_pdf_" + exc.kind
+            said = self._tr(key)
+            self._set_status(said if said != key else str(exc), error=True)
             return
         except Exception as exc:
             self._set_status(self._tr("st_read_fail").format(exc=exc), error=True)

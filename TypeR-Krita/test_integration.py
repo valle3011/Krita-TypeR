@@ -2104,6 +2104,59 @@ try:
 except Exception:
     pass
 
+# --- read_script routes a .pdf to the PDF reader ---------------------------
+if imported:
+    try:
+        import tempfile as _tf_pdf
+        _pdir = _tf_pdf.mkdtemp(prefix="typer_pdf_int_")
+        _ppath = os.path.join(_pdir, "script.pdf")
+        _runs = [(72, 700, "JP"), (300, 700, "EN"),
+                 (72, 680, "\u3042"), (300, 680, "Hello world")]
+        _body = []
+        for _x, _y, _t in _runs:
+            _hex = "".join("%04X" % ord(_c) for _c in _t)
+            _body.append("BT /F1 12 Tf 1 0 0 1 %s %s Tm <%s> Tj ET"
+                         % (_x, _y, _hex))
+        _cmap = ("/CIDInit /ProcSet findresource begin begincmap\n"
+                 "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+                 "1 beginbfrange\n<0020> <007E> <0020>\nendbfrange\n"
+                 "1 beginbfchar\n<3042> <3042>\nendbfchar\nendcmap\n")
+        _content = "\n".join(_body).encode("utf-8")
+        _cm = _cmap.encode("utf-8")
+        _pdf = bytearray(b"%PDF-1.4\n")
+        _pdf += b"1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n"
+        _pdf += b"2 0 obj\n<</Type /Pages /Count 1 /Kids [10 0 R]>>\nendobj\n"
+        _pdf += (b"4 0 obj\n<</Type /Font /Subtype /Type0 /BaseFont /Fx"
+                 b" /Encoding /Identity-H /DescendantFonts [7 0 R]"
+                 b" /ToUnicode 5 0 R>>\nendobj\n")
+        _pdf += ("5 0 obj\n<</Length %d>>\nstream\n" % len(_cm)).encode()
+        _pdf += _cm + b"\nendstream\nendobj\n"
+        _pdf += b"7 0 obj\n<</Type /Font /Subtype /CIDFontType2>>\nendobj\n"
+        _pdf += (b"10 0 obj\n<</Type /Page /Parent 2 0 R"
+                 b" /MediaBox [0 0 612 792]"
+                 b" /Resources <</Font <</F1 4 0 R>>>>"
+                 b" /Contents 11 0 R>>\nendobj\n")
+        _pdf += ("11 0 obj\n<</Length %d>>\nstream\n" % len(_content)).encode()
+        _pdf += _content + b"\nendstream\nendobj\n"
+        _pdf += b"trailer <</Root 1 0 R>>\n%%EOF\n"
+        with open(_ppath, "wb") as _fh:
+            _fh.write(bytes(_pdf))
+
+        _text = TK.read_script(_ppath)
+        check("read_script reads a .pdf as tab-separated rows",
+              _text.split("\n") == ["JP\tEN", "\u3042\tHello world"])
+        check("the file dialog offers .pdf in both languages",
+              all("*.pdf" in TK.LANG[_lang]["file_filter"]
+                  for _lang in ("en", "de")))
+        check("a PDF problem has its own sentence in both languages",
+              all(TK.LANG[_lang]["st_pdf_notext"] for _lang in ("en", "de")))
+        import shutil as _sh_pdf
+        _sh_pdf.rmtree(_pdir, ignore_errors=True)
+    except Exception:                               # pragma: no cover
+        check("pdf read_script suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- the hook against Krita's own shortcuts, through real event delivery ----
 # Everything above calls handle_preset_key. This lets Qt deliver the events and
 # puts an application shortcut on the same bare letters, which is what Krita's

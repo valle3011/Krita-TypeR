@@ -107,9 +107,9 @@ Panels can be moved between tabs too — see *Layout & sizes*.
 
 ## Quick start (auto mode – recommended)
 
-1. **Load a script** – Word `.docx`, Excel `.xlsx`, LibreOffice `.odt`, or
-   `.txt`/`.md`. You can also paste text directly into the input box. The script
-   is analyzed automatically on load (or click **Analyze**).
+1. **Load a script** – Word `.docx`, Excel `.xlsx`, LibreOffice `.odt`,
+   `.pdf`, or `.txt`/`.md`. You can also paste text directly into the input
+   box. The script is analyzed automatically on load (or click **Analyze**).
 2. The table shows **Japanese (source)** and **Translation** side by side, so it
    is obvious which translation belongs to which line. Click a row to select it,
    or use **◀ Back** / **Next ▶**.
@@ -209,6 +209,23 @@ Because the batch uses the normal insert path, everything else applies
 unchanged: the `TypeR NN — …` layer naming, the green "done" marks, replacing a
 line instead of stacking it, and **Match size** on the TextShapR tab — worth
 switching on for a batch so the whole page keeps one text size.
+
+---
+
+## PDF scripts
+
+A script that arrives as a PDF is read directly — no converting first, and
+nothing to install. A PDF holds no lines and no cells, only positioned glyph
+runs, so TypeR reconstructs them: runs sharing a baseline become one row, and
+the vertical gap that no text crosses on any page becomes the column
+boundary. A two-column JP/EN table therefore arrives **already paired**, the
+same as a two-column Word table, and `Page 3` lines in the script are picked
+up as page markers as usual. A one-column PDF comes out as plain lines.
+
+Three kinds of PDF cannot work, and say so instead of loading half a script:
+pages that are **scans** (there is no text to read — that needs OCR first),
+**password-protected** files, and files packed as PDF 1.5+ object streams
+(re-save as PDF 1.4, or export the script as `.docx`).
 
 ---
 

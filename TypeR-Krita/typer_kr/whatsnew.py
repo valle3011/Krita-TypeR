@@ -13,6 +13,21 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.13", {
+        "en": [
+            "Scripts can be loaded straight from a PDF. A two-column JP/EN "
+            "table arrives already paired, and \u201cPage 3\u201d lines are picked up "
+            "as page markers as usual. Pages that are scans have no text to "
+            "read and say so \u2014 those need OCR first.",
+        ],
+        "de": [
+            "Skripte lassen sich direkt aus einem PDF laden. Eine "
+            "zweispaltige JP/EN-Tabelle kommt schon gepaart an, und "
+            "\u201ePage 3\u201c-Zeilen werden wie gewohnt als Seitenmarken erkannt. "
+            "Seiten, die Scans sind, enthalten keinen Text und sagen das "
+            "\u2014 die brauchen erst OCR.",
+        ],
+    }),
     ("1.12", {
         "en": [
             "Preset keybinds: give a style a key and press it when the "
