@@ -1587,12 +1587,14 @@ PDFT = importlib.util.module_from_spec(_pspec)
 _pspec.loader.exec_module(PDFT)
 
 
-def _pdf_bytes(pages, with_cmap=True):
+def _pdf_bytes(pages, with_cmap=True, cells=None):
     """A minimal PDF. `pages` is [[(x, y, text), …], …], one list per page.
 
     Text is drawn as 2-byte codes equal to the characters' code points, with a
     ToUnicode CMap that says so - the same Type0 / Identity-H shape a word
     processor emits, where a code is not a character until the CMap maps it.
+    `cells` is an optional [[(x, y, w, h), …], …] of rectangles per page, which
+    is how a table marks out its cells.
     """
     objs = {}
     n_pages = len(pages)
@@ -1605,11 +1607,14 @@ def _pdf_bytes(pages, with_cmap=True):
     objs[7] = "<</Type /Font /Subtype /CIDFontType2 /BaseFont /Fixture>>"
     cmap = ("/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
             "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
-            "1 beginbfrange\n<0020> <007E> <0020>\nendbfrange\n"
+            "2 beginbfrange\n<0020> <007E> <0020>\n"
+            "<3040> <309F> <3040>\nendbfrange\n"
             "1 beginbfchar\n<3042> <3042>\nendbfchar\nendcmap\n")
     streams = {5: cmap}
     for i, runs in enumerate(pages):
         body = []
+        for x, y, w, h in (cells or [[]] * len(pages))[i]:
+            body.append("%s %s %s %s re f" % (x, y, w, h))
         for x, y, text in runs:
             hexed = "".join("%04X" % ord(c) for c in text)
             body.append("BT /F1 12 Tf 1 0 0 1 %s %s Tm <%s> Tj ET"
@@ -1634,7 +1639,7 @@ def _pdf_bytes(pages, with_cmap=True):
     return bytes(out)
 
 
-def _write_pdf(name, pages, **kw):
+def _write_pdf(name, pages, **kw):  # noqa: E302
     p = os.path.join(_tmpdir_pdf, name)
     with open(p, "wb") as fh:
         fh.write(_pdf_bytes(pages, **kw))
@@ -1701,6 +1706,46 @@ check("pdf: runs on the same baseline join into one cell",
 _nocmap = _write_pdf("nocmap.pdf", [[(72, 700, "AB")]], with_cmap=False)
 check("pdf: a font with no CMap still yields something rather than nothing",
       PDFT.read_pdf(_nocmap).strip() != "")
+
+# --- a table that draws its cells: rows come from the rectangles -----------
+# This is the path a word-processor PDF takes, and the one the corridor
+# heuristic could not get right: text that wraps inside a cell sits on several
+# baselines, and the cells of one row do not share them.
+_cell_pdf = _write_pdf(
+    "cells.pdf",
+    [[(80, 700, "\u3042"), (310, 700, "first"),
+      (80, 660, "\u3044"), (310, 668, "wrapped one"), (310, 652, "and two")]],
+    cells=[[(72, 690, 220, 22), (300, 690, 220, 22),
+            (72, 650, 220, 22), (300, 642, 220, 38)]])
+_cell_lines = PDFT.read_pdf(_cell_pdf).split("\n")
+check("pdf/cells: a row comes from the drawn cells",
+      _cell_lines[0] == "\u3042\tfirst")
+check("pdf/cells: text wrapped inside a cell is joined back together",
+      _cell_lines[1] == "\u3044\twrapped one and two")
+check("pdf/cells: exactly one row per table row",
+      len(_cell_lines) == 2)
+
+# the offset is the point: a two-line cell is taller than and shifted against
+# the one-line cell beside it, so a shared top edge cannot group them
+_offset = PDFT._cells([(72, 650, 292, 672), (300, 642, 520, 680)], 612 * 792)
+check("pdf/cells: cells of one row are grouped by overlap, not by their top",
+      len(_offset) == 1 and len(_offset[0]) == 2)
+check("pdf/cells: and are ordered left to right",
+      _offset[0][0][0] < _offset[0][1][0])
+_apart = PDFT._cells([(72, 650, 292, 672), (72, 600, 292, 622)], 612 * 792)
+check("pdf/cells: rows that do not overlap stay separate rows",
+      len(_apart) == 2)
+check("pdf/cells: a page-sized rectangle is background, not a cell",
+      PDFT._cells([(0, 0, 612, 792)], 612 * 792) == [])
+
+# text outside every cell keeps a row of its own, so a heading above the
+# table does not vanish or get swallowed into it
+_mixed = _write_pdf(
+    "mixed.pdf",
+    [[(72, 760, "Page 3"), (80, 700, "\u3042"), (310, 700, "first")]],
+    cells=[[(72, 690, 220, 22), (300, 690, 220, 22)]])
+check("pdf/cells: a line above the table stays its own row, in place",
+      PDFT.read_pdf(_mixed).split("\n") == ["Page 3", "\u3042\tfirst"])
 
 for _name, _kind, _data in (
         ("notpdf", "notpdf", b"this is not a pdf"),

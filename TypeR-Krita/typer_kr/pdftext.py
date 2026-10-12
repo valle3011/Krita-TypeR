@@ -9,10 +9,12 @@ plain scanning for the rest.
 What it does and does not do, deliberately:
 
 * **Text only.** A PDF's text is a series of positioned glyph runs with no
-  notion of a line, let alone a table cell. So every run is collected with the
-  point it is drawn at, runs sharing a baseline become a row, and a wide gap
-  within a row becomes a cell boundary (a tab) - which is what gives TypeR the
-  two-column `source<TAB>translation` rows it already understands.
+  notion of a line, let alone a table cell. A table does draw its cells though,
+  as rectangles, and those give the rows and columns exactly - including when a
+  cell's text wraps onto several baselines, which no amount of grouping by
+  baseline could untangle. A page that draws no cells falls back to grouping by
+  baseline and splitting at the vertical corridor no text crosses. Either way
+  TypeR gets the two-column `source<TAB>translation` rows it understands.
 * **Glyph codes are mapped through the font's ToUnicode CMap.** Without it a
   subset font's codes are not characters at all: in the file this was written
   for, "Page" is stored as 0x33 0x44 0x4A 0x48.
@@ -269,6 +271,12 @@ def _mul(m, n):
 
 _IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
+
+def _apply(m, x, y):
+    """A point through a matrix."""
+    a, b, c, d, e, f = m
+    return (a * x + c * y + e, b * x + d * y + f)
+
 _TOKEN = re.compile(rb"""
       (?P<name>/[^\s/<>\[\](){}]+)
     | (?P<num>[-+]?(?:\d+\.?\d*|\.\d+))
@@ -280,11 +288,13 @@ _TOKEN = re.compile(rb"""
 """, re.X)
 
 
-def _runs(content, fonts):
+def _runs(content, fonts, rects=None):
     """Every glyph run of a content stream as (x, y, size, text).
 
-    A plain operand-stack walk: anything but the text and matrix operators is
-    skipped, which is what keeps this short enough to trust.
+    A plain operand-stack walk: anything but the text, matrix and rectangle
+    operators is skipped, which is what keeps this short enough to trust.
+    `rects` collects the drawn rectangles as (x0, y0, x1, y1) when given - a
+    table's cells, which is where the rows and columns come from.
     """
     out = []
     stack = []                       # operand stack
@@ -358,6 +368,12 @@ def _runs(content, fonts):
             ctm = gs.pop() if gs else _IDENTITY
         elif op == b"cm" and len(stack) >= 6:
             ctm = _mul(tuple(stack[-6:]), ctm)
+        elif op == b"re" and rects is not None and len(stack) >= 4:
+            x, y, w, h = stack[-4:]
+            corners = [_apply(ctm, x, y), _apply(ctm, x + w, y + h)]
+            xs = [c[0] for c in corners]
+            ys = [c[1] for c in corners]
+            rects.append((min(xs), min(ys), max(xs), max(ys)))
         elif op == b"BT":
             tm = tlm = _IDENTITY
         elif op == b"Tf":
@@ -504,6 +520,133 @@ def rows_from_runs(runs, splits=()):
     return out
 
 
+#: A rectangle covering more than this share of the page is a background or a
+#: border, not a cell.
+_MAX_CELL_AREA = 0.5
+
+#: Cell rectangles of one table row share a y, give or take the rounding a
+#: renderer leaves behind.
+_ROW_TOL = 2.0
+
+
+def _cells(rects, page_area):
+    """Drawn rectangles grouped into table rows: [[(x0, x1, y0, y1), …], …].
+
+    Rows are ordered the way they are read and so are the cells within them.
+    Anything page-sized is dropped: that is the background, not a cell.
+    """
+    keep = []
+    for x0, y0, x1, y1 in rects:
+        w, h = x1 - x0, y1 - y0
+        if w < 4.0 or h < 4.0:
+            continue                     # a rule or a hairline, not a cell
+        if page_area and w * h > page_area * _MAX_CELL_AREA:
+            continue
+        keep.append((x0, x1, y0, y1))
+    if not keep:
+        return []
+    # Cells of one row are grouped by VERTICAL OVERLAP, not by a shared top
+    # edge: a word processor draws each cell's content frame centred in the
+    # row, so a two-line cell is both taller than and offset from the one-line
+    # cell beside it - measured here, 233.2-269.5 against 241.2-261.5 for the
+    # same row. Adjacent rows do not overlap at all, so this stays unambiguous.
+    bands = []
+    for cell in sorted(keep, key=lambda c: (-c[3], c[0])):
+        x0, x1, y0, y1 = cell
+        for band in bands:
+            over = min(band[1], y1) - max(band[0], y0)
+            if over > 0.5 * min(band[1] - band[0], y1 - y0):
+                band[0] = min(band[0], y0)
+                band[1] = max(band[1], y1)
+                band[2].append(cell)
+                break
+        else:
+            bands.append([y0, y1, [cell]])
+    bands.sort(key=lambda b: -b[1])
+    out = []
+    for _y0, _y1, cells in bands:
+        cells.sort(key=lambda c: c[0])
+        out.append(cells)
+    return out
+
+
+def rows_from_cells(runs, bands):
+    """Rows of cell text, using the rectangles the table draws.
+
+    A run belongs to the cell its drawing point falls in. Text that wrapped
+    onto several baselines inside one cell is joined back together, which is
+    the whole reason for doing it this way. Runs outside every cell - a
+    heading, a "Page 3" line above the table - stay rows of their own, placed
+    by where they sit on the page.
+    """
+    rows = []                            # (sort key y, [cell text, …])
+    buckets = [[[] for _ in band] for band in bands]
+    loose = []
+    for x, y, size, text in runs:
+        placed = False
+        for bi, band in enumerate(bands):
+            for ci, (x0, x1, y0, y1) in enumerate(band):
+                if y0 - _ROW_TOL <= y <= y1 + _ROW_TOL and x0 - 2.0 <= x <= x1:
+                    buckets[bi][ci].append((y, x, text))
+                    placed = True
+                    break
+            if placed:
+                break
+        if not placed:
+            loose.append((x, y, size, text))
+    for bi, band in enumerate(bands):
+        cells = []
+        for frags in buckets[bi]:
+            frags.sort(key=lambda f: (-f[0], f[1]))
+            # fragments on one baseline butt together, baselines are joined
+            # with a space: a wrapped line needs the word break that the line
+            # break was standing in for
+            baselines, cur_y = [], None
+            for y, _x, text in frags:
+                if cur_y is None or abs(y - cur_y) > _LINE_TOL:
+                    baselines.append([])
+                    cur_y = y
+                baselines[-1].append(text)
+            parts = [" ".join("".join(b).split()) for b in baselines]
+            cells.append(" ".join(p for p in parts if p))
+        while cells and not cells[-1]:
+            cells.pop()
+        if any(cells):
+            rows.append((band[0][3], cells))
+    for _y, cells in rows_from_runs_with_y(loose):
+        rows.append((_y, cells))
+    rows.sort(key=lambda r: -r[0])
+    return [cells for _y, cells in rows]
+
+
+def rows_from_runs_with_y(runs, splits=()):
+    """rows_from_runs(), but each row keeps the y it was found at."""
+    if not runs:
+        return []
+    grouped = []
+    for x, y, size, text in sorted(runs, key=lambda r: (-r[1], r[0])):
+        if grouped and abs(grouped[-1][0] - y) <= _LINE_TOL:
+            grouped[-1][1].append((x, text))
+        else:
+            grouped.append((y, [(x, text)]))
+    out = []
+    for y, frags in grouped:
+        frags.sort(key=lambda f: f[0])
+        cells = [[] for _ in range(len(splits) + 1)]
+        for x, text in frags:
+            col = 0
+            for i, edge in enumerate(splits, 1):
+                if x >= edge - 0.5:
+                    col = i
+            cells[col].append(text)
+        row = [" ".join("".join(c).split()) for c in cells]
+        while row and not row[-1]:
+            row.pop()
+        if any(row):
+            out.append((y, row))
+    return out
+
+
 def page_rows(path):
     """[(page number, [[cell, …], …]), …] for the whole file."""
     try:
@@ -536,14 +679,24 @@ def page_rows(path):
         else:
             datas.append(_stream_data(contents))
         fonts = _fonts(objs, body)
-        runs = []
+        runs, rects = [], []
         for d in datas:
             if d:
-                runs.extend(_runs(d, fonts))
-        per_page.append(runs)
-    splits = column_splits(per_page)
-    return [(i, rows_from_runs(runs, splits))
-            for i, runs in enumerate(per_page, 1)]
+                runs.extend(_runs(d, fonts, rects))
+        box = _get(objs, body, b"/MediaBox")
+        nums = [float(x) for x in re.findall(rb"[-\d.]+", box)] or [0, 0, 0, 0]
+        area = abs(nums[2] - nums[0]) * abs(nums[3] - nums[1]) if len(nums) > 3 else 0
+        per_page.append((runs, _cells(rects, area)))
+    # the corridor fallback needs the whole document to tell a column from a
+    # long line, so it is only worked out for the pages that drew no cells
+    splits = column_splits([r for r, bands in per_page if not bands])
+    out = []
+    for i, (runs, bands) in enumerate(per_page, 1):
+        if bands:
+            out.append((i, rows_from_cells(runs, bands)))
+        else:
+            out.append((i, rows_from_runs(runs, splits)))
+    return out
 
 
 def read_pdf(path):

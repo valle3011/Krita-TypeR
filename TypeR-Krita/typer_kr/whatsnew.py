@@ -17,15 +17,18 @@ CHANGELOG = [
         "en": [
             "Scripts can be loaded straight from a PDF. A two-column JP/EN "
             "table arrives already paired, and \u201cPage 3\u201d lines are picked up "
-            "as page markers as usual. Pages that are scans have no text to "
-            "read and say so \u2014 those need OCR first.",
+            "as page markers as usual. Text that wraps inside a table "
+            "cell is joined back into one line. Pages that are scans "
+            "have no text to read and say so \u2014 those need OCR first.",
         ],
         "de": [
             "Skripte lassen sich direkt aus einem PDF laden. Eine "
             "zweispaltige JP/EN-Tabelle kommt schon gepaart an, und "
             "\u201ePage 3\u201c-Zeilen werden wie gewohnt als Seitenmarken erkannt. "
-            "Seiten, die Scans sind, enthalten keinen Text und sagen das "
-            "\u2014 die brauchen erst OCR.",
+            "Text, der in einer Tabellenzelle umbricht, wird wieder zu "
+            "einer Zeile zusammengefasst. Seiten, die Scans sind, "
+            "enthalten keinen Text und sagen das \u2014 die brauchen "
+            "erst OCR.",
         ],
     }),
     ("1.12", {

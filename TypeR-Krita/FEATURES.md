@@ -538,15 +538,29 @@ plain scanning for the rest.
   `on_load`
 
 **A PDF has no lines and no cells**, only glyph runs with a position, so they
-have to be reconstructed. Runs sharing a baseline are one row. The column
-boundary is the harder half: a fixed gap per row cannot tell a cell boundary
-from a word space — measured on the file this was written for, the widest
-within-row gap was 30 units and the real boundary 51, and betting on that got
-"Hold on, Kei-chan." split in two. What a table does give is a vertical
-corridor no text crosses, at the same x on every page, so `column_splits`
-computes corridors from run *extents* (start positions alone produce
-convincing false ones) and keeps only those recurring on half the pages or
-more. Prose has none and comes out as plain lines.
+have to be reconstructed — and grouping by baseline is not enough. Text that
+wraps inside a cell sits on several baselines, and the cells of one row do
+not share them: a word processor draws each cell's content frame centred in
+the row, so a two-line cell is both taller than and offset against the
+one-line cell beside it (measured: 233.2-269.5 against 241.2-261.5 for the
+same row). One table row therefore interleaves as three baselines, two of
+them half empty, and arrives as three script lines.
+
+What a table *does* give is its cells, drawn as rectangles. `_cells` groups
+those by **vertical overlap** rather than a shared top edge, and
+`rows_from_cells` puts every run in the cell containing it — joining
+fragments on one baseline directly and separate baselines with a space,
+since the line break they stood for was a word break. Runs outside every
+cell (a heading, a `Page 3` line above the table) keep rows of their own,
+ordered by where they sit.
+
+Pages that draw no cells fall back to grouping by baseline and splitting at
+the vertical corridor no text crosses. That path cannot find a column from a
+single row - the widest within-row gap in the file this was built against was
+30 units against a real boundary of 51 - so `column_splits` computes
+corridors from run *extents* (start positions alone produce convincing false
+ones) and keeps only those recurring on half the pages or more. Prose has
+none and comes out as plain lines.
 
 **Glyph codes are not characters.** A subset font stores "Page" as
 `0x33 0x44 0x4A 0x48`; the font's ToUnicode CMap is what maps them back, and
