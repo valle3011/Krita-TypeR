@@ -22,6 +22,7 @@ modules from the Python standard library are used (zipfile, xml.etree), so
 nothing extra needs to be installed.
 """
 
+import hashlib
 import os
 import html as _html
 import math
@@ -100,14 +101,29 @@ VERSION = "1.12"
 BUBBLR_LOCKED = not os.path.exists(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "bubblr_dev"))
 
-# Build stamp = last-modified time of THIS installed file. copy/xcopy keep the
-# source's timestamp, so this shows which code version Krita actually loaded -
-# handy to confirm an update really took (compare it after running UPDATE.bat).
-try:
-    BUILD = time.strftime("%Y-%m-%d %H:%M",
-                          time.localtime(os.path.getmtime(__file__)))
-except Exception:
-    BUILD = "?"
+# Build stamp = a short hash of THIS file's bytes, plus its timestamp.
+#
+# The timestamp alone cannot answer the one question the stamp exists for -
+# "did my update actually take?". copy/xcopy carry the source's timestamp
+# across rather than stamping the copy, and on a synced drive the source's own
+# mtime gets written back by the sync client: measured here, typer_kr.py kept
+# 2026-10-11 11:36:40 through a day of edits, so every update looked like no
+# update at all. The hash changes whenever a single byte does.
+def _build_stamp():
+    try:
+        with open(os.path.abspath(__file__), "rb") as fh:
+            short = hashlib.sha1(fh.read()).hexdigest()[:7]
+    except Exception:
+        short = "???????"
+    try:
+        when = time.strftime("%Y-%m-%d %H:%M",
+                             time.localtime(os.path.getmtime(__file__)))
+    except Exception:
+        when = "?"
+    return "%s %s" % (short, when)
+
+
+BUILD = _build_stamp()
 
 
 # ---------------------------------------------------------------------------

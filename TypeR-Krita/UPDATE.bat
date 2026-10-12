@@ -1,8 +1,8 @@
 @echo off
 rem === TypeR - Update fuer Krita (Windows) ===
 rem Kopiert die neuesten Plugin-Dateien ueber eine bestehende Installation.
-rem Danach in Krita unten rechts im TypeR-Docker die "Build"-Zeit pruefen -
-rem sie zeigt den Stand der geladenen Datei. Einfach doppelklicken.
+rem Danach in Krita unten rechts im TypeR-Docker den "Build"-Wert pruefen -
+rem er muss zu dem passen, den diese BAT ausgibt. Einfach doppelklicken.
 setlocal enableextensions
 chcp 65001 >nul
 
@@ -39,15 +39,22 @@ xcopy /E /I /Y "%SRC%typer_kr" "%DEST%\typer_kr\" >nul
 if errorlevel 1 goto :fail
 
 echo Build der installierten Datei:
-for %%F in ("%DEST%\typer_kr\typer_kr.py") do echo    %%~tF
+for %%F in ("%DEST%\typer_kr\typer_kr.py") do echo    Datum: %%~tF
+rem Das Datum allein beweist nichts: copy/xcopy uebernehmen den Zeitstempel
+rem der Quelle, und auf einem Sync-Laufwerk schreibt der Client ihn zurueck -
+rem eine aktualisierte Datei behaelt dann ein altes Datum. Der Hash nicht.
+set "HASH="
+for /f "skip=1 delims=" %%H in ('certutil -hashfile "%DEST%\typer_kr\typer_kr.py" SHA1') do if not defined HASH set "HASH=%%H"
+set "HASH=%HASH: =%"
+echo    Build: %HASH:~0,7%
 
 echo.
 echo ============================================
 echo   FERTIG - Update eingespielt.
 echo ============================================
 echo.
-echo Starte Krita neu. Im TypeR-Docker unten rechts steht "Build <Zeit>" -
-echo diese Zeit muss zur gerade kopierten Datei oben passen.
+echo Starte Krita neu. Im TypeR-Docker unten rechts steht "Build" mit
+echo demselben Wert wie oben - sonst laeuft noch der alte Code.
 echo.
 goto :done
 
