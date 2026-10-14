@@ -345,6 +345,24 @@ def main(argv=None):
                % (version, ", ".join(_sorted_versions(history))))
     sha, date, subject = history[version]
 
+    # A release that already exists is defined by its tag, not by what the
+    # history says today: `gh release edit` cannot move a tag, so re-running
+    # with --force must build from where the tag actually points, or the asset
+    # would come from a commit the release does not name.
+    git("fetch", "--tags", "--quiet", check=False)
+    at_tag = subprocess.run(["git", "rev-parse", "--verify", "--quiet",
+                             tag + "^{commit}"], cwd=ROOT, capture_output=True,
+                            text=True)
+    if at_tag.returncode == 0:
+        tagged = at_tag.stdout.strip()
+        if tagged and tagged != sha:
+            print("note: %s already points at %s, building from there "
+                  "(history's last %s commit is %s)"
+                  % (tag, tagged[:8], version, sha[:8]))
+            sha = tagged
+            date = git("show", "-s", "--format=%ad", "--date=short", sha)
+            subject = git("show", "-s", "--format=%s", sha)
+
     langs = changelog_entry(version, wn.CHANGELOG)
     if not langs or not langs.get("en"):
         refuse("no English changelog entry for %s in typer_kr/whatsnew.py - a "
