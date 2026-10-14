@@ -29,6 +29,7 @@ import math
 import re
 import json
 import tempfile
+import threading
 import time
 import zipfile
 import xml.etree.ElementTree as ET
@@ -76,6 +77,7 @@ from . import fontmatch as FM
 from . import gauth as GA
 from . import gdocs as GD
 from . import pdftext as PDF
+from . import update_check as UPD
 from . import whatsnew as WN
 from . import comments as CM
 from . import bubbles as BB
@@ -86,7 +88,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.14"
+VERSION = "1.15"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -228,6 +230,33 @@ def key_has_modifier(ev):
     return bool(m & (Qt.KeyboardModifier.ControlModifier
                      | Qt.KeyboardModifier.AltModifier
                      | Qt.KeyboardModifier.MetaModifier))
+
+
+class UpdateProbe(QObject):
+    """Asks the repository for the published version, off the UI thread.
+
+    A blocking fetch on the UI thread freezes Krita for however long the
+    connection takes to give up - the full timeout on a dead network. So the
+    work happens on a plain daemon thread and the answer arrives as a signal,
+    which Qt delivers back on the UI thread where it is safe to touch widgets.
+    """
+
+    answered = pyqtSignal(str)
+
+    def start(self):
+        thread = threading.Thread(target=self._run, name="typer-update-check")
+        thread.daemon = True            # must never hold Krita's exit open
+        thread.start()
+
+    def _run(self):
+        try:
+            latest = UPD.fetch_latest()
+        except Exception:               # noqa: BLE001 - never worth raising
+            latest = ""
+        try:
+            self.answered.emit(latest)
+        except Exception:               # noqa: BLE001 - docker already gone
+            pass
 
 
 class WhatsNewDialog(QDialog):
@@ -937,6 +966,17 @@ LANG = {
                          "the active line has text."),
         "shaper_no_doc": "No document open – previews use a default box.",
         # replace previously inserted layers on re-insert
+        "update_chk": "Look for a newer version on GitHub",
+        "update_chk_tip": ("A Krita plugin has no updater behind it, so "
+                           "nothing tells you a newer TypeR exists. With this "
+                           "on, the published version is looked up in the "
+                           "background \u2014 at most once a day, and nothing is "
+                           "sent but the request itself. A failed check stays "
+                           "quiet."),
+        "st_update_available": "TypeR {version} is out \u2014 get it",
+        "update_tip": ("Opens the project page. Download it, run UPDATE.bat "
+                       "and restart Krita; the Build value at the bottom "
+                       "right tells you it took."),
         "whatsnew_title": "What's new in TypeR {version}",
         "whatsnew_version": "Version",
         "whatsnew_again": "Tell me after the next update too",
@@ -1868,6 +1908,18 @@ LANG = {
                          "sicherstellen, dass die aktive Zeile Text hat."),
         "shaper_no_doc": "Kein Dokument offen – Vorschau nutzt eine Standard-Box.",
         # replace previously inserted layers on re-insert
+        "update_chk": "Auf GitHub nach einer neueren Version sehen",
+        "update_chk_tip": ("Ein Krita-Plugin hat keinen Updater \u2014 nichts "
+                           "sagt dir, dass es ein neueres TypeR gibt. Mit "
+                           "dieser Option wird die ver\u00f6ffentlichte Version "
+                           "im Hintergrund nachgesehen, h\u00f6chstens einmal am "
+                           "Tag, und es wird nichts \u00fcbertragen au\u00dfer der "
+                           "Anfrage selbst. Schl\u00e4gt sie fehl, bleibt es "
+                           "still."),
+        "st_update_available": "TypeR {version} ist drau\u00dfen \u2014 holen",
+        "update_tip": ("\u00d6ffnet die Projektseite. Herunterladen, UPDATE.bat "
+                       "ausf\u00fchren, Krita neu starten; der Build-Wert unten "
+                       "rechts sagt dir, dass es ankam."),
         "whatsnew_title": "Neu in TypeR {version}",
         "whatsnew_version": "Version",
         "whatsnew_again": "Beim nächsten Update wieder zeigen",
@@ -5947,6 +5999,7 @@ class TyperDocker(DockWidget):
         # count back - see handle_preset_key
         self._held = []
         self._held_applied = None
+        self._update_probe = None       # the version check, while it runs
         # Multiple loaded scripts ("tabs"). Each session is a dict with a unique
         # id; the QTabBar stores that id as tab data, so tab order and the
         # session list stay decoupled (reordering tabs is harmless). The live
@@ -6090,6 +6143,11 @@ class TyperDocker(DockWidget):
         self.replace_chk.setChecked(self._load_replace_existing())
         self.replace_chk.toggled.connect(self._on_replace_toggle)
         _sgl.addWidget(self.replace_chk)
+        # look for a newer published version (once a day, in the background)
+        self.update_chk = QCheckBox()
+        self.update_chk.setChecked(self._load_update_on())
+        self.update_chk.toggled.connect(self._on_update_toggle)
+        _sgl.addWidget(self.update_chk)
         # say what changed, once, after the plugin files have been replaced
         self.whatsnew_chk = QCheckBox()
         self.whatsnew_chk.setChecked(self._load_whatsnew_on())
@@ -7129,6 +7187,14 @@ class TyperDocker(DockWidget):
         self.build_lbl.setStyleSheet("color: gray; font-size: 10px;")
         self.build_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         outer.addWidget(self.build_lbl)
+        # Only ever shown when there IS a newer version, so an up-to-date
+        # install carries no row of furniture telling it so.
+        self.update_lbl = QLabel("")
+        self.update_lbl.setStyleSheet("font-size: 10px;")
+        self.update_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.update_lbl.setOpenExternalLinks(True)
+        self.update_lbl.setVisible(False)
+        outer.addWidget(self.update_lbl)
 
         self.setWidget(main)
 
@@ -7205,6 +7271,7 @@ class TyperDocker(DockWidget):
         self._whatsnew_timer.setSingleShot(True)
         self._whatsnew_timer.timeout.connect(self._maybe_show_whatsnew)
         self._whatsnew_timer.start(0)
+        self._start_update_check()
 
     # -- language --
 
@@ -7938,6 +8005,8 @@ class TyperDocker(DockWidget):
         self.insert_btn.setText(t("insert_btn"))
         self.replace_chk.setText(t("replace_existing"))
         self.replace_chk.setToolTip(t("replace_existing_tip"))
+        self.update_chk.setText(t("update_chk"))
+        self.update_chk.setToolTip(t("update_chk_tip"))
         self.whatsnew_chk.setText(t("whatsnew_chk"))
         self.whatsnew_chk.setToolTip(t("whatsnew_chk_tip"))
         self.by_char_chk.setText(t("presets_by_char"))
@@ -10187,6 +10256,80 @@ class TyperDocker(DockWidget):
             self._record_preset_usage(self._group, ch, name)
             self._save_last_manga()
             self._set_status(self._tr("st_preset_applied").format(name=name))
+
+    # ---- is there a newer one? ----
+    def _load_update_on(self):
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "updateCheck", "true") != "false"
+        except Exception:
+            return True
+
+    def _on_update_toggle(self, checked):
+        try:
+            Krita.instance().writeSetting("typer_kr", "updateCheck",
+                                          "true" if checked else "false")
+        except Exception:
+            pass
+        if checked:
+            self._start_update_check(force=True)
+        else:
+            self._show_update(None)
+
+    def _start_update_check(self, force=False):
+        """Ask the repository, at most once a day, on a worker thread."""
+        if not self._load_update_on():
+            return
+        app = Krita.instance()
+        try:
+            last = app.readSetting("typer_kr", "updateChecked", "")
+            seen = (app.readSetting("typer_kr", "updateLatest", "") or "").strip()
+        except Exception:
+            last, seen = "", ""
+        if seen:
+            self._show_update(seen)     # yesterday's answer, shown at once
+        if not force and not UPD.due(last, time.time()):
+            return
+        if self._update_probe is not None:
+            return                      # one in flight is enough
+        self._update_probe = UpdateProbe(self)
+        self._update_probe.answered.connect(self._on_update_answer)
+        self._update_probe.start()
+
+    def _on_update_answer(self, latest):
+        """Back on the UI thread with the published version, or "" for no answer.
+
+        A failed check is not reported: there is nothing the user could do
+        about their network from here, and nothing is broken. The timestamp is
+        only written on an answer, so a dead connection means it tries again
+        next time rather than going quiet for a day.
+        """
+        self._update_probe = None
+        if not latest:
+            return
+        try:
+            app = Krita.instance()
+            app.writeSetting("typer_kr", "updateChecked", str(int(time.time())))
+            app.writeSetting("typer_kr", "updateLatest", latest)
+        except Exception:
+            pass
+        self._show_update(latest)
+
+    def _show_update(self, latest):
+        """Put the answer next to the build stamp, as a link, or clear it."""
+        label = getattr(self, "update_lbl", None)
+        if label is None:
+            return
+        if latest and UPD.is_newer(latest, VERSION):
+            label.setText(
+                '<a href="%s" style="color:#e8a33d">%s</a>'
+                % (UPD.PROJECT_URL,
+                   self._tr("st_update_available").format(version=latest)))
+            label.setToolTip(self._tr("update_tip"))
+            label.setVisible(True)
+        else:
+            label.clear()
+            label.setVisible(False)
 
     # ---- what's new after an update ----
     def _load_whatsnew_on(self):

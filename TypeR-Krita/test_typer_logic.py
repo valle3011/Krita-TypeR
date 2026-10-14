@@ -1774,6 +1774,80 @@ check("pdf: a missing file reports 'open'", _missing == "open")
 _shutil_pdf.rmtree(_tmpdir_pdf, ignore_errors=True)
 
 
+# --- is there a newer version? ---------------------------------------------
+_uspec = importlib.util.spec_from_file_location(
+    "update_check", os.path.join(_HERE, "typer_kr", "update_check.py"))
+# it imports .whatsnew, so give it a package to be part of
+import types as _types
+_upkg = _types.ModuleType("typer_kr_stub")
+_upkg.__path__ = [os.path.join(_HERE, "typer_kr")]
+sys.modules.setdefault("typer_kr_stub", _upkg)
+_uspec = importlib.util.spec_from_file_location(
+    "typer_kr_stub.update_check",
+    os.path.join(_HERE, "typer_kr", "update_check.py"))
+UPDC = importlib.util.module_from_spec(_uspec)
+sys.modules["typer_kr_stub.update_check"] = UPDC
+_uspec.loader.exec_module(UPDC)
+
+_NOW = 10 ** 9                      # a plausible epoch, not 1970 + 1000s
+check("update: a check is due when none was ever made",
+      UPDC.due(0, _NOW) and UPDC.due("", _NOW) and UPDC.due(None, _NOW))
+check("update: not due again straight away",
+      not UPDC.due(1000, 1000) and not UPDC.due(1000, 1000 + 60))
+check("update: due once the interval has passed",
+      UPDC.due(1000, 1000 + UPDC.CHECK_INTERVAL))
+check("update: a clock that moved backwards does not lock it out for good",
+      UPDC.due(5000, 1000))
+check("update: an unreadable timestamp counts as never, not as just now",
+      UPDC.due("kaputt", 10 ** 9))
+
+check("update: versions compare as numbers, so 1.11 beats 1.9",
+      UPDC.is_newer("1.11", "1.9") and not UPDC.is_newer("1.9", "1.11"))
+check("update: the same version is not news",
+      not UPDC.is_newer("1.14", "1.14"))
+check("update: nonsense on either side is not news",
+      not UPDC.is_newer("", "1.14") and not UPDC.is_newer("x", "1.14")
+      and not UPDC.is_newer("1.15", ""))
+
+
+class _FakeResponse(object):
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self, _n=None):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
+
+def _opener(payload):
+    def open_it(_request, timeout=None):
+        if isinstance(payload, Exception):
+            raise payload
+        return _FakeResponse(payload)
+    return open_it
+
+
+check("update: a plain version file is read",
+      UPDC.fetch_latest(opener=_opener(b"1.15\n")) == "1.15")
+check("update: a leading v and stray whitespace are tolerated",
+      UPDC.fetch_latest(opener=_opener(b"  v2.0  \n")) == "2.0")
+check("update: only the first line is believed",
+      UPDC.fetch_latest(opener=_opener(b"1.15\nrubbish\n")) == "1.15")
+check("update: a page of HTML is not a version",
+      UPDC.fetch_latest(opener=_opener(b"<!doctype html>")) == "")
+check("update: an empty answer is no answer",
+      UPDC.fetch_latest(opener=_opener(b"")) == "")
+check("update: a network failure is silent, not an exception",
+      UPDC.fetch_latest(opener=_opener(OSError("no route"))) == "")
+check("update: so is anything else going wrong",
+      UPDC.fetch_latest(opener=_opener(ValueError("bad url"))) == "")
+
+
 # --- what's new after an update --------------------------------------------
 _wspec = importlib.util.spec_from_file_location(
     "whatsnew", os.path.join(_HERE, "typer_kr", "whatsnew.py"))
@@ -1815,12 +1889,12 @@ check("whatsnew: an untranslated entry falls back to English",
       WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
       == [("1.11", ["eleven"])])
 check("whatsnew: the shipped changelog covers the shipped version",
-      any(v == "1.14" for v, _ in WNN.CHANGELOG)
+      any(v == "1.15" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
 check("whatsnew: it goes back far enough to span several versions",
       len(WNN.CHANGELOG) >= 3
-      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.14")) >= 2)
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.15")) >= 2)
 check("whatsnew: the shipped entries are newest first",
       [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
       == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),

@@ -13,6 +13,25 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.15", {
+        "en": [
+            "The docker says when a newer TypeR has been published: a "
+            "small line next to the build stamp, bottom right, linking "
+            "to the project page. Looked up in the background at most "
+            "once a day; nothing is sent but the request, and a failed "
+            "check stays quiet. Switch it off under Setup if you would "
+            "rather it did not ask.",
+        ],
+        "de": [
+            "Der Docker sagt, wenn ein neueres TypeR ver\u00f6ffentlicht "
+            "wurde: eine kleine Zeile unten rechts neben dem "
+            "Build-Wert, verlinkt auf die Projektseite. Wird im "
+            "Hintergrund nachgesehen, h\u00f6chstens einmal am Tag; "
+            "\u00fcbertragen wird nichts au\u00dfer der Anfrage, und schl\u00e4gt "
+            "sie fehl, bleibt es still. Unter Einstellungen "
+            "abschaltbar.",
+        ],
+    }),
     ("1.14", {
         "en": [
             "The Fonts tab can preview your own text: type a line into "

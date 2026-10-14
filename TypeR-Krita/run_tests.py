@@ -30,6 +30,7 @@ MODULES = [
     "typer_kr/bubbles.py", "typer_kr/balloons.py", "typer_kr/comments.py",
     "typer_kr/drivefs.py", "typer_kr/gdocs.py", "typer_kr/gauth.py",
     "typer_kr/whatsnew.py", "typer_kr/pdftext.py",
+    "typer_kr/update_check.py",
     "typer_kr/texttypes.py", "typer_kr/sfx/sfx_docker.py",
     "typer_kr/sfx/svg_builder.py", "typer_kr/sfx/i18n.py",
     "typer_kr/sfx/config.py",

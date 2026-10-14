@@ -267,6 +267,10 @@ check("typer_kr module imports headless (with a fake krita)", imported)
 # tests the feature sets it back deliberately.
 if imported:
     _KR_APP._defaults[("typer_kr", "seenVersion")] = TK.VERSION
+    # every docker would otherwise start a version check: twenty-odd real
+    # requests to GitHub per run. The block that tests it enables it
+    # explicitly, with the fetch stubbed.
+    _KR_APP._defaults[("typer_kr", "updateCheck")] = "false"
 if not imported:
     print("\n%d passed, %d failed" % (_pass, _fail + 1))
     sys.exit(1)
@@ -2103,6 +2107,76 @@ try:
     _app.processEvents()
 except Exception:
     pass
+
+# --- the update check in the docker ---------------------------------------
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "updateCheck")] = "true"
+        _KR_APP._settings.pop(("typer_kr", "updateChecked"), None)
+        _KR_APP._settings.pop(("typer_kr", "updateLatest"), None)
+        _ud = TK.TyperDocker()
+
+        check("the label is hidden while nothing newer is known",
+              _ud.update_lbl.isHidden() and _ud.update_lbl.text() == "")
+
+        _ud._on_update_answer("99.0")
+        check("a newer version shows up as a link",
+              not _ud.update_lbl.isHidden() and "99.0" in _ud.update_lbl.text()
+              and TK.UPD.PROJECT_URL in _ud.update_lbl.text())
+        check("and the answer is remembered so the next start is instant",
+              _KR_APP._settings[("typer_kr", "updateLatest")] == "99.0"
+              and _KR_APP._settings[("typer_kr", "updateChecked")])
+
+        _ud._on_update_answer("0.1")
+        check("an older published version is not announced",
+              _ud.update_lbl.isHidden() and _ud.update_lbl.text() == "")
+
+        # a failed check must not stamp the clock, or it would go quiet for a
+        # day over a network that was only briefly down
+        _KR_APP._settings[("typer_kr", "updateChecked")] = "123"
+        _ud._on_update_answer("")
+        check("a failed check says nothing and does not reset the clock",
+              _ud.update_lbl.isHidden()
+              and _KR_APP._settings[("typer_kr", "updateChecked")] == "123")
+
+        # switched off, nothing is asked at all
+        _ud._on_update_toggle(False)
+        check("the toggle is remembered",
+              _KR_APP._settings[("typer_kr", "updateCheck")] == "false")
+        _ud._update_probe = None
+        _ud._start_update_check(force=True)
+        check("switched off, no check is started",
+              _ud._update_probe is None)
+
+        # on and due: it starts a probe, with the fetch stubbed so the suite
+        # never touches the network
+        _real_fetch = TK.UPD.fetch_latest
+        TK.UPD.fetch_latest = lambda *_a, **_k: "98.7"
+        try:
+            _KR_APP._settings[("typer_kr", "updateCheck")] = "true"
+            _ud.update_chk.setChecked(True)
+            _KR_APP._settings.pop(("typer_kr", "updateChecked"), None)
+            _ud._update_probe = None
+            _ud._start_update_check(force=True)
+            check("switched on, a probe is started", _ud._update_probe is not None)
+            _waited = _time.time() + 5
+            while _ud._update_probe is not None and _time.time() < _waited:
+                _app.processEvents()
+                _time.sleep(0.02)
+            check("the answer comes back on the UI thread and is shown",
+                  _ud._update_probe is None
+                  and not _ud.update_lbl.isHidden()
+                  and "98.7" in _ud.update_lbl.text())
+        finally:
+            TK.UPD.fetch_latest = _real_fetch
+
+        _ud.deleteLater()
+        _app.processEvents()
+        _KR_APP._settings[("typer_kr", "updateCheck")] = "false"
+    except Exception:                               # pragma: no cover
+        check("update-check suite ran", False)
+        import traceback
+        traceback.print_exc()
 
 # --- Fonts tab: previewing your own text in every font ---------------------
 if imported:

@@ -577,6 +577,44 @@ Scans, encryption and object streams are refused by name (`PdfError.kind`,
 which the docker looks up in its own language) rather than quietly returning
 an empty or half script.
 
+### Is there a newer version?
+
+A Krita plugin has no updater and no package manager behind it, so nothing
+announces a release. The docker asks the repository instead.
+
+- `update_check.py` → `fetch_latest` / `is_newer` / `due` (Qt-free, tested)
+- `typer_kr.py` → `UpdateProbe`, `_start_update_check`,
+  `_on_update_answer`, `_show_update`, the toggle in Setup
+- Stored in kritarc as `updateCheck`, `updateChecked`, `updateLatest`
+- Published as a `VERSION` file at the repository root, written by
+  `tools/write_version.py` in the published repo
+
+**A plain file, not the releases API**, because the project publishes no
+releases or tags — measured: `releases/latest` answers 404 and `tags` an
+empty list. Six bytes over `raw.githubusercontent.com` is also less to fetch
+than any API response and needs no token. The file is *generated* from the
+plugin's own `VERSION` constant, because a marker that can disagree with the
+plugin it describes is worse than none: it would announce updates that do not
+exist or stay quiet about ones that do.
+
+**Never on the UI thread.** `UpdateProbe` runs the fetch on a daemon thread
+and returns through a Qt signal, which Qt delivers on the UI thread where
+touching widgets is safe. A blocking fetch in the docker would freeze Krita
+for however long the connection takes to give up — the full timeout on a dead
+network. The thread is a daemon so it can never hold Krita's exit open.
+
+**At most once a day, and silent on failure.** The timestamp is written only
+when an answer arrives, so a briefly dead network means it tries again next
+start rather than going quiet for a day. Nothing is reported when the check
+fails: there is nothing the user could do about it from in there and nothing
+is broken. Versions are compared as numbers, since as text `1.9` sorts after
+`1.11`.
+
+The integration suite sets `updateCheck` to false in the fake settings'
+defaults layer: every docker it builds would otherwise start a check, which
+is twenty-odd real requests per run. The block that tests the feature turns
+it on with `fetch_latest` stubbed.
+
 ### What's new after an update
 
 A Krita plugin updates by having its files overwritten, so there is no

@@ -435,6 +435,15 @@ stray markup inside a bubble:
   current line and "done" progress) come back after a Krita restart.
 - **Customizable tabs** – rename and reorder the tabs, and show/hide the extra
   ones, all from the Setup tab; the last-used tab is restored on start.
+- **Told when there is a newer one** – a Krita plugin has no updater behind
+  it, so nothing normally tells you a version exists that fixes the thing you
+  just worked around. With **"Look for a newer version on GitHub"** on (Setup
+  tab, default on), the published version is looked up in the background at
+  most **once a day**; if it is newer, a small line appears next to the build
+  stamp at the bottom right, linking to the project page. Nothing is sent but
+  the request, a failed check stays quiet (there is nothing you could do about
+  your network from in here), and the answer is remembered so the next start
+  shows it at once.
 - **What's new after an update** – a plugin updates by having its files
   replaced, so nothing normally gets a chance to say what happened. The first
   Krita start after an update lists what changed, once per version — and it
