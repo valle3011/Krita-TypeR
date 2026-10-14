@@ -13,6 +13,25 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.14", {
+        "en": [
+            "The Fonts tab can preview your own text: type a line into "
+            "the new \u201cPreview:\u201d field and every font in the list is "
+            "drawn with it, so you can see which font suits that line "
+            "rather than which one flatters its own name. Empty shows "
+            "each font\u2019s name as before, and the name stays readable "
+            "in grey behind the sample.",
+        ],
+        "de": [
+            "Der Fonts-Reiter kann deinen eigenen Text zeigen: tipp eine "
+            "Zeile in das neue Feld \u201eVorschau:\u201c, und jede Schrift in "
+            "der Liste wird damit gezeichnet \u2014 so siehst du, welche "
+            "Schrift zu dieser Zeile passt, statt welche ihren eigenen "
+            "Namen gut aussehen l\u00e4sst. Leer zeigt wie bisher den Namen "
+            "jeder Schrift, und der Name bleibt grau hinter der "
+            "Vorschau lesbar.",
+        ],
+    }),
     ("1.13", {
         "en": [
             "Scripts can be loaded straight from a PDF. A two-column JP/EN "

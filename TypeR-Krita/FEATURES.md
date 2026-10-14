@@ -610,6 +610,25 @@ reason the deferred check hangs off a `QTimer` owned by the docker rather
 than a bare `QTimer.singleShot`, which would still fire after the docker was
 gone and reach a deleted C++ object.
 
+### Font preview text
+
+The Fonts tab draws each favourite in its own face. The **Preview:** field
+changes what that face spells: your own line instead of the font's name, so
+a decision about which font suits a particular piece of dialogue can be made
+by looking at that dialogue.
+
+- `fontfav_ui.py` → `sample_text()` / `_apply_sample`, the sample in
+  `_make_face`, the grey suffix in `_FontItemDelegate.paint`
+- Stored with the favourites' UI state as `sample_text`
+
+Two things it has to get right. **The name stays visible**: it joins the grey
+suffix beside the categories once the face no longer spells it, because a
+list of twenty rows all reading the same words says nothing about which font
+each one is. And **the face cache is keyed by family alone** — the sample is
+the same for every row — so changing it invalidates all of it, exactly as the
+size slider does, and the typing is debounced by 300 ms because otherwise
+every keystroke reloads every font in the list.
+
 ### Script comments
 
 Notes from a Word/Google-Docs script, shown against the line they belong to.

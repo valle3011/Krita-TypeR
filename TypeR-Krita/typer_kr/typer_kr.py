@@ -86,7 +86,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.13"
+VERSION = "1.14"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -1791,6 +1791,13 @@ LANG = {
         "fav_count": "{n} Schriften",
         "fav_size": "Aa",
         "fav_size_tip": "Vorschaugröße – ziehen, um die Schriften größer zu sehen.",
+        "fav_sample": "Vorschau:",
+        "fav_sample_ph": "der Name der Schrift selbst",
+        "fav_sample_tip": ("Tipp hier etwas ein, und jede Schrift in der Liste "
+                           "wird damit gezeichnet — deine echte Zeile, damit "
+                           "du siehst, welche Schrift dazu passt. Leer zeigt "
+                           "wieder den Namen jeder Schrift. Der Name bleibt "
+                           "grau hinter der Vorschau lesbar."),
         "fav_ctx_edit": "Kategorien bearbeiten…",
         "fav_ctx_delete": "Löschen…",
         "fav_import": "Importieren…",

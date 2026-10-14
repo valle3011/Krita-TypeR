@@ -2104,6 +2104,70 @@ try:
 except Exception:
     pass
 
+# --- Fonts tab: previewing your own text in every font ---------------------
+if imported:
+    try:
+        _fd = TK.TyperDocker()
+        _fp = _fd.fonts_panel
+        _fp.add_favorite("Arial")
+        _fp.add_favorite("Courier New")
+        _fp.refresh()
+        _app.processEvents()
+
+        check("with no sample, a face spells the font's own name",
+              _fp.sample_text() == "")
+        _plain = _fp._make_face("Arial")
+        check("and it renders", _plain is not False and _plain.width() > 1)
+
+        # the width of the rendered mask is what gives the text away: the
+        # sample is far longer than "Arial", so the pixmap has to grow
+        _fp.sample_edit.setText("DON'T MOVE, KEI-CHAN")
+        _fp._apply_sample()
+        _app.processEvents()
+        check("typing a sample is picked up",
+              _fp.sample_text() == "DON'T MOVE, KEI-CHAN")
+        _wide = _fp._make_face("Arial")
+        check("the face now draws the sample, not the name",
+              _wide is not False and _wide.width() > _plain.width() * 2)
+
+        check("changing it drops the cached faces, which are keyed by family",
+              _fp._face_cache == {} and _fp._tint_cache == {})
+        check("and every face is queued to re-render",
+              "Arial" in _fp._face_pending and "Courier New" in _fp._face_pending)
+
+        check("the sample is remembered for the next session",
+              _fp._store.ui_get("sample_text", "") == "DON'T MOVE, KEI-CHAN")
+
+        # the name must stay findable: the delegate puts it in the grey suffix
+        # once the face no longer spells it
+        _delegate = _fp.list.itemDelegate()
+        check("the delegate is told what the faces spell",
+              _delegate._panel.sample_text() == "DON'T MOVE, KEI-CHAN")
+
+        _fp.sample_edit.setText("")
+        _fp._apply_sample()
+        _app.processEvents()
+        check("clearing it goes back to the font's name",
+              _fp.sample_text() == ""
+              and _fp._make_face("Arial").width() == _plain.width())
+
+        # typing does not re-render on every keystroke
+        _fp.sample_edit.setText("ab")
+        check("a keystroke only arms the timer",
+              _fp._sample_timer.isActive() and _fp.sample_text() == "")
+        _fp._sample_timer.stop()
+        _fp._apply_sample()
+        check("the pause is what applies it", _fp.sample_text() == "ab")
+        _fp.sample_edit.setText("")
+        _fp._apply_sample()
+
+        _fd.deleteLater()
+        _app.processEvents()
+    except Exception:                               # pragma: no cover
+        check("font preview-text suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- read_script routes a .pdf to the PDF reader ---------------------------
 if imported:
     try:

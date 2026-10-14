@@ -88,7 +88,12 @@ class _FontItemDelegate(QStyledItemDelegate):
             painter.setPen(fg)
             painter.drawText(rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, name)
             name_w = QFontMetrics(f).horizontalAdvance(name)
-        if cats:
+        # With a sample text the face no longer spells the font's name, so the
+        # name joins the grey suffix - otherwise a list where every row reads
+        # the same words tells you nothing about which font you are looking at.
+        sample = self._panel.sample_text() if self._panel else ""
+        suffix = " · ".join(p for p in ((fam if sample else ""), cats) if p)
+        if suffix:
             off = name_w + 14
             if off < rect.width() - 10:
                 df = QFont()
@@ -98,7 +103,7 @@ class _FontItemDelegate(QStyledItemDelegate):
                 c.setAlpha(150)
                 painter.setPen(c)
                 painter.drawText(rect.adjusted(off, 0, 0, 0),
-                                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "· " + cats)
+                                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "· " + suffix)
         painter.restore()
 
 # English fallback so the panel is self-sufficient if no translator is passed.
@@ -130,6 +135,12 @@ _FALLBACK = {
     "fav_ctx_delete": "Delete…",
     "fav_size": "Aa",
     "fav_size_tip": "Preview size — drag to see the fonts bigger.",
+    "fav_sample": "Preview:",
+    "fav_sample_ph": "the font's own name",
+    "fav_sample_tip": ("Type anything and every font in the list is drawn "
+                       "with it — your actual line, so you can see which "
+                       "font suits it. Empty shows each font's name instead. "
+                       "The name stays readable in grey behind the sample."),
     "fav_import": "Import…",
     "fav_export": "Export…",
     "fav_import_done": "Imported {n} new favourite fonts.",
@@ -185,6 +196,10 @@ class FontFavoritesPanel(QWidget):
             self._face_px = max(10, min(64, int(self._store.ui_get("face_px", 16))))
         except Exception:
             self._face_px = 16
+        try:
+            self._sample = str(self._store.ui_get("sample_text", "") or "")
+        except Exception:
+            self._sample = ""
         self._face_timer = QTimer(self)
         # a small interval (not 0) so the background prewarm never competes with
         # the first paint or an active scroll — the sync render in paint covers
@@ -192,6 +207,12 @@ class FontFavoritesPanel(QWidget):
         # CPU load for the prewarm finishing a touch later.
         self._face_timer.setInterval(5)
         self._face_timer.timeout.connect(self._render_faces_step)
+        # Typing waits for a pause before re-rendering: every keystroke would
+        # otherwise reload every font in the list.
+        self._sample_timer = QTimer(self)
+        self._sample_timer.setSingleShot(True)
+        self._sample_timer.setInterval(300)
+        self._sample_timer.timeout.connect(self._apply_sample)
         self._build()
         self._reload_categories()
         self._restore_filter()
@@ -249,6 +270,19 @@ class FontFavoritesPanel(QWidget):
         self.size_slider.valueChanged.connect(self._on_face_size_changed)
         size_row.addWidget(self.size_slider, 1)
         lay.addLayout(size_row)
+
+        # preview text: see the fonts with your own line in them
+        sample_row = QHBoxLayout()
+        sample_row.addWidget(QLabel(self.t("fav_sample")))
+        self.sample_edit = QLineEdit()
+        self.sample_edit.setPlaceholderText(self.t("fav_sample_ph"))
+        self.sample_edit.setToolTip(self.t("fav_sample_tip"))
+        self.sample_edit.setClearButtonEnabled(True)
+        self.sample_edit.setText(self._sample)
+        self.sample_edit.textChanged.connect(
+            lambda _t: self._sample_timer.start())
+        sample_row.addWidget(self.sample_edit, 1)
+        lay.addLayout(sample_row)
 
         self.list = QListWidget()
         self.list.setMinimumHeight(160)
@@ -473,6 +507,33 @@ class FontFavoritesPanel(QWidget):
                              for i in range(self.list.count())])
         self.list.viewport().update()
 
+    def sample_text(self):
+        """What the faces spell, or "" when they spell each font's name."""
+        return self._sample
+
+    def _apply_sample(self):
+        """The preview text settled: re-render every face with it.
+
+        The cache is keyed by family only - the sample is the same for the
+        whole list - so changing it invalidates all of it, exactly as changing
+        the size does.
+        """
+        text = self.sample_edit.text()
+        if text == self._sample:
+            return
+        self._sample = text
+        self._face_cache.clear()
+        self._tint_cache.clear()
+        self._face_pending = []
+        try:
+            self._store.ui_set("sample_text", text)
+            self._persist()
+        except Exception:
+            pass
+        self._prewarm_faces([self.list.item(i).data(_ROLE_FAMILY)
+                             for i in range(self.list.count())])
+        self.list.viewport().update()
+
     def _request_face(self, family):
         """A visible row's face isn't cached yet — queue it to render off the
         paint path so opening the tab stays instant. A currently-visible row
@@ -505,20 +566,23 @@ class FontFavoritesPanel(QWidget):
             self.list.viewport().update()
 
     def _make_face(self, family):
-        """Pixmap of `family`'s name drawn IN that font as an opaque-on-transparent
-        mask (the delegate tints it to the row's text colour). Rendering this is
-        what loads the font — done here, off the paint path. False on failure."""
+        """Pixmap of the preview text drawn IN `family` as an
+        opaque-on-transparent mask (the delegate tints it to the row's text
+        colour). The text is the user's sample, or the family's own name when
+        there is none. Rendering this is what loads the font — done here, off
+        the paint path. False on failure."""
         try:
+            shown = self._sample or family
             f = QFont(family)
             f.setPixelSize(self._face_px)
             fm = QFontMetrics(f)
-            w = max(1, min(fm.horizontalAdvance(family) + 4, 1600))
+            w = max(1, min(fm.horizontalAdvance(shown) + 4, 1600))
             pm = QPixmap(w, self._face_px + 8)
             pm.fill(Qt.GlobalColor.transparent)
             p = QPainter(pm)
             p.setFont(f)
             p.setPen(QColor(0, 0, 0))
-            p.drawText(2, self._face_px, family)
+            p.drawText(2, self._face_px, shown)
             p.end()
             return pm
         except Exception:              # noqa: BLE001

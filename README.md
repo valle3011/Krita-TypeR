@@ -404,6 +404,13 @@ stray markup inside a bubble:
   double-click to use it (and jump straight back to the Type tab). Star the
   current font with one click, or right-click any font in the picker to add it
   to a category. Your favourites and the last filter are remembered.
+- **Preview your own text** – the **Preview:** field above the list draws
+  *your* line in every font, so you can see which one suits `DON'T MOVE` rather
+  than which one makes its own name look good. Leave it empty and each font
+  spells its own name as before. The font's name does not disappear when you
+  type: it moves behind the sample in grey, because a list where every row
+  reads the same words would not tell you which font you are looking at. The
+  sample is remembered, and the preview size slider still applies.
 - **SFX helper (SFX tab)** – a separate workflow for sound-effect lettering:
   pick how each Japanese sound word is handled, get font suggestions, and style
   the effect with **texture/pattern fills** (an image or a Krita pattern),
