@@ -25,5 +25,37 @@ Every version gets a release. Nothing in steps 1 and 4 is typed by hand: the
 version comes from the plugin, the notes come from the changelog the docker
 shows after an update. `make_release.py` refuses to publish if the working tree
 is dirty, if the commit is not pushed, if `VERSION` disagrees with the plugin,
-or if the changelog has no entry for the version — each of those would produce
-a release that quietly lies about what is in it.
+if the changelog has no entry for the version, or if the translations are
+missing or were made from English that has since been edited — each of those
+would produce a release that quietly lies about what is in it.
+
+The asset is built from a fresh checkout of the tagged commit, never from the
+working copy, so it holds the committed files with the line endings
+`.gitattributes` asks for (`install.sh` LF, the `.bat` files CRLF).
+
+## Languages
+
+Release notes are **English, Japanese and Simplified Chinese** — not German:
+the people who typeset manga are largely not German speakers, and a German one
+reads English anyway, so a German column costs space without reaching anyone
+the English does not. The plugin's own interface stays English/German; UI labels
+are therefore left in English inside the translations, since a translated label
+is one the reader cannot find in the program.
+
+English lives with the plugin in `typer_kr/whatsnew.py` (the docker shows it
+after an update); the translations live in `tools/release_i18n.py`:
+
+```bash
+python tools/release_i18n.py --check
+```
+
+Each translation is stamped with a fingerprint of the English it was made from.
+Add a version's `ja` and `zh` lines — one per English line, same order — then
+run `--stamp` once they match.
+
+## Older versions
+
+`--versions` lists every version in the history, the last commit that was it,
+and whether it is released. `--version 1.11` releases one after the fact: the
+tag goes on that commit, the zip is built from that commit's tree, and the
+release never takes the “latest” pointer from the newest one.
