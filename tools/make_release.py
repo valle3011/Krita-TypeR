@@ -159,6 +159,32 @@ def refuse(message):
     raise SystemExit(1)
 
 
+def check_gh():
+    """gh has to be there and logged in - and able to read where it stored it.
+
+    Measured on this machine: `gh auth status` succeeds from a shell but fails
+    with "not logged into any GitHub hosts" for any gh started by the Microsoft
+    Store Python (3.13 here). A Store app runs with a restricted token that its
+    children inherit, and gh keeps the token in the Windows credential store,
+    which that token cannot read. Nothing is wrong with the login, so say which
+    interpreter to use instead of letting gh's message send anyone off to
+    `gh auth login`.
+    """
+    rc, out = gh("--version")
+    if rc != 0:
+        refuse("gh (GitHub CLI) is not available: " + out)
+    rc, out = gh("auth", "status")
+    if rc != 0:
+        hint = ""
+        if "WindowsApps" in sys.executable:
+            hint = ("\nThis interpreter is the Microsoft Store Python, whose "
+                    "restricted token cannot read the credential store gh "
+                    "keeps its login in. Run the script with a normally "
+                    "installed Python (`py -3.14 tools/make_release.py`); the "
+                    "login itself is fine.")
+        refuse("gh is not usable here:\n" + out + hint)
+
+
 def check_repo_state():
     """HEAD must be clean, on the branch, and already on the remote."""
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
@@ -230,6 +256,7 @@ def main(argv=None):
         print("dry run: nothing published, zip left at %s" % asset)
         return 0
 
+    check_gh()
     sha = check_repo_state()
 
     notes_path = os.path.join(out_dir, "RELEASE_NOTES.tmp.md")

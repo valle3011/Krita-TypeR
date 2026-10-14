@@ -10,9 +10,16 @@ copied over:
    from the plugin one, keeping the landing page's own installation section.
 3. Commit and **push** — the release tag has to point at a commit that exists
    on the remote.
-4. `python tools/make_release.py` — tags `v<version>`, writes the release notes
-   from `typer_kr/whatsnew.py` and uploads `TypeR-<version>.zip`.
+4. `py -3.14 tools/make_release.py` — tags `v<version>`, writes the release
+   notes from `typer_kr/whatsnew.py` and uploads `TypeR-<version>.zip`.
    `--dry-run` shows both without publishing anything.
+
+Step 4 needs a **normally installed Python, not the Microsoft Store one**: a
+Store app runs with a restricted token that its child processes inherit, and
+that token cannot read the Windows credential store where `gh` keeps its
+login, so every `gh` call reports "not logged into any GitHub hosts" although
+the login is fine. The script checks for this and says so. Steps 1–3 run under
+any interpreter.
 
 Every version gets a release. Nothing in steps 1 and 4 is typed by hand: the
 version comes from the plugin, the notes come from the changelog the docker
