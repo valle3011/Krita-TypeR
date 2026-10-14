@@ -588,14 +588,17 @@ announces a release. The docker asks the repository instead.
 - Stored in kritarc as `updateCheck`, `updateChecked`, `updateLatest`
 - Published as a `VERSION` file at the repository root, written by
   `tools/write_version.py` in the published repo
+- Every version is also a GitHub release, cut by `tools/make_release.py`
+  from the same constant and the same changelog
 
-**A plain file, not the releases API**, because the project publishes no
-releases or tags — measured: `releases/latest` answers 404 and `tags` an
-empty list. Six bytes over `raw.githubusercontent.com` is also less to fetch
-than any API response and needs no token. The file is *generated* from the
-plugin's own `VERSION` constant, because a marker that can disagree with the
-plugin it describes is worse than none: it would announce updates that do not
-exist or stay quiet about ones that do.
+**A plain file, not the releases API.** Six bytes over
+`raw.githubusercontent.com` is less to fetch than a page of JSON, needs no
+token, and is not subject to the API's unauthenticated hourly cap. The file is
+*generated* from the plugin's own `VERSION` constant, because a marker that can
+disagree with the plugin it describes is worse than none: it would announce
+updates that do not exist or stay quiet about ones that do. The release tag is
+derived from the same constant, so the file, the tag and the running plugin
+agree by construction rather than by anyone remembering.
 
 **Never on the UI thread.** `UpdateProbe` runs the fetch on a daemon thread
 and returns through a Qt signal, which Qt delivers on the UI thread where

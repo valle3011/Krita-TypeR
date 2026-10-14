@@ -19,8 +19,11 @@ the Setup tab shows which one was detected. Krita 4.x is not supported.
 
 ## Installation
 
-The plugin lives in the [`TypeR-Krita/`](TypeR-Krita) folder of this repo, with
-ready-made installers.
+Every version is published as a release: grab **`TypeR-<version>.zip`** from the
+[latest release](https://github.com/valle3011/Krita-TypeR/releases/latest) and
+unpack it — the installers below are inside, at the top of the archive. Cloning
+this repository works just as well; the plugin then lives in the
+[`TypeR-Krita/`](TypeR-Krita) folder, with the same ready-made installers.
 
 **Windows** — double-click **`TypeR-Krita\INSTALL.bat`**. It copies the plugin
 into Krita's plugin folder (`%APPDATA%\krita\pykrita`). `UPDATE.bat` re-copies it

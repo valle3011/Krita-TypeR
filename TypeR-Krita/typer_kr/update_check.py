@@ -7,10 +7,12 @@ version exists which fixes the thing you just worked around. This asks the
 repository.
 
 What it reads is a plain **VERSION** file at the repository root, not the
-releases API - the project publishes no releases or tags, so there is nothing
-there to read (measured: `releases/latest` answers 404 and `tags` an empty
-list). A six-byte file over `raw.githubusercontent.com` is also a smaller
-thing to fetch than any API response, and needs no token.
+releases API. Every version is released now, so the API would answer - but a
+six-byte file over `raw.githubusercontent.com` is a smaller thing to fetch
+than a page of JSON, needs no token, and is not subject to the API's
+unauthenticated hourly cap. Both the file and the release tag are generated
+from the plugin's own VERSION constant, so they cannot disagree about which
+version is out.
 
 The rules this module exists to keep:
 

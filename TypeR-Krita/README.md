@@ -19,6 +19,13 @@ the Setup tab shows which one was detected. Krita 4.x is not supported.
 
 ## Installation
 
+### Getting it
+
+Every version is published as a release: download **`TypeR-<version>.zip`**
+from the [latest release](https://github.com/valle3011/Krita-TypeR/releases/latest)
+and unpack it — the scripts below are inside. Cloning the repository works
+just as well; the plugin lives in `TypeR-Krita/`.
+
 ### Windows — one click (recommended)
 
 Double-click **`INSTALL.bat`** in this folder. It copies `typer_kr` and
