@@ -2152,6 +2152,37 @@ if imported:
     check("without a selection nothing is touched",
           TK.color_selection("abc", 2, 2, "#f00") == ("abc", 2, 2))
 
+    # whole lines: no selection means the line the cursor is in
+    check("line_bounds finds the line around the cursor",
+          TK.line_bounds("eins\nzwei\ndrei", 6) == (5, 9)
+          and TK.line_bounds("eins\nzwei", 0) == (0, 4)
+          and TK.line_bounds("eins", 99) == (0, 4))
+    check("line_bounds on an empty field gives an empty line",
+          TK.line_bounds("", 0) == (0, 0))
+    check("a newline is not part of the line it ends",
+          TK.line_bounds("eins\nzwei", 4) == (0, 4))
+
+    _s2, _e2 = TK.line_bounds("SAG NICHTS", 3)
+    check("colouring a whole line needs no selection",
+          TK.color_selection("SAG NICHTS", _s2, _e2, "#e03030")[0]
+          == "{#e03030|SAG NICHTS}")
+    _multi = "EINS\nZWEI"
+    _s3, _e3 = TK.line_bounds(_multi, 6)
+    check("only the line the cursor is in is coloured",
+          TK.color_selection(_multi, _s3, _e3, "#2d6cdf")[0]
+          == "EINS\n{#2d6cdf|ZWEI}")
+    _already = "{#e03030|SAG NICHTS}"
+    _s4, _e4 = TK.line_bounds(_already, 0)
+    check("recolouring a whole line replaces, it does not nest",
+          TK.color_selection(_already, _s4, _e4, "#2d6cdf")[0]
+          == "{#2d6cdf|SAG NICHTS}")
+    check("a line colour takes over a single word's colour inside it",
+          TK.color_selection("SAG {red|NICHTS}", 0, 16, "#2d6cdf")[0]
+          == "{#2d6cdf|SAG NICHTS}")
+    _nested = "{#e03030|SAG {blue|NICHTS}}"
+    check("clearing a whole line takes every colour out of it",
+          TK.color_selection(_nested, 0, len(_nested), "")[0] == "SAG NICHTS")
+
     # the whole way through: the inserted SVG has to carry the colour
     _ok, _key, _svg = insert(line="SAG {red|NICHTS}", outline=True,
                              outline_color=QColor(255, 255, 255),

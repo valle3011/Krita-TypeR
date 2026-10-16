@@ -582,7 +582,8 @@ an empty or half script.
 `{#e03030|word}` in the line, beside the `**bold**` that was already there.
 
 - `typer_kr.py` → `parse_markup`, `color_hex`, `COLOR_NAMES`,
-  `color_selection`, `_strip_colors`, `on_color_selection`, the Colour button
+  `color_selection`, `_strip_colors`, `line_bounds`, `on_color_selection`,
+  the Colour button
 - `layout.py` → `style_of`, `as_run`; runs are `(text, bold, colour)`
 - Stored in kritarc as `wordColor` (the last colour used)
 
@@ -602,6 +603,15 @@ to be threaded through every one of those signatures and kept in step at each
 wrap and hyphenation point by hand; this way the hyphen `split_word` adds
 simply inherits the style of the run it lands on, which it already did for
 bold.
+
+**No selection means the whole line.** Colouring a word needs a selection;
+colouring a line should not, so with nothing selected `on_color_selection`
+takes `line_bounds` around the cursor. A line there is what the user sees as
+one line in the field — the text between two newlines — not a wrapped
+line in the bubble, which depends on the font and the box and does not exist
+yet at that point. Because `color_selection` strips the colours inside its
+range before wrapping it, a line colour simply takes over from any word colour
+in it instead of nesting, and clearing a line clears all of them.
 
 **Only the fill copy is coloured.** `_build_svg` draws the shadow, the outer
 outline, the outline and then the fill as separate `<text>` copies;

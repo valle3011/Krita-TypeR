@@ -13,6 +13,25 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.18", {
+        "en": [
+            "Colouring a whole line needs no selection any more: with "
+            "nothing selected, the Colour button takes the line the "
+            "cursor is in. In a field with several lines only that one "
+            "is taken, and Ctrl+A first colours all of them. A line "
+            "colour replaces the colours of single words inside it, and "
+            "Remove colour on a line clears every colour in it.",
+        ],
+        "de": [
+            "F\u00fcr eine ganze Zeile musst du nichts mehr markieren: "
+            "Ist nichts markiert, nimmt der Farbe-Knopf die Zeile, in "
+            "der der Cursor steht. Bei mehreren Zeilen im Feld nur "
+            "diese eine \u2014 mit Strg+A vorher alle. Eine "
+            "Zeilenfarbe ersetzt die Farben einzelner W\u00f6rter "
+            "darin, und \u201eFarbe entfernen\u201c auf einer Zeile "
+            "r\u00e4umt alle Farben darin weg.",
+        ],
+    }),
     ("1.17", {
         "en": [
             "Single words can have their own colour: select a word in "

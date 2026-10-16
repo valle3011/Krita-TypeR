@@ -204,7 +204,7 @@ switching on for a batch so the whole page keeps one text size.
 
 ---
 
-## Colouring single words
+## Colouring words and lines
 
 One word in a line often has to stand out — a name, a shout, a term the
 reader is meant to catch. Select it in the active line and press **Colour**:
@@ -215,6 +215,17 @@ reader is meant to catch. Select it in the active line and press **Colour**:
 - pressing it again with another colour **replaces** the old one instead of
   nesting markup nobody can read;
 - the live preview shows it immediately, and so does TextShapR.
+
+**A whole line needs no selection.** With nothing selected, the button
+colours the line the cursor is in — which in a one-line field is simply
+the whole line. In a field with several lines only that one line is taken;
+`Ctrl+A` first colours all of them. Colouring a line **replaces** any word
+colour inside it, and *Remove colour* on a line clears every colour in it, so
+you are never left with markup you have to pick apart by hand.
+
+For a character who should *always* speak in one colour, use a **preset**
+instead: presets carry the text colour, so it applies to every line you insert
+with them without any markup in the script.
 
 It is stored **in the line** as `{#e03030|word}`, next to the `**bold**`
 markup that was already there. That is deliberate: the line is what gets
@@ -428,9 +439,10 @@ stray markup inside a bubble:
 - **Live preview** that renders the active line with the chosen font and every
   setting (color, outline, shadow, alignment, case, wrapping) in the same order
   as the inserted layer.
-- **Per-word colour:** select a word in the active line and press
-  **Colour** — that word alone gets its own colour, the rest of the line
-  keeps the text colour. Written into the line as `{#e03030|word}` (or
+- **Per-word and per-line colour:** select a word in the active line and
+  press **Colour** — that word alone gets its own colour, the rest of the
+  line keeps the text colour. With **nothing selected** the whole line is
+  coloured, so the common case costs no selection at all. Written into the line as `{#e03030|word}` (or
   `{red|word}`), so it survives saving, re-opening and editing. Outline and
   shadow stay the outline and shadow colour, which is what makes a coloured
   word readable at all.

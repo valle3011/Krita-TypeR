@@ -88,7 +88,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.17"
+VERSION = "1.18"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -699,10 +699,14 @@ LANG = {
         "wc_blue": "Blue",
         "wc_brown": "Brown",
         "wc_btn": "Colour",
-        "wc_btn_tip": ("Give the selected words their own colour. The button "
-                           "applies the colour shown; the arrow opens the list. "
-                           "Written into the line as {#e03030|word}, so it "
-                           "survives being saved and edited."),
+        "wc_btn_tip": ("Give the selected words their own colour - or the "
+                       "whole line, when nothing is selected. The button "
+                       "applies the colour shown; the arrow opens the list. "
+                       "Written into the line as {#e03030|word}, so it "
+                       "survives being saved and edited."),
+        "st_color_line": "Whole line coloured.",
+        "st_color_sel": "Selection coloured.",
+        "st_color_empty": "There is nothing on this line to colour.",
         "wc_clear": "Remove colour",
         "wc_custom": "Pick a colour…",
         "wc_cyan": "Cyan",
@@ -1633,10 +1637,14 @@ LANG = {
         "wc_blue": "Blau",
         "wc_brown": "Braun",
         "wc_btn": "Farbe",
-        "wc_btn_tip": ("Gibt den markierten Wörtern eine eigene Farbe. Der "
-                           "Knopf nimmt die angezeigte Farbe, der Pfeil öffnet "
-                           "die Liste. Steht als {#e03030|Wort} in der Zeile und "
-                           "überlebt damit Speichern und Bearbeiten."),
+        "wc_btn_tip": ("Gibt den markierten Wörtern eine eigene Farbe "
+                       "— oder der ganzen Zeile, wenn nichts markiert ist. "
+                       "Der Knopf nimmt die angezeigte Farbe, der Pfeil "
+                       "öffnet die Liste. Steht als {#e03030|Wort} in der "
+                       "Zeile und überlebt damit Speichern und Bearbeiten."),
+        "st_color_line": "Ganze Zeile eingefärbt.",
+        "st_color_sel": "Markierung eingefärbt.",
+        "st_color_empty": "In dieser Zeile steht nichts zum Einfärben.",
         "wc_clear": "Farbe entfernen",
         "wc_custom": "Farbe wählen…",
         "wc_cyan": "Türkis",
@@ -3635,6 +3643,23 @@ def _strip_colors(text):
         out.append(text[i])
         i += 1
     return "".join(out)
+
+
+def line_bounds(text, pos):
+    """The line around `pos` as (start, end), newlines excluded.
+
+    A line here is what the user sees as one line in the field - the text
+    between two newlines - not a wrapped line in the bubble, which depends on
+    the font and the box and does not exist yet at this point.
+    """
+    if not text:
+        return 0, 0
+    pos = max(0, min(int(pos), len(text)))
+    start = text.rfind("\n", 0, pos) + 1          # -1 + 1 == 0: first line
+    end = text.find("\n", pos)
+    if end < 0:
+        end = len(text)
+    return start, end
 
 
 def color_selection(text, start, end, hexval):
@@ -12203,15 +12228,22 @@ class TyperDocker(DockWidget):
         self.on_color_selection(hexval)
 
     def on_color_selection(self, hexval=None):
-        """Put ``{#rrggbb|...}`` around the selection in the active field."""
+        """Put ``{#rrggbb|...}`` around the selection in the active field.
+
+        With nothing selected this colours the whole line the cursor is in -
+        the common case, and one that should not cost a selection first.
+        """
         tc = self.active_edit.textCursor()
         start, end = tc.selectionStart(), tc.selectionEnd()
-        if start == end:
-            self._set_status(self._tr("st_bold_no_sel"))
-            return
+        text = self.active_edit.toPlainText()
+        whole_line = start == end
+        if whole_line:
+            start, end = line_bounds(text, start)
+            if start == end:                    # an empty line has no text
+                self._set_status(self._tr("st_color_empty"))
+                return
         if hexval is None:
             hexval = self._wordcolor
-        text = self.active_edit.toPlainText()
         new, ns, ne = color_selection(text, start, end, hexval)
         self.active_edit.setPlainText(new)      # triggers textChanged -> preview
         cur = self.active_edit.textCursor()
@@ -12219,6 +12251,8 @@ class TyperDocker(DockWidget):
         cur.setPosition(max(0, ne), QTextCursor.MoveMode.KeepAnchor)
         self.active_edit.setTextCursor(cur)
         self.active_edit.setFocus()
+        self._set_status(self._tr(
+            "st_color_line" if whole_line else "st_color_sel"))
 
     def _update_text_preview(self):
         """Redraw the live preview from the current (possibly edited) text."""

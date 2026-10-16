@@ -1929,12 +1929,12 @@ check("whatsnew: an untranslated entry falls back to English",
       WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
       == [("1.11", ["eleven"])])
 check("whatsnew: the shipped changelog covers the shipped version",
-      any(v == "1.17" for v, _ in WNN.CHANGELOG)
+      any(v == "1.18" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
 check("whatsnew: it goes back far enough to span several versions",
       len(WNN.CHANGELOG) >= 3
-      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.17")) >= 2)
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.18")) >= 2)
 check("whatsnew: the shipped entries are newest first",
       [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
       == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),
