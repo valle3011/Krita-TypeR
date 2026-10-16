@@ -31,6 +31,7 @@ MODULES = [
     "typer_kr/drivefs.py", "typer_kr/gdocs.py", "typer_kr/gauth.py",
     "typer_kr/whatsnew.py", "typer_kr/pdftext.py",
     "typer_kr/update_check.py",
+    "typer_kr/patternfind.py",
     "typer_kr/swapr_ui.py", "typer_kr/swapr/__init__.py",
     "typer_kr/swapr/kra.py", "typer_kr/swapr/pairing.py",
     "typer_kr/swapr/swap.py",

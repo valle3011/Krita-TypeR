@@ -2108,6 +2108,68 @@ try:
 except Exception:
     pass
 
+# --- a loaded pattern crop offers its tile ---------------------------------
+if imported:
+    try:
+        _pd = TK.TyperDocker()
+
+        def _dot_image(w, h, px, py, r=3):
+            img = _QImage(w, h, _QImage.Format.Format_ARGB32)
+            img.fill(QColor(255, 255, 255))
+            for cy in range(0, h + py, py):
+                for cx in range(0, w + px, px):
+                    for dy in range(-r, r + 1):
+                        for dx in range(-r, r + 1):
+                            if dx * dx + dy * dy <= r * r:
+                                x, y = cx + dx, cy + dy
+                                if 0 <= x < w and 0 <= y < h:
+                                    img.setPixelColor(x, y, QColor(0, 0, 0))
+            return img
+
+        _crop = _dot_image(240, 180, 16, 12)
+        _tile, _rep = _pd._find_pattern_tile(_crop)
+        check("a crop of a pattern is reduced to its tile",
+              _tile is not None and (_tile.width(), _tile.height()) == (16, 12))
+        check("the report says what was found and how well",
+              _rep["tile_w"] == 16 and _rep["tile_h"] == 12
+              and _rep["score_x"] <= 0.35 and _rep["score_y"] <= 0.35
+              and _rep["detail"] >= 0.8
+              and _rep["how"] in ("single", "averaged"))
+        check("the tile keeps the crop's colours, not a grey copy",
+              _tile.format() != _QImage.Format.Format_Grayscale8)
+
+        # an image that is already one tile has nothing to offer
+        _single = _dot_image(16, 12, 16, 12)
+        _t2, _r2 = _pd._find_pattern_tile(_single)
+        check("an image that is already a tile is left alone", _t2 is None)
+
+        # a photo-ish gradient is not a pattern
+        _grad = _QImage(200, 150, _QImage.Format.Format_ARGB32)
+        for _x in range(200):
+            _c = QColor(_x * 255 // 200, _x * 255 // 200, _x * 255 // 200)
+            for _y in range(150):
+                _grad.setPixelColor(_x, _y, _c)
+        _t3, _r3 = _pd._find_pattern_tile(_grad)
+        check("a gradient is not offered as a pattern", _t3 is None)
+
+        # the preview is what makes the offer judgeable: it has to show the
+        # tile repeated, not the single tile
+        _prev = _pd._preview_tiling(_tile, 160)
+        check("the offer previews the tile repeated",
+              not _prev.isNull() and _prev.width() == 160)
+
+        # nothing is asked about an image the finder cannot read
+        _bad = _QImage()
+        check("an unreadable image is passed through untouched",
+              _pd._offer_pattern_tile(_bad) is _bad)
+
+        _pd.deleteLater()
+        _app.processEvents()
+    except Exception:                               # pragma: no cover
+        check("pattern-crop suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- colouring single words -----------------------------------------------
 if imported:
     _c, _m = TK.parse_markup("Das ist {red|wichtig} hier")

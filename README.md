@@ -204,6 +204,31 @@ switching on for a batch so the whole page keeps one text size.
 
 ---
 
+## Patterns from a crop
+
+A pattern file has to be **one tile** — the piece that repeats — or
+tiling it produces a mess. Finding that piece by hand (where exactly does it
+start again?) is the tedious part of getting a pattern into the plugin.
+
+So: load **any piece** of a repeating pattern as a pattern file — a
+screenshot, a scan, a corner of a page, however much of it — and TypeR
+works out how far it repeats across and down, shows you the tile laid out
+side by side, and offers to cut it down. One click and you have a tile that
+repeats cleanly at any scale.
+
+- It needs the crop to show the pattern **at least twice** in each direction.
+  A period you can only see once cannot be confirmed, so TypeR says it found
+  nothing rather than guessing.
+- An axis without a repeat is a real answer: a halftone that fades from dense
+  to sparse repeats across but never down, and the tile is then the full
+  height of the crop.
+- A file that is already a single tile is used as-is, with no question asked.
+- It reads colour patterns as well as black-and-white ones, and the tile keeps
+  the original's colours and transparency.
+
+The same offer appears for the outline pattern and the fill pattern, since
+both come from the same picker.
+
 ## Colouring words and lines
 
 One word in a line often has to stand out — a name, a shout, a term the
@@ -631,6 +656,7 @@ the text cleanly for the current bubble.
 | `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation / de-hyphenation**, **TextShapR shape candidates + quality scoring** |
 | `typer_kr/bubbles.py` | BubblR: speech-bubble detection, reading order, round/rect shape, bubble↔unit mapping |
 | `typer_kr/drivefs.py` | The document id behind a `.gdoc` Google Drive refuses to read |
+| `typer_kr/patternfind.py` | Finds the repeating tile in a crop of a pattern |
 | `typer_kr/swapr/` | Swap: reading and writing `.kra` (Krita's tile format), pairing pages, putting a clean under finished typesetting |
 | `typer_kr/swapr_ui.py` | The Swap tab |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |

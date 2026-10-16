@@ -13,6 +13,28 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.19", {
+        "en": [
+            "Patterns are far less work to get in: load any piece of a "
+            "repeating pattern as a pattern file \u2014 a screenshot, "
+            "a scan, however much of it \u2014 and TypeR works out how "
+            "far it repeats, shows the tile laid out side by side and "
+            "offers to cut the crop down to it. The crop has to show "
+            "the pattern at least twice; a file that is already one "
+            "tile is used as it is. Colours and transparency are kept.",
+        ],
+        "de": [
+            "Muster sind viel weniger Arbeit: Lade irgendein "
+            "St\u00fcck eines sich wiederholenden Musters als "
+            "Musterdatei \u2014 Screenshot, Scan, egal wie viel \u2014 "
+            "und TypeR rechnet aus, alle wie viel Pixel es sich "
+            "wiederholt, zeigt die Kachel aneinandergelegt und bietet "
+            "an, den Ausschnitt darauf zu k\u00fcrzen. Der Ausschnitt "
+            "muss das Muster mindestens zweimal zeigen; eine Datei, die "
+            "schon eine Kachel ist, wird unver\u00e4ndert genommen. "
+            "Farben und Transparenz bleiben erhalten.",
+        ],
+    }),
     ("1.18", {
         "en": [
             "Colouring a whole line needs no selection any more: with "

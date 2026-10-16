@@ -290,6 +290,17 @@ gezeichnet und übernimmt die Konturstärke, damit er zur Silhouette passt.</p>
 <p>Ein Skript, das als <b>PDF</b> kommt, wird direkt gelesen – nichts umwandeln, nichts installieren. Ein PDF kennt keine Zeilen und keine Tabellenzellen, sondern nur platzierte Textstücke; TypeR baut beides zurück: Stücke auf derselben Grundlinie werden eine Zeile, und die senkrechte Lücke, die auf keiner Seite von Text überquert wird, wird die Spaltengrenze. Eine zweispaltige JP/EN-Tabelle kommt deshalb <b>schon gepaart</b> an, genau wie eine zweispaltige Word-Tabelle, und <code>Page 3</code>-Zeilen werden wie gewohnt als Seitenmarken erkannt. Ein einspaltiges PDF wird zu normalen Zeilen.</p>
 <p>Drei Sorten PDF gehen nicht und sagen das auch, statt ein halbes Skript zu laden: Seiten, die <b>Scans</b> sind (da steht kein Text – das braucht erst OCR), <b>passwortgeschützte</b> Dateien, und Dateien, die als PDF-1.5-Objektströme gepackt sind (als PDF 1.4 speichern oder das Skript als <code>.docx</code> exportieren).</p>
 
+<h2>Muster aus einem Ausschnitt</h2>
+<p>Eine Musterdatei muss <b>eine Kachel</b> sein – das Stück, das sich wiederholt – sonst wird aus dem Kacheln Matsch. Dieses Stück von Hand zu finden ist die lästige Arbeit daran.</p>
+<p>Deshalb: Lade <b>irgendein Stück</b> eines sich wiederholenden Musters als Musterdatei – Screenshot, Scan, Ecke einer Seite, egal wie viel. TypeR rechnet aus, alle wie viel Pixel es sich quer und längs wiederholt, zeigt dir die Kachel aneinandergelegt und bietet an, den Ausschnitt darauf zu kürzen. Ein Klick, und du hast eine Kachel, die sich in jeder Größe sauber wiederholt.</p>
+<ul>
+<li>Der Ausschnitt muss das Muster <b>mindestens zweimal</b> zeigen. Eine Periode, die man nur einmal sieht, lässt sich nicht bestätigen – dann sagt TypeR, dass es nichts gefunden hat, statt zu raten.</li>
+<li>Eine Achse ohne Wiederholung ist eine richtige Antwort: Ein Raster, das von dicht nach dünn verläuft, wiederholt sich quer, aber nie längs – die Kachel ist dann so hoch wie der Ausschnitt.</li>
+<li>Ist die Datei schon eine einzelne Kachel, wird sie ohne Rückfrage genommen.</li>
+<li>Farbige Muster gehen genauso; die Kachel behält Farben und Transparenz.</li>
+</ul>
+<p>Das Angebot erscheint beim Kontur-Muster wie beim Füll-Muster, weil beide denselben Dateidialog benutzen.</p>
+
 <h2>Wörter und Zeilen einfärben</h2>
 <p>Oft soll ein Wort in der Zeile herausstechen – ein Name, ein Schrei, ein Begriff. Markiere es im aktiven Textfeld und drücke <b>Farbe</b>: Der Knopf nimmt die angezeigte Farbe (die zuletzt benutzte), der Pfeil daneben öffnet die Liste mit benannten Farben, einem Farbwähler und <b>Farbe entfernen</b>. Drückst du mit einer anderen Farbe noch einmal, wird die alte <b>ersetzt</b> statt verschachtelt.</p>
 <p>Gespeichert wird das <b>in der Zeile</b>, als <code>{#e03030|Wort}</code> – genau wie <code>**fett**</code>. So überlebt die Farbe Speichern, Kopieren zwischen Skript-Reitern und späteres Bearbeiten. Du kannst es auch selbst tippen: <code>{red|Wort}</code>, <code>{#f00|Wort}</code> und <code>{#ff0000|Wort}</code> funktionieren alle. Eine <code>{</code>-Klammer, die keine bekannte Farbe öffnet, bleibt einfach stehen.</p>

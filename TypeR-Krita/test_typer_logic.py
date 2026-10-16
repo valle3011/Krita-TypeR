@@ -1929,12 +1929,12 @@ check("whatsnew: an untranslated entry falls back to English",
       WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
       == [("1.11", ["eleven"])])
 check("whatsnew: the shipped changelog covers the shipped version",
-      any(v == "1.18" for v, _ in WNN.CHANGELOG)
+      any(v == "1.19" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
 check("whatsnew: it goes back far enough to span several versions",
       len(WNN.CHANGELOG) >= 3
-      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.18")) >= 2)
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.19")) >= 2)
 check("whatsnew: the shipped entries are newest first",
       [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
       == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),
@@ -2022,6 +2022,114 @@ check("drivefs: path_parts lists the folders from the file outwards",
       _name == "Ch. 19 TL.gdoc" and _folders[:2] == ["Ch. 19 RAW", "My Drive"])
 
 shutil.rmtree(_tmpdir, ignore_errors=True)
+
+
+# --- finding the tile of a pattern crop ------------------------------------
+# Built with a period on purpose, so a wrong answer is a wrong answer and not
+# an argument about what the picture "really" repeats at.
+_pfspec = importlib.util.spec_from_file_location(
+    "patternfind", os.path.join(_HERE, "typer_kr", "patternfind.py"))
+PFIND = importlib.util.module_from_spec(_pfspec)
+_pfspec.loader.exec_module(PFIND)
+
+import random as _prandom
+
+
+def _dots(w, h, px, py, r=2, offset=False):
+    """Dots on a px-by-py grid; `offset` shifts every other row (brick)."""
+    buf = bytearray(b"\xff" * (w * h))
+    for cy in range(0, h + py, py):
+        row = cy // py
+        for cx in range(0, w + px, px):
+            ox = (px // 2) if (offset and row % 2) else 0
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    if dx * dx + dy * dy <= r * r:
+                        x, y = cx + dx + ox, cy + dy
+                        if 0 <= x < w and 0 <= y < h:
+                            buf[y * w + x] = 0
+    return bytes(buf)
+
+
+def _plaid(w, h, px, py):
+    buf = bytearray(b"\xff" * (w * h))
+    for y in range(h):
+        for x in range(w):
+            v = 255
+            if (x % px) < px // 3:
+                v -= 110
+            if (y % py) < py // 3:
+                v -= 110
+            buf[y * w + x] = max(0, v)
+    return bytes(buf)
+
+
+def _found(data, w, h):
+    res = PFIND.find_tile(data, w, h, bpp=1)
+    return (res["tile_w"], res["tile_h"]) if res else None
+
+
+check("pattern: a dot grid gives back the grid it was built on",
+      _found(_dots(240, 240, 12, 12), 240, 240) == (12, 12))
+check("pattern: the two axes are found separately",
+      _found(_dots(300, 220, 17, 11), 300, 220) == (17, 11))
+check("pattern: a fine grid is found too",
+      _found(_dots(140, 140, 7, 7, r=1), 140, 140) == (7, 7))
+check("pattern: a plaid with two different periods",
+      _found(_plaid(400, 400, 23, 31), 400, 400) == (23, 31))
+check("pattern: a tile far bigger than the usual screentone",
+      _found(_plaid(500, 400, 61, 47), 500, 400) == (61, 47))
+check("pattern: bricked rows repeat over two rows, not one",
+      _found(_dots(320, 240, 16, 10, offset=True), 320, 240) == (16, 20))
+
+_prnd = _prandom.Random(5)
+_noisy = bytes(min(255, max(0, v + _prnd.randint(-40, 40)))
+               for v in _dots(240, 240, 12, 12))
+check("pattern: heavy noise does not move the answer",
+      _found(_noisy, 240, 240) == (12, 12))
+
+# a smooth gradient is nearly identical to itself under any small shift and
+# was reported as a 3x3 pattern before the half-shift test went in
+_grad = bytes((x * 255) // 240 for _y in range(200) for x in range(240))
+_gres = PFIND.find_tile(_grad, 240, 200, bpp=1)
+check("pattern: a plain gradient is not a pattern",
+      _gres is None or _gres["tile_w"] is None)
+check("pattern: an image of one flat colour is not a pattern",
+      PFIND.find_tile(bytes(200 * 200), 200, 200, bpp=1) is None)
+check("pattern: a crop too small to hold two repeats says nothing",
+      PFIND.find_tile(_dots(10, 10, 12, 12), 10, 10, bpp=1) is None)
+
+# the tile that comes out has to be the one that tiles
+_src = _dots(240, 240, 12, 12)
+_tile, _tw, _th, _score, _how, _seam, _detail = PFIND.best_tile(
+    _src, 240, 240, 12, 12, bpp=1)
+check("pattern: the chosen tile is the size that was found",
+      (_tw, _th) == (12, 12) and len(_tile) == 144)
+check("pattern: the period it tiles at is exact here",
+      PFIND.shift_score(_src, 240, 240, 12, 0) == 0.0)
+check("pattern: and it still carries the pattern's contrast",
+      _detail >= 0.8)
+
+# averaging a drifting pattern flattens it; the seam/detail score is what
+# catches that, so it has to actually separate the two cases
+_flat_tile = bytes([200] * 144)
+_flat_score, _flat_seam, _flat_detail = PFIND.tile_score(
+    _flat_tile, 12, 12, 40.0)
+check("pattern: a flat tile is rejected however clean its edges are",
+      _flat_detail < 0.1 and _flat_score > 1.5
+      and _flat_score > PFIND.tile_score(_tile, 12, 12, 40.0)[0])
+
+check("pattern: divisors are candidates, so a multiple cannot win",
+      12 in PFIND.divisors(108) and 54 in PFIND.divisors(108)
+      and 108 not in PFIND.divisors(108))
+check("pattern: neighbouring candidates collapse to the best of them",
+      PFIND._collapse([(30, 0.11), (31, 0.0), (60, 0.2)])
+      == [(31, 0.0), (60, 0.2)])
+
+_colour = bytes(bytearray(b"\x10\x20\x30\xff") * (40 * 40))
+check("pattern: colour pixels are read as one grey value per pixel",
+      len(PFIND.to_gray(_colour, 4)) == 1600
+      and PFIND.to_gray(_colour, 4)[0] == 0x20)
 
 
 # --- Swap: the vendored .kra core ------------------------------------------

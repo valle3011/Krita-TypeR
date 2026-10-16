@@ -577,6 +577,60 @@ Scans, encryption and object streams are refused by name (`PdfError.kind`,
 which the docker looks up in its own language) rather than quietly returning
 an empty or half script.
 
+### Patterns from a crop
+
+Load any piece of a repeating pattern as a pattern file and the tile is
+offered: `patternfind.py` works out the period, `_offer_pattern_tile` asks.
+
+- `patternfind.py` → `find_tile`, `best_tile`, `sweep`, `pick_period`,
+  `shift_score`, `divisors`, `tile_score` (Qt-free, tested)
+- `typer_kr.py` → `_find_pattern_tile`, `_offer_pattern_tile`,
+  `_preview_tiling`, hooked into both pattern file pickers
+
+**How a shift is scored.** For a candidate period the image is compared with
+itself moved by that many pixels: mean absolute difference over the overlap,
+divided by the image's own mean deviation. Measured on real crops, a true
+period lands at 0.2-0.4 and anything else sits above 0.8 — a gap wide
+enough to decide on.
+
+**Projection profiles were tried first and dropped.** Summing columns into a
+1D signal is far cheaper, but on a polka-dot crop its best period scored 0.20
+in the profile and 1.87 in 2D (nothing of the sort), while the period that
+really tiles scored 0.61 in the profile — outside any sensible cutoff. A
+profile throws away which *row* a dark pixel was in, and that is what tells a
+lattice from a coincidence.
+
+**No scaling down.** Searching on a shrunk copy was four times faster and
+wrong: shrinking 240 px by 1.25 turns a period of 12 into one of 9.6, which is
+not a period at all, and the sweep then finds only multiples (measured: 12x12
+came back as 59x59). The cost is held down by subsampling the comparison and
+capping the tile size instead, which leaves the period exact. A 1200x900 crop
+is searched in under a second.
+
+**Three corrections that known-answer tests forced:**
+
+- *A period must stand out against the half-shift.* A smooth gradient is
+  nearly identical to itself under any small shift and was reported as a
+  pattern with a 3x3 tile. On a real pattern the half-shift puts dots between
+  dots and scores far worse; on a gradient it scores just as well.
+- *The divisors of a candidate are candidates too.* Under heavy noise the
+  fundamental may not be a local minimum while a multiple of it is (measured:
+  dots 12 px apart came out as 108). If 108 repeats, so does 12.
+- *Adjacent candidates are one dip, not two options.* Taking "the smallest
+  period that is good enough" across neighbours picked the shoulder of a dip
+  over its bottom (30 at 0.11 over 31 at 0.00), so a run of adjacent
+  candidates collapses to its best before the preference for smaller applies.
+
+**Which tile is handed over.** Averaging every repeat into one tile beats
+noise on a synthetic pattern and produced grey mush on a real crop: a photo
+or a screenshot has a period of 7.9 px, not 8, so twenty repeats smear across
+each other. Both are built — a single repeat and the average — and
+the one that kept the pattern's contrast wins. Seam continuity does *not*
+decide, because it is already measured by the period's own score, and taken
+on its own it punishes a tile that is exactly right but happens to cut through
+a dot (measured: a seam ratio of 2.5 on a tile whose period scores were both
+0.000).
+
 ### Colouring single words
 
 `{#e03030|word}` in the line, beside the `**bold**` that was already there.

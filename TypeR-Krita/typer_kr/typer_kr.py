@@ -78,6 +78,7 @@ from . import gauth as GA
 from . import gdocs as GD
 from . import pdftext as PDF
 from . import update_check as UPD
+from . import patternfind as PFIND
 from . import whatsnew as WN
 from . import comments as CM
 from . import bubbles as BB
@@ -88,7 +89,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.18"
+VERSION = "1.19"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -869,6 +870,20 @@ LANG = {
         "pattern_generate": "Generate…",
         "pattern_saved": "Saved…",
         "patlib_title": "Saved patterns",
+        # --- a loaded crop offers its tile ---
+        "pat_found_done": "Pattern cut down to its tile ({w}x{h}).",
+        "pat_found_keep": "Keep the whole image",
+        "pat_found_msg": ("This image repeats every {w}x{h} pixels, so one "
+                           "tile is enough of it ({src_w}x{src_h} loaded). "
+                           "{quality}\n\nUse the single tile? It scales and "
+                           "repeats cleanly; the whole crop would be stretched "
+                           "as one big image."),
+        "pat_found_title": "A repeating pattern",
+        "pat_none": ("No repeat found in this image — a crop has to "
+                     "show the pattern at least twice."),
+        "pat_found_use": "Use the tile",
+        "pat_q_good": "The edges line up.",
+        "pat_q_rough": "The edges may show a little.",
         "patlib_name": "Pattern name:",
         "patlib_unnamed": "Pattern",
         "patlib_saved": "Saved pattern: {name}",
@@ -1811,6 +1826,21 @@ LANG = {
         "pattern_generate": "Erzeugen…",
         "pattern_saved": "Gespeicherte…",
         "patlib_title": "Gespeicherte Muster",
+        # --- ein geladener Ausschnitt bietet seine Kachel an ---
+        "pat_found_done": "Muster auf seine Kachel gekürzt ({w}x{h}).",
+        "pat_found_keep": "Ganzes Bild behalten",
+        "pat_found_msg": ("Dieses Bild wiederholt sich alle {w}x{h} Pixel — "
+                           "eine Kachel davon genügt ({src_w}x{src_h} "
+                           "geladen). {quality}\n\nNur die Kachel verwenden? "
+                           "Sie lässt sich sauber skalieren und wiederholen; "
+                           "der ganze Ausschnitt würde als ein großes Bild "
+                           "gedehnt."),
+        "pat_found_title": "Ein sich wiederholendes Muster",
+        "pat_none": ("Kein Rapport gefunden — der Ausschnitt muss das "
+                     "Muster mindestens zweimal zeigen."),
+        "pat_found_use": "Kachel verwenden",
+        "pat_q_good": "Die Ränder passen zusammen.",
+        "pat_q_rough": "Die Ränder könnten leicht sichtbar sein.",
         "patlib_name": "Muster-Name:",
         "patlib_unnamed": "Muster",
         "patlib_saved": "Muster gespeichert: {name}",
@@ -8589,6 +8619,7 @@ class TyperDocker(DockWidget):
         if img.isNull():
             self._set_status(self._tr("outline_pattern_bad"), error=True)
             return
+        img = self._offer_pattern_tile(img)
         self._outline_pattern_path = path
         self._outline_pattern_krita_name = ""
         self._outline_pattern_img = img
@@ -8965,6 +8996,149 @@ class TyperDocker(DockWidget):
     def _fill_pattern_active(self):
         return self._ensure_fill_pattern_img() is not None
 
+    @staticmethod
+    def _image_gray(img):
+        """(grey bytes, w, h) of a QImage, one byte per pixel."""
+        g = img.convertToFormat(QImage.Format.Format_Grayscale8)
+        w, h = g.width(), g.height()
+        stride = g.bytesPerLine()
+        bits = g.constBits()
+        size = (g.sizeInBytes() if hasattr(g, "sizeInBytes")
+                else g.byteCount())
+        try:
+            bits.setsize(size)
+        except AttributeError:                      # pragma: no cover - PyQt6
+            pass
+        raw = bytes(bits)
+        if stride == w:
+            return raw, w, h
+        return b"".join(raw[y * stride:y * stride + w]
+                        for y in range(h)), w, h
+
+    def _find_pattern_tile(self, img):
+        """(tile QImage, report dict) for a crop, or (None, None).
+
+        Returns None when the image shows no repeat, or when it already *is*
+        one tile - there is nothing to offer then.
+        """
+        gray, w, h = self._image_gray(img)
+        if w < 8 or h < 8:
+            return None, None
+        res = PFIND.find_tile(gray, w, h, bpp=1)
+        if not res:
+            return None, None
+        tw = res["tile_w"] or w
+        th = res["tile_h"] or h
+        if tw >= w and th >= h:
+            return None, None                   # already a single tile
+        got = PFIND.best_tile(gray, w, h, tw, th, bpp=1, gray=gray)
+        if got is None:
+            return None, None
+        _tile, tw, th, score, how, seam, detail = got
+        # the tile is cut from the colour image, not rebuilt from the grey
+        # copy the search ran on, so colours and transparency survive
+        if how == "averaged":
+            tile_img = self._average_tile_image(img, tw, th)
+        else:
+            tile_img = img.copy(0, 0, tw, th)
+        report = dict(res)
+        report.update(tile_w=tw, tile_h=th, seam=seam, detail=detail,
+                      how=how, score=score)
+        return tile_img, report
+
+    @staticmethod
+    def _average_tile_image(img, tw, th):
+        """The averaged tile, in colour - QImage in, QImage out."""
+        src = img.convertToFormat(QImage.Format.Format_ARGB32)
+        w, h = src.width(), src.height()
+        stride = src.bytesPerLine()
+        bits = src.constBits()
+        size = (src.sizeInBytes() if hasattr(src, "sizeInBytes")
+                else src.byteCount())
+        try:
+            bits.setsize(size)
+        except AttributeError:                      # pragma: no cover - PyQt6
+            pass
+        raw = bytes(bits)
+        if stride != w * 4:
+            raw = b"".join(raw[y * stride:y * stride + w * 4]
+                           for y in range(h))
+        data = PFIND.average_tile(raw, w, h, tw, th, bpp=4)
+        return QImage(data, tw, th, tw * 4,
+                      QImage.Format.Format_ARGB32).copy()
+
+    def _offer_pattern_tile(self, img):
+        """Ask whether to cut a loaded crop down to its tile; return the
+        image to use.
+
+        Only asks when a repeat was actually found - a pattern file that is
+        already one tile goes through untouched, with no dialog in the way.
+        """
+        try:
+            tile, report = self._find_pattern_tile(img)
+        except Exception:                           # noqa: BLE001
+            return img
+        if tile is not None and report is None:     # pragma: no cover
+            return img
+        if tile is None or tile.isNull():
+            # Say so when a crop plainly meant as a pattern yields nothing -
+            # most often because it does not hold the repeat twice, and a
+            # period you can only see once cannot be confirmed. Silence here
+            # would read as "the feature did nothing".
+            if report is None and img.width() >= 64 and img.height() >= 64:
+                self._set_status(self._tr("pat_none"))
+            return img
+        # how cleanly it repeats is the period's own score - the two edges
+        # of the tile are the crop one period apart
+        worst = max([v for v in (report["score_x"], report["score_y"])
+                     if v is not None] or [1.0])
+        quality = (self._tr("pat_q_good") if worst <= 0.35
+                   else self._tr("pat_q_rough"))
+        text = self._tr("pat_found_msg").format(
+            w=report["tile_w"], h=report["tile_h"],
+            src_w=img.width(), src_h=img.height(), quality=quality)
+        box = QMessageBox(self.widget())
+        box.setWindowTitle(self._tr("pat_found_title"))
+        box.setText(text)
+        box.setIconPixmap(QPixmap.fromImage(
+            self._preview_tiling(tile, 160)))
+        box.setStandardButtons(QMessageBox.StandardButton.Yes
+                               | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.Yes)
+        box.button(QMessageBox.StandardButton.Yes).setText(
+            self._tr("pat_found_use"))
+        box.button(QMessageBox.StandardButton.No).setText(
+            self._tr("pat_found_keep"))
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return img
+        self._set_status(self._tr("pat_found_done").format(
+            w=report["tile_w"], h=report["tile_h"]))
+        return tile
+
+    @staticmethod
+    def _preview_tiling(tile, size):
+        """The tile laid out across a square, so seams are visible at a
+        glance - a single tile shown on its own tells you nothing about
+        whether it repeats cleanly."""
+        out = QImage(size, size, QImage.Format.Format_ARGB32)
+        out.fill(QColor(255, 255, 255))
+        p = QPainter(out)
+        tw = max(1, tile.width())
+        th = max(1, tile.height())
+        zoom = max(1, min(6, size // max(tw, th, 1) // 2 or 1))
+        big = tile.scaled(tw * zoom, th * zoom,
+                          Qt.AspectRatioMode.IgnoreAspectRatio,
+                          Qt.TransformationMode.FastTransformation)
+        y = 0
+        while y < size:
+            x = 0
+            while x < size:
+                p.drawImage(x, y, big)
+                x += big.width()
+            y += big.height()
+        p.end()
+        return out
+
     def _pick_fill_pattern_file(self):
         path, _f = QFileDialog.getOpenFileName(
             self.widget(), self._tr("fill_pattern_pick"), "",
@@ -8975,6 +9149,7 @@ class TyperDocker(DockWidget):
         if img.isNull():
             self._set_status(self._tr("outline_pattern_bad"), error=True)
             return
+        img = self._offer_pattern_tile(img)
         self._fill_pattern_path = path
         self._fill_pattern_krita_name = ""
         self._fill_pattern_img = img
