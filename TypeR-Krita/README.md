@@ -222,6 +222,37 @@ switching on for a batch so the whole page keeps one text size.
 
 ---
 
+## Colouring single words
+
+One word in a line often has to stand out — a name, a shout, a term the
+reader is meant to catch. Select it in the active line and press **Colour**:
+
+- the button applies the colour it shows (the last one you used), the arrow
+  next to it opens the list of named colours, a colour picker and
+  **Remove colour**;
+- pressing it again with another colour **replaces** the old one instead of
+  nesting markup nobody can read;
+- the live preview shows it immediately, and so does TextShapR.
+
+It is stored **in the line** as `{#e03030|word}`, next to the `**bold**`
+markup that was already there. That is deliberate: the line is what gets
+saved, copied between script tabs, exported and hand-edited, so the colour
+travels with the text instead of going stale in a side table the moment the
+line changes. You can type it yourself — `{red|word}`, `{#f00|word}` and
+`{#ff0000|word}` all work, and the name is read whatever the case conversion
+did to it. A `{` that opens no known colour, and a `}` with nothing open, stay
+in the text: a script that happens to use braces still reads as itself.
+
+Known colour names: `red`, `blue`, `green`, `yellow`, `orange`, `purple`,
+`pink`, `brown`, `cyan`, `magenta`, `grey`/`gray`, `white`, `black`.
+
+**Outline and shadow keep their own colours.** A coloured word gets the same
+outline as the rest of the line — if the colour went into the outline too,
+a red word on a dark panel would stop being readable, which is the whole
+point of the outline. (A pattern fill replaces every glyph's colour, so with
+one of those a per-word colour is not applied — the preview and the
+inserted layer agree about that.)
+
 ## Swap: typeset on the raws, finish on the cleans
 
 You typeset while the cleans are still being made, so every `.kra` sits on a
@@ -415,6 +446,12 @@ stray markup inside a bubble:
 - **Live preview** that renders the active line with the chosen font and every
   setting (color, outline, shadow, alignment, case, wrapping) in the same order
   as the inserted layer.
+- **Per-word colour:** select a word in the active line and press
+  **Colour** — that word alone gets its own colour, the rest of the line
+  keeps the text colour. Written into the line as `{#e03030|word}` (or
+  `{red|word}`), so it survives saving, re-opening and editing. Outline and
+  shadow stay the outline and shadow colour, which is what makes a coloured
+  word readable at all.
 - **Styling:** bold / italic / underline, per-word bold via `**…**`, horizontal
   and vertical alignment, letter case (Normal / UPPERCASE / lowercase), smart
   punctuation, **freely adjustable line spacing** (from `0` to far above `100`%)
@@ -554,8 +591,9 @@ the panel.
 Hyphenation is **opt-in** (the “Hyphenate long words” checkbox, only active with
 auto-fit). When on, a word that is wider than the line is split at a valid
 syllable point and a “-” is added, which usually lets the whole text grow to a
-noticeably bigger size in narrow bubbles. Bold/italic and per-word `**bold**`
-are preserved across the split, and normal paragraphs keep their even balancing
+noticeably bigger size in narrow bubbles. Bold/italic, per-word `**bold**` and a
+word's own colour are preserved across the split (the added “-”
+takes the style of the half it is attached to), and normal paragraphs keep their even balancing
 (hyphenation only kicks in when a word truly doesn't fit).
 
 The break points come from **Liang's algorithm** (the same method TeX,

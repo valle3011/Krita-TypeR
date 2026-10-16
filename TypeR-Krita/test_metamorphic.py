@@ -45,9 +45,9 @@ def measurer(px):
         runs = getattr(x, "runs", None)
         if runs is None:
             if isinstance(x, (list, tuple)):
-                return sum(len(t) for t, _ in x) * cw
+                return sum(len(r[0]) for r in x) * cw
             return len(x) * cw
-        return sum(len(t) for t, _ in runs) * cw
+        return sum(len(r[0]) for r in runs) * cw
 
     return width_of, cw, 1.2 * px, 0.8 * px, 0.2 * px
 

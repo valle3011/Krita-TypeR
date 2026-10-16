@@ -13,10 +13,35 @@ import re
 
 
 # ---------------------------------------------------------------------------
-# Bold runs: internally text is represented as a sequence of (subtext, bold)
-# runs so that individual words (or parts of them) can be bold. A "word"
-# carries its full string (for width measurement) and its runs (for drawing).
+# Styled runs: internally text is a sequence of (subtext, bold, colour) runs,
+# so that individual words - or parts of them - can be bold, a different
+# colour, or both. `colour` is None for "whatever the text element is set to",
+# otherwise a hex string like "#e03030". A "word" carries its full string (for
+# width measurement) and its runs (for drawing).
+#
+# Older code built two-element runs; `as_run` accepts those, so a caller that
+# knows nothing about colour keeps working.
 # ---------------------------------------------------------------------------
+
+
+def as_run(run):
+    """(text, bold) or (text, bold, colour) -> (text, bold, colour)."""
+    if len(run) >= 3:
+        return (run[0], run[1], run[2])
+    return (run[0], run[1], None)
+
+
+def style_of(tok):
+    """A mask element -> (bold, colour).
+
+    A mask was a list of bool and may now hold (bold, colour) pairs. Both are
+    accepted, so a caller that only knows about bold - `[False] * len(text)` -
+    keeps working, and so does every function in between that just slices the
+    mask without looking inside it.
+    """
+    if isinstance(tok, tuple):
+        return (bool(tok[0]), tok[1])
+    return (bool(tok), None)
 
 class Word(object):
     __slots__ = ("text", "bold", "runs")
@@ -31,34 +56,39 @@ class Word(object):
 
 
 def make_runs(text, mask):
-    """(text, mask) -> list [(subtext, bold), ...] with equal-bold sections
-    merged. mask: list of bool with the same length as text."""
+    """(text, mask) -> list [(subtext, bold, colour), ...] with equally-styled
+    sections merged. mask is as long as text; see style_of."""
     runs = []
-    for ch, b in zip(text, mask):
-        b = bool(b)
-        if runs and runs[-1][1] == b:
-            runs[-1] = (runs[-1][0] + ch, b)
+    for ch, tok in zip(text, mask):
+        b, c = style_of(tok)
+        if runs and runs[-1][1] == b and runs[-1][2] == c:
+            runs[-1] = (runs[-1][0] + ch, b, c)
         else:
-            runs.append((ch, b))
+            runs.append((ch, b, c))
     return runs
 
 
 def make_words(text, mask):
-    """Split text into words at spaces; keep each word's bold runs. Multiple
+    """Split text into words at spaces; keep each word's styled runs. Multiple
     spaces are collapsed, like str.split()."""
     words = []
+
+    def flush(chars, toks):
+        words.append(Word("".join(chars),
+                          any(style_of(t)[0] for t in toks),
+                          make_runs(chars, toks)))
+
     cur, curm = [], []
-    for ch, b in zip(text, mask):
+    for ch, tok in zip(text, mask):
         if ch == " ":
             if cur:
-                words.append(Word("".join(cur), any(curm),
-                                  make_runs(cur, curm)))
+                flush(cur, curm)
                 cur, curm = [], []
         else:
             cur.append(ch)
-            curm.append(bool(b))
+            curm.append(tok)
     if cur:
-        words.append(Word("".join(cur), any(curm), make_runs(cur, curm)))
+        flush(cur, curm)
     return words
 
 
@@ -76,27 +106,28 @@ def split_paragraphs(text, mask):
 
 def line_runs(words):
     """Join the words of a (wrapped) line into a single run list; words are
-    separated by a space (the space inherits the bold property of the previous
-    run end), and equal-bold runs are merged."""
+    separated by a space (the space inherits the style of the previous run
+    end), and equally-styled runs are merged."""
     runs = []
 
-    def push(txt, b):
-        if runs and runs[-1][1] == b:
-            runs[-1] = (runs[-1][0] + txt, b)
+    def push(txt, b, c):
+        if runs and runs[-1][1] == b and runs[-1][2] == c:
+            runs[-1] = (runs[-1][0] + txt, b, c)
         else:
-            runs.append((txt, b))
+            runs.append((txt, b, c))
 
     for wi, wd in enumerate(words):
         if wi > 0:
-            push(" ", runs[-1][1] if runs else False)
-        for (txt, b) in wd.runs:
-            push(txt, b)
+            prev = runs[-1] if runs else ("", False, None)
+            push(" ", prev[1], prev[2])
+        for run in wd.runs:
+            push(*as_run(run))
     return runs
 
 
 def runs_text(runs):
     """Plain text of a run list."""
-    return "".join(t for t, _ in runs)
+    return "".join(r[0] for r in runs)
 
 
 def group_words(words, break_after):
@@ -333,27 +364,29 @@ def split_word(word, i):
     Returns (left, right) as Word objects, preserving the bold runs."""
     left_runs, right_runs = [], []
     pos = 0
-    for (t, b) in word.runs:
+    for run in word.runs:
+        t, b, c = as_run(run)
         end = pos + len(t)
         if end <= i:
-            left_runs.append((t, b))
+            left_runs.append((t, b, c))
         elif pos >= i:
-            right_runs.append((t, b))
+            right_runs.append((t, b, c))
         else:
             cut = i - pos
-            left_runs.append((t[:cut], b))
-            right_runs.append((t[cut:], b))
+            left_runs.append((t[:cut], b, c))
+            right_runs.append((t[cut:], b, c))
         pos = end
     if left_runs:
-        lt, lb = left_runs[-1]
+        lt, lb, lc = left_runs[-1]
         if not lt.endswith(tuple(_INWORD_BREAK)):
-            left_runs[-1] = (lt + "-", lb)      # hyphen inherits previous bold
+            # the hyphen inherits the style of the run it is appended to
+            left_runs[-1] = (lt + "-", lb, lc)
     else:
-        left_runs = [("-", False)]
-    left_text = "".join(t for t, _ in left_runs)
-    right_text = "".join(t for t, _ in right_runs)
-    left = Word(left_text, any(b for _, b in left_runs), left_runs)
-    right = Word(right_text, any(b for _, b in right_runs), right_runs)
+        left_runs = [("-", False, None)]
+    left_text = "".join(r[0] for r in left_runs)
+    right_text = "".join(r[0] for r in right_runs)
+    left = Word(left_text, any(r[1] for r in left_runs), left_runs)
+    right = Word(right_text, any(r[1] for r in right_runs), right_runs)
     return left, right
 
 
@@ -874,9 +907,19 @@ def is_typer_layer_name(name, index):
 # ---------------------------------------------------------------------------
 
 def runs_markup(runs):
-    """Run list -> plain text with ``**`` around the bold sections (the inverse
-    of parse_bold for one line)."""
-    return "".join(("**" + t + "**") if b else t for (t, b) in runs)
+    """Run list -> plain text with ``**`` around bold sections and
+    ``{#rrggbb|...}`` around coloured ones (the inverse of parse_markup for one
+    line). The colour wrapper goes outside, so a run that is both reads
+    ``{#e03030|**word**}``."""
+    out = []
+    for run in runs:
+        t, b, c = as_run(run)
+        if b:
+            t = "**" + t + "**"
+        if c:
+            t = "{" + c + "|" + t + "}"
+        out.append(t)
+    return "".join(out)
 
 
 def _search_px(check, max_px, min_px):
@@ -1708,7 +1751,7 @@ def vertical_measurer(line_spacing):
                     runs = x          # a plain run list [(text, bold), ...]
                 else:
                     return len(x) * em          # a plain string
-            return sum(len(t) for (t, _b) in runs) * em
+            return sum(len(r[0]) for r in runs) * em
 
         return width_of, em, em * line_spacing, em / 2.0, em / 2.0
     return measurer

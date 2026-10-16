@@ -342,9 +342,9 @@ def _measurer(px):
         runs = getattr(x, "runs", None)
         if runs is None:
             if isinstance(x, (list, tuple)):
-                return sum(len(t) for t, _b in x) * cw
+                return sum(len(r[0]) for r in x) * cw
             return len(x) * cw
-        return sum(len(t) for t, _b in runs) * cw
+        return sum(len(r[0]) for r in runs) * cw
 
     return width_of, cw, 1.2 * px, 0.96 * px, 0.24 * px
 
@@ -352,6 +352,46 @@ def _measurer(px):
 def _texts(cand):
     return [LO.runs_text(r) for r in cand["lines"]]
 
+
+# --- colouring single words: the run model ---------------------------------
+check("style_of reads the old bool mask and the new pair alike",
+      LO.style_of(True) == (True, None) and LO.style_of(False) == (False, None)
+      and LO.style_of((False, "#e03030")) == (False, "#e03030")
+      and LO.style_of((True, "#e03030")) == (True, "#e03030"))
+check("as_run accepts a two-element run from older code",
+      LO.as_run(("x", True)) == ("x", True, None)
+      and LO.as_run(("x", True, "#f00")) == ("x", True, "#f00"))
+
+_cm = [False, False, (False, "#e03030"), (False, "#e03030"), False]
+check("a colour change starts a new run, like bold does",
+      LO.make_runs("abcde", _cm)
+      == [("ab", False, None), ("cd", False, "#e03030"),
+          ("e", False, None)])
+check("equally-coloured neighbours still merge",
+      LO.make_runs("ab", [(False, "#f00"), (False, "#f00")])
+      == [("ab", False, "#f00")])
+check("bold and colour are independent",
+      LO.make_runs("ab", [(True, "#f00"), (False, "#f00")])
+      == [("a", True, "#f00"), ("b", False, "#f00")])
+
+_cw = LO.make_words("rot blau", [(False, "#e03030")] * 3 + [False] * 5)
+check("only the coloured word carries the colour",
+      [r[2] for r in _cw[0].runs] == ["#e03030"]
+      and [r[2] for r in _cw[1].runs] == [None])
+check("a word is still bold-flagged the way it was",
+      not _cw[0].bold and not _cw[1].bold)
+
+_split = LO.split_word(LO.make_words("Donnerwetter", [(False, "#f00")] * 12)[0], 7)
+check("splitting a word for hyphenation keeps the colour on both halves",
+      all(r[2] == "#f00" for r in _split[0].runs)
+      and all(r[2] == "#f00" for r in _split[1].runs))
+check("...and the hyphen it adds is coloured too, not left black",
+      _split[0].runs[-1][0].endswith("-")
+      and _split[0].runs[-1][2] == "#f00")
+
+check("runs_markup writes the colour back, bold inside",
+      LO.runs_markup([("a ", False, None), ("b", True, "#e03030")])
+      == "a {#e03030|**b**}")
 
 check("runs_markup wraps bold runs in **",
       LO.runs_markup([("a ", False), ("b", True), (" c", False)]) == "a **b** c")
@@ -1889,12 +1929,12 @@ check("whatsnew: an untranslated entry falls back to English",
       WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
       == [("1.11", ["eleven"])])
 check("whatsnew: the shipped changelog covers the shipped version",
-      any(v == "1.16" for v, _ in WNN.CHANGELOG)
+      any(v == "1.17" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
 check("whatsnew: it goes back far enough to span several versions",
       len(WNN.CHANGELOG) >= 3
-      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.16")) >= 2)
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.17")) >= 2)
 check("whatsnew: the shipped entries are newest first",
       [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
       == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),

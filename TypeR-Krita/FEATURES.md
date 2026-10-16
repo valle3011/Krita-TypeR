@@ -577,6 +577,41 @@ Scans, encryption and object streams are refused by name (`PdfError.kind`,
 which the docker looks up in its own language) rather than quietly returning
 an empty or half script.
 
+### Colouring single words
+
+`{#e03030|word}` in the line, beside the `**bold**` that was already there.
+
+- `typer_kr.py` → `parse_markup`, `color_hex`, `COLOR_NAMES`,
+  `color_selection`, `_strip_colors`, `on_color_selection`, the Colour button
+- `layout.py` → `style_of`, `as_run`; runs are `(text, bold, colour)`
+- Stored in kritarc as `wordColor` (the last colour used)
+
+**Markup in the line, not a side table of character ranges.** The line is what
+is saved in the script, copied between tabs, exported with a preset and typed
+by hand; ranges would go stale the first time anyone edited it, and there
+would be nothing to show for the colour when the text came back from a `.docx`.
+It also round-trips: `runs_markup` writes it back out of the runs.
+
+**The mask carries the colour.** A per-character mask element was a bool and
+may now be a `(bold, colour)` pair, read through `layout.style_of`. Everything
+between the parser and the runs — `fit_text`, `candidates_for`,
+`dehyphenate`, `wrap_*`, `split_word`, the whole TextShapR path — only
+slices and copies mask elements, never looks inside them, so a richer element
+travels all the way through untouched. A parallel colour mask would have had
+to be threaded through every one of those signatures and kept in step at each
+wrap and hyphenation point by hand; this way the hyphen `split_word` adds
+simply inherits the style of the run it lands on, which it already did for
+bold.
+
+**Only the fill copy is coloured.** `_build_svg` draws the shadow, the outer
+outline, the outline and then the fill as separate `<text>` copies;
+`_text_element(run_colors=True)` is passed for the last one alone. A coloured
+word therefore keeps the line's outline and shadow — without that, a red
+word on a dark panel loses the contrast the outline exists to give it. The
+preview does the same thing the other way round: it builds one QPainterPath
+for everything (so outline and shadow cover the whole block) and fills the
+coloured runs over the top, because one path can only take one brush.
+
 ### Swap: the cleans go under the typesetting
 
 A chapter is typeset on the raws because the cleans are not finished yet. The

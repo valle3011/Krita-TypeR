@@ -88,7 +88,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.16"
+VERSION = "1.17"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -694,6 +694,27 @@ LANG = {
         "bold_sel": "Bold selection",
         "bold_sel_tip": "Make the selected words bold (wraps them in **…**). Select text first, then click. Click again on the same selection to remove bold.",
         "st_bold_no_sel": "Select some text in the active line first.",
+        # --- colouring single words inside a line ---
+        "wc_black": "Black",
+        "wc_blue": "Blue",
+        "wc_brown": "Brown",
+        "wc_btn": "Colour",
+        "wc_btn_tip": ("Give the selected words their own colour. The button "
+                           "applies the colour shown; the arrow opens the list. "
+                           "Written into the line as {#e03030|word}, so it "
+                           "survives being saved and edited."),
+        "wc_clear": "Remove colour",
+        "wc_custom": "Pick a colour…",
+        "wc_cyan": "Cyan",
+        "wc_green": "Green",
+        "wc_grey": "Grey",
+        "wc_magenta": "Magenta",
+        "wc_orange": "Orange",
+        "wc_pink": "Pink",
+        "wc_purple": "Purple",
+        "wc_red": "Red",
+        "wc_white": "White",
+        "wc_yellow": "Yellow",
         "tidy": "Smart punctuation",
         "tidy_tip": "Turn straight quotes into curly ones, ... into …, -- into —.",
         "round": "Round bubble (fit ellipse)",
@@ -1607,6 +1628,27 @@ LANG = {
         "bold_sel": "Auswahl fett",
         "bold_sel_tip": "Markierte Wörter fett machen (umschließt sie mit **…**). Erst Text markieren, dann klicken. Erneut auf dieselbe Auswahl klicken hebt Fett wieder auf.",
         "st_bold_no_sel": "Bitte zuerst Text in der aktiven Zeile markieren.",
+        # --- einzelne Wörter einfärben ---
+        "wc_black": "Schwarz",
+        "wc_blue": "Blau",
+        "wc_brown": "Braun",
+        "wc_btn": "Farbe",
+        "wc_btn_tip": ("Gibt den markierten Wörtern eine eigene Farbe. Der "
+                           "Knopf nimmt die angezeigte Farbe, der Pfeil öffnet "
+                           "die Liste. Steht als {#e03030|Wort} in der Zeile und "
+                           "überlebt damit Speichern und Bearbeiten."),
+        "wc_clear": "Farbe entfernen",
+        "wc_custom": "Farbe wählen…",
+        "wc_cyan": "Türkis",
+        "wc_green": "Grün",
+        "wc_grey": "Grau",
+        "wc_magenta": "Magenta",
+        "wc_orange": "Orange",
+        "wc_pink": "Rosa",
+        "wc_purple": "Lila",
+        "wc_red": "Rot",
+        "wc_white": "Weiß",
+        "wc_yellow": "Gelb",
         "tidy": "Typografie verbessern",
         "tidy_tip": "Gerade Anführungszeichen werden typografisch, ... wird …, -- wird —.",
         "round": "Runde Sprechblase (Ellipse)",
@@ -2974,8 +3016,8 @@ def _make_measurer(family, line_spacing, bold=False, italic=False):
                 else:
                     return _advance(fm, x)   # a plain string
             tot = 0.0
-            for (t, b) in runs:
-                tot += _advance(fmb if (bold or b) else fm, t)
+            for run in runs:
+                tot += _advance(fmb if (bold or run[1]) else fm, run[0])
             return tot
 
         return width_of, space_w, line_h, fm.ascent(), fm.descent()
@@ -2989,8 +3031,8 @@ def _hex(color):
 def _text_element(text_lines, line_pos, block_start, line_h, font_px, family,
                   fill_hex, stroke_hex=None, stroke_w=0.0,
                   bold=False, italic=False, underline=False, dx=0.0, dy=0.0,
-                  vertical=False, ligatures=True):
-    """text_lines: list of run lists ([(subtext, bold), ...] per line).
+                  vertical=False, ligatures=True, run_colors=False):
+    """text_lines: list of run lists ([(subtext, bold, colour), ...] per line).
 
     Horizontal: `line_pos` is the absolute LEFT x of each line and `block_start`
     the baseline y of the first line; lines step downwards by line_h.
@@ -3002,7 +3044,12 @@ def _text_element(text_lines, line_pos, block_start, line_h, font_px, family,
     anchor – Krita's text tool keeps that absolute position when the shape is
     edited (a 'middle'/'end' anchor would be dropped and the text would snap to
     the corner). dx/dy shift the whole block (used for the offset shadow copy).
-    Bold runs get font-weight='bold'."""
+    Bold runs get font-weight='bold'.
+
+    With `run_colors`, a run that carries its own colour gets its own `fill`.
+    Only the top (fill) copy passes it: the shadow and outline copies are the
+    same text underneath in their own colour, and a coloured word must not
+    drag its colour into its shadow."""
     tspans = []
     for i, runs in enumerate(text_lines):
         if not runs:
@@ -3014,18 +3061,22 @@ def _text_element(text_lines, line_pos, block_start, line_h, font_px, family,
             x = line_pos[i] + dx
             y = block_start + dy + i * line_h
         first = True
-        for (txt, rb) in runs:
+        for run in runs:
+            txt, rb, rc = L.as_run(run)
             weight = "bold" if (bold or rb) else "normal"
+            own = ''
+            if run_colors and rc and rc != fill_hex:
+                own = ' fill="{c}"'.format(c=xml_escape(rc))
             if first:
                 tspans.append(
-                    '<tspan x="{x:.2f}" y="{y:.2f}" font-weight="{w}">'
+                    '<tspan x="{x:.2f}" y="{y:.2f}" font-weight="{w}"{own}>'
                     "{txt}</tspan>".format(
-                        x=x, y=y, w=weight, txt=xml_escape(txt)))
+                        x=x, y=y, w=weight, own=own, txt=xml_escape(txt)))
                 first = False
             else:
                 tspans.append(
-                    '<tspan font-weight="{w}">{txt}</tspan>'.format(
-                        w=weight, txt=xml_escape(txt)))
+                    '<tspan font-weight="{w}"{own}>{txt}</tspan>'.format(
+                        w=weight, own=own, txt=xml_escape(txt)))
     attrs = (
         'text-anchor="start" fill="{fill}" '
         'font-family="{fam}" font-size="{size}"'
@@ -3104,7 +3155,8 @@ def _build_svg(text_lines, line_pos, block_start, font_px, family, color, line_h
     body += _text_element(text_lines, line_pos, block_start, line_h, font_px,
                           family, fill_hex=fill_hex,
                           bold=bold, italic=italic, underline=underline,
-                          vertical=vertical, ligatures=ligatures)
+                          vertical=vertical, ligatures=ligatures,
+                          run_colors=True)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" '
         'xmlns:xlink="http://www.w3.org/1999/xlink" '
@@ -3127,7 +3179,7 @@ def _text_path(text_lines, line_pos, block_start, font_px, family, line_h,
         x0 = x
         # a line is a run list [(text, bold), ...]; fall back to a plain string
         seq = runs if isinstance(runs, (list, tuple)) else [(str(runs), False)]
-        for (t, b) in seq:
+        for (t, b) in (L.as_run(r)[:2] for r in seq):
             f = QFont(family)
             f.setPixelSize(px)
             f.setItalic(italic)
@@ -3456,24 +3508,87 @@ def comic_letter(s, crossbar_i=False):
     return s
 
 
-def parse_bold(text):
-    """``**bold**`` marks bold sections. Returns (clean_text, mask); mask is a
-    list of bool with the same length as clean_text (True = bold). A single
-    ``*`` is kept as-is (not a marker)."""
+#: colour names that may be typed instead of a hex value. Deliberately few:
+#: every one of them is a name someone would reach for without looking it up.
+COLOR_NAMES = {
+    "red": "#e03030", "blue": "#2d6cdf", "green": "#2e9e4f",
+    "yellow": "#e8c21c", "orange": "#e8821c", "purple": "#8b4fd0",
+    "pink": "#e060a8", "brown": "#8b5a2b", "cyan": "#1fb6c8",
+    "magenta": "#d02090", "grey": "#808080", "gray": "#808080",
+    "white": "#ffffff", "black": "#000000",
+}
+
+_COLOR_OPEN = re.compile(r"\{(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[A-Za-z]{3,10})\|")
+
+
+def color_hex(name):
+    """A markup colour -> '#rrggbb', or "" when it is not one.
+
+    Case-insensitive, because the text has usually been through the uppercase
+    conversion before it is parsed.
+    """
+    if not name:
+        return ""
+    name = name.strip()
+    if name.startswith("#"):
+        body = name[1:]
+        if len(body) == 3:
+            body = "".join(ch * 2 for ch in body)
+        if len(body) == 6:
+            try:
+                int(body, 16)
+            except ValueError:
+                return ""
+            return "#" + body.lower()
+        return ""
+    return COLOR_NAMES.get(name.lower(), "")
+
+
+def parse_markup(text):
+    """``**bold**`` and ``{#e03030|coloured}`` -> (clean_text, mask).
+
+    The mask has one element per character of clean_text: a bool while only
+    bold is involved, a (bold, colour) pair where a colour applies - see
+    layout.style_of. Keeping bold's old spelling means every caller that
+    passes a mask on untouched did not have to change.
+
+    A single ``*`` is kept as-is, and so is a ``{`` that does not open a known
+    colour or a ``}`` with nothing open - a script with braces in it still
+    reads as itself.
+    """
     clean = []
     mask = []
     bold = False
+    colors = []
     i = 0
     n = len(text)
     while i < n:
-        if text[i] == "*" and i + 1 < n and text[i + 1] == "*":
+        ch = text[i]
+        if ch == "*" and i + 1 < n and text[i + 1] == "*":
             bold = not bold
             i += 2
             continue
-        clean.append(text[i])
-        mask.append(bold)
+        if ch == "{":
+            m = _COLOR_OPEN.match(text, i)
+            if m:
+                hexval = color_hex(m.group(1))
+                if hexval:
+                    colors.append(hexval)
+                    i = m.end()
+                    continue
+        if ch == "}" and colors:
+            colors.pop()
+            i += 1
+            continue
+        clean.append(ch)
+        mask.append((bold, colors[-1]) if colors else bold)
         i += 1
     return "".join(clean), mask
+
+
+#: kept as the old name: both parse the same markup, and "bold" is what most
+#: of the call sites are about.
+parse_bold = parse_markup
 
 
 def toggle_bold(text, start, end):
@@ -3497,6 +3612,59 @@ def toggle_bold(text, start, end):
     # otherwise: wrap it
     new = text[:start] + "**" + sel + "**" + text[end:]
     return new, start + 2, end + 2
+
+
+_COLOR_SPAN = re.compile(
+    r"\{(?:#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[A-Za-z]{3,10})\|")
+
+
+def _strip_colors(text):
+    """Remove colour markers from a piece of text, keeping the text itself."""
+    out = []
+    i, n, depth = 0, len(text), 0
+    while i < n:
+        m = _COLOR_SPAN.match(text, i)
+        if m and color_hex(m.group(0)[1:-1]):
+            depth += 1
+            i = m.end()
+            continue
+        if text[i] == "}" and depth:
+            depth -= 1
+            i += 1
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def color_selection(text, start, end, hexval):
+    """Colour the selection [start, end) - or clear it when `hexval` is empty.
+
+    Returns (new_text, new_start, new_end), unchanged without a selection.
+    Any colour already inside the selection is replaced rather than nested, so
+    pressing the button twice does not build up markup nobody can read.
+    """
+    if start > end:
+        start, end = end, start
+    if start == end:
+        return text, start, end
+    sel = _strip_colors(text[start:end])
+    before, after = text[:start], text[end:]
+    # a wrapper immediately around the selection belongs to it
+    m = None
+    for cand in _COLOR_SPAN.finditer(before):
+        if cand.end() == len(before):
+            m = cand
+    if m is not None and after.startswith("}"):
+        before = before[:m.start()]
+        after = after[1:]
+    if not hexval:
+        new = before + sel + after
+        return new, len(before), len(before) + len(sel)
+    opener = "{" + hexval + "|"
+    new = before + opener + sel + "}" + after
+    s2 = len(before) + len(opener)
+    return new, s2, s2 + len(sel)
 
 
 def prepare_text(line, case, tidy, comic=False, crossbar_i=False):
@@ -4281,6 +4449,7 @@ class TextPreview(QWidget):
     def __init__(self, docker):
         super().__init__()
         self._docker = docker
+        self._tinted = {}        # colour -> sub-path, filled by _vertical_path
         self._text = ""
         # em advance while measuring vertical text; 0 = horizontal (see _word_w)
         self._vem = 0.0
@@ -4375,9 +4544,9 @@ class TextPreview(QWidget):
         L.vertical_measurer — an upright glyph advances by one em whatever its
         width, so the font metrics are the wrong tape measure there)."""
         if self._vem:
-            return sum(len(t) for (t, _b) in word.runs) * self._vem
+            return sum(len(r[0]) for r in word.runs) * self._vem
         tot = 0.0
-        for (t, b) in word.runs:
+        for (t, b, _c) in (L.as_run(r) for r in word.runs):
             tot += (fmb if (gbold or b) else fmn).horizontalAdvance(t)
         return tot
 
@@ -4558,9 +4727,13 @@ class TextPreview(QWidget):
         scale = fs / float(o["size_ref"])
 
         if o.get("vertical"):
-            self._paint_path(p, self._vertical_path(
+            # _vertical_path builds one path; the coloured runs are collected
+            # on the side because they have to be filled after it
+            self._tinted = {}
+            vpath = self._vertical_path(
                 o, lines, fs, fn, fb, fmn, fmb, space_w, line_h,
-                m, avail_w, avail_h), o, scale)
+                m, avail_w, avail_h)
+            self._paint_path(p, vpath, o, scale, self._tinted)
             return
 
         ascent = fmn.ascent()
@@ -4577,6 +4750,7 @@ class TextPreview(QWidget):
         gbold = o["bold"]
 
         path = QPainterPath()
+        tinted = {}
         for i, words in enumerate(lines):
             line_w = self._line_w(words, fmn, fmb, gbold, space_w)
             if o["align"] == "left":
@@ -4590,16 +4764,19 @@ class TextPreview(QWidget):
             for wi, wd in enumerate(words):
                 if wi > 0:
                     x += space_w
-                for (txt, b) in wd.runs:
+                for (txt, b, c) in (L.as_run(r) for r in wd.runs):
                     rf = fb if (gbold or b) else fn
                     if txt:
                         path.addText(x, baseline, rf, txt)
+                        if c:
+                            tinted.setdefault(c, QPainterPath()).addText(
+                                x, baseline, rf, txt)
                         x += (fmb if (gbold or b) else fmn).horizontalAdvance(txt)
             if o["underline"] and words:
                 uy = baseline + max(1.0, fs * 0.12)
                 path.addRect(x_start, uy, x - x_start, underline_th)
 
-        self._paint_path(p, path, o, scale)
+        self._paint_path(p, path, o, scale, tinted)
 
     def _vertical_path(self, o, lines, fs, fn, fb, fmn, fmb, space_w, line_h,
                        m, avail_w, avail_h):
@@ -4635,18 +4812,25 @@ class TextPreview(QWidget):
             for wi, wd in enumerate(words):
                 if wi > 0:
                     y += space_w
-                for (txt, b) in wd.runs:
+                for (txt, b, c) in (L.as_run(r) for r in wd.runs):
                     rf = fb if (gbold or b) else fn
                     rfm = fmb if (gbold or b) else fmn
                     for ch in txt:
                         # upright: the glyph is centered in its column, not
                         # started at its left edge
-                        path.addText(cx - rfm.horizontalAdvance(ch) / 2.0,
-                                     y + cell_baseline, rf, ch)
+                        gx = cx - rfm.horizontalAdvance(ch) / 2.0
+                        path.addText(gx, y + cell_baseline, rf, ch)
+                        if c:
+                            self._tinted.setdefault(
+                                c, QPainterPath()).addText(
+                                    gx, y + cell_baseline, rf, ch)
                         y += em
         return path
 
-    def _paint_path(self, p, path, o, scale):
+    def _paint_path(self, p, path, o, scale, tinted=None):
+        """`tinted` maps a colour to the sub-path of the runs that asked for
+        it; those are filled last, over the finished text, so they keep the
+        outline and shadow the full path gave them."""
         out_pat = o.get("outline_pattern_img")
         fill_pat = o.get("fill_pattern_img")
         # soft (blurred) outline / glow, under everything — rendered isolated so
@@ -4692,6 +4876,11 @@ class TextPreview(QWidget):
                 fill_pat, o.get("fill_scale", 100) * scale))
         else:
             p.fillPath(path, QBrush(o["color"]))
+        # a pattern fill replaces the colour of every glyph, so a per-word
+        # colour under one would be a promise the insert cannot keep either
+        if tinted and fill_pat is None:
+            for hexval, sub_path in tinted.items():
+                p.fillPath(sub_path, QBrush(QColor(hexval)))
         p.end()
 
     def _paint_background(self, p, w, h):
@@ -4789,7 +4978,7 @@ class ShapeCard(QFrame):
 
         def run_w(runs):
             return sum((fmb if (o["bold"] or b) else fmn).horizontalAdvance(t)
-                       for (t, b) in runs)
+                       for (t, b, _c) in (L.as_run(r) for r in runs))
 
         block_h = line_h * len(lines)
         y0 = (h - block_h) / 2.0 + fmn.ascent()
@@ -4803,7 +4992,7 @@ class ShapeCard(QFrame):
             x = xs[i]
             baseline = y0 + i * line_h
             x_start = x
-            for (txt, b) in runs:
+            for (txt, b) in (L.as_run(r)[:2] for r in runs):
                 rf = fb if (o["bold"] or b) else fn
                 if txt:
                     path.addText(x, baseline, rf, txt)
@@ -6721,6 +6910,15 @@ class TyperDocker(DockWidget):
         self.bold_sel_btn = QPushButton()
         self.bold_sel_btn.clicked.connect(self.on_bold_selection)
         bold_row.addWidget(self.bold_sel_btn)
+        # colour a word (or a few) inside the line
+        self.wordcolor_btn = QToolButton()
+        self.wordcolor_btn.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.wordcolor_btn.clicked.connect(self.on_color_selection)
+        self._wordcolor = Krita.instance().readSetting(
+            "typer_kr", "wordColor", "#e03030") or "#e03030"
+        self._build_wordcolor_menu()
+        bold_row.addWidget(self.wordcolor_btn)
         bold_row.addStretch(1)
         _actl.addLayout(bold_row)
         self.jp_ref = QLabel("")
@@ -8148,6 +8346,8 @@ class TyperDocker(DockWidget):
         self.enable_sfx_chk.setText(t("enable_sfx"))
         self.enable_fonts_chk.setText(t("enable_fonts"))
         self.enable_swap_chk.setText(t("enable_swap"))
+        if hasattr(self, "wordcolor_btn"):
+            self._build_wordcolor_menu()
         self.enable_swap_chk.setToolTip(t("enable_swap_tip"))
         _swp = getattr(self, "swap_panel", None)
         if _swp is not None:
@@ -11954,6 +12154,66 @@ class TyperDocker(DockWidget):
         text = self.active_edit.toPlainText()
         new, ns, ne = toggle_bold(text, start, end)
         self.active_edit.setPlainText(new)          # triggers textChanged -> preview
+        cur = self.active_edit.textCursor()
+        cur.setPosition(max(0, ns))
+        cur.setPosition(max(0, ne), QTextCursor.MoveMode.KeepAnchor)
+        self.active_edit.setTextCursor(cur)
+        self.active_edit.setFocus()
+
+    def _color_icon(self, hexval):
+        """A small filled square, so the menu reads as colours and not words."""
+        pm = QPixmap(14, 14)
+        pm.fill(QColor(hexval))
+        return QIcon(pm)
+
+    def _build_wordcolor_menu(self):
+        """(Re)build the colour menu: the named colours, a picker, and clear."""
+        menu = QMenu(self.widget())
+        for name, hexval in sorted(COLOR_NAMES.items()):
+            if name == "gray":            # same colour as 'grey', listed once
+                continue
+            act = menu.addAction(self._color_icon(hexval),
+                                 self._tr("wc_" + name) or name)
+            act.triggered.connect(
+                lambda _c=False, h=hexval: self._apply_word_color(h))
+        menu.addSeparator()
+        pick = menu.addAction(self._tr("wc_custom"))
+        pick.triggered.connect(self._pick_word_color)
+        clear = menu.addAction(self._tr("wc_clear"))
+        clear.triggered.connect(lambda _c=False: self._apply_word_color(""))
+        self.wordcolor_btn.setMenu(menu)
+        self.wordcolor_btn.setIcon(self._color_icon(self._wordcolor))
+        self.wordcolor_btn.setText(self._tr("wc_btn"))
+        self.wordcolor_btn.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.wordcolor_btn.setToolTip(self._tr("wc_btn_tip"))
+
+    def _pick_word_color(self):
+        col = QColorDialog.getColor(QColor(self._wordcolor), self.widget(),
+                                    self._tr("wc_custom"))
+        if col.isValid():
+            self._apply_word_color(_hex(col))
+
+    def _apply_word_color(self, hexval):
+        """Colour the selection - or clear its colour when hexval is empty."""
+        if hexval:
+            self._wordcolor = hexval
+            Krita.instance().writeSetting("typer_kr", "wordColor", hexval)
+            self.wordcolor_btn.setIcon(self._color_icon(hexval))
+        self.on_color_selection(hexval)
+
+    def on_color_selection(self, hexval=None):
+        """Put ``{#rrggbb|...}`` around the selection in the active field."""
+        tc = self.active_edit.textCursor()
+        start, end = tc.selectionStart(), tc.selectionEnd()
+        if start == end:
+            self._set_status(self._tr("st_bold_no_sel"))
+            return
+        if hexval is None:
+            hexval = self._wordcolor
+        text = self.active_edit.toPlainText()
+        new, ns, ne = color_selection(text, start, end, hexval)
+        self.active_edit.setPlainText(new)      # triggers textChanged -> preview
         cur = self.active_edit.textCursor()
         cur.setPosition(max(0, ns))
         cur.setPosition(max(0, ne), QTextCursor.MoveMode.KeepAnchor)

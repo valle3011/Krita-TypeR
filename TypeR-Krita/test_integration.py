@@ -2108,6 +2108,74 @@ try:
 except Exception:
     pass
 
+# --- colouring single words -----------------------------------------------
+if imported:
+    _c, _m = TK.parse_markup("Das ist {red|wichtig} hier")
+    check("colour markup is taken out of the text",
+          _c == "Das ist wichtig hier")
+    check("only the marked word carries a colour",
+          "".join(ch for ch, tok in zip(_c, _m) if isinstance(tok, tuple))
+          == "wichtig")
+    check("a colour name becomes a hex value",
+          TK.L.style_of(_m[8]) == (False, "#e03030"))
+
+    _c, _m = TK.parse_markup("{#E03030|**Laut!**}")
+    check("bold and colour nest in either order",
+          TK.L.style_of(_m[0]) == (True, "#e03030"))
+    check("an uppercased hex value is still read",
+          TK.color_hex("#E03030") == "#e03030")
+    check("a three-digit hex expands",
+          TK.color_hex("#f00") == "#ff0000")
+    check("a name reads whatever the case conversion did to it",
+          TK.color_hex("RED") == "#e03030" and TK.color_hex("Red") == "#e03030")
+    check("nonsense is not a colour", TK.color_hex("{x}") == ""
+          and TK.color_hex("#12") == "" and TK.color_hex("") == "")
+
+    _c, _m = TK.parse_markup("a {x} b {red|c")
+    check("braces that open nothing stay in the text",
+          _c == "a {x} b c" and TK.L.style_of(_m[0]) == (False, None))
+    check("an unclosed colour simply runs to the end",
+          TK.L.style_of(_m[-1]) == (False, "#e03030"))
+
+    _t, _s, _e = TK.color_selection("Das ist wichtig hier", 8, 15, "#e03030")
+    check("the button wraps the selection",
+          _t == "Das ist {#e03030|wichtig} hier")
+    check("...and the selection still covers the same word",
+          _t[_s:_e] == "wichtig")
+    check("colouring again replaces instead of nesting",
+          TK.color_selection("Das ist {#e03030|wichtig} hier", 17, 24,
+                             "#2d6cdf")[0]
+          == "Das ist {#2d6cdf|wichtig} hier")
+    check("clearing takes the markup out again",
+          TK.color_selection("Das ist {#e03030|wichtig} hier", 17, 24, "")[0]
+          == "Das ist wichtig hier")
+    check("without a selection nothing is touched",
+          TK.color_selection("abc", 2, 2, "#f00") == ("abc", 2, 2))
+
+    # the whole way through: the inserted SVG has to carry the colour
+    _ok, _key, _svg = insert(line="SAG {red|NICHTS}", outline=True,
+                             outline_color=QColor(255, 255, 255),
+                             outline_px=6)
+    check("the inserted SVG colours the marked word",
+          _ok and 'fill="#e03030"' in _svg)
+    check("the markup itself is not in the drawn text",
+          "{red|" not in _svg and "}" not in _svg and "NICHTS" in _svg)
+    _fill_copy = _svg.rsplit("<text ", 1)[-1]
+    check("the colour rides on the fill copy",
+          'fill="#e03030"' in _fill_copy)
+    _outline_copies = _svg.rsplit("<text ", 1)[0]
+    check("the outline copy keeps the outline colour, not the word's",
+          'fill="#e03030"' not in _outline_copies)
+    _ok, _key, _plain = insert(line="SAG NICHTS")
+    check("a line without markup gets no per-run fill at all",
+          _ok and "fill=" in _plain and "<tspan" in _plain
+          and "fill=" not in _plain.split("<tspan", 1)[1])
+
+    # a word colour must not leak into the next line that has none
+    _ok, _key, _svg3 = insert(line="{blue|EINS} ZWEI")
+    check("an uncoloured word stays on the element's own fill",
+          _svg3.count('fill="#2d6cdf"') == 1)
+
 # --- the Swap tab (raws out, cleaned pages in) -----------------------------
 if imported:
     try:

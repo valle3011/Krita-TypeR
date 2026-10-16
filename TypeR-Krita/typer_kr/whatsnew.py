@@ -13,6 +13,30 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.17", {
+        "en": [
+            "Single words can have their own colour: select a word in "
+            "the active line and press Colour \u2014 the button takes "
+            "the colour it shows, the arrow opens the list, a picker "
+            "and Remove colour. It is written into the line as "
+            "{#e03030|word}, like **bold**, so it survives saving and "
+            "editing, and you can type it by hand ({red|word} works "
+            "too). Outline and shadow keep their own colours, which is "
+            "what keeps a coloured word readable.",
+        ],
+        "de": [
+            "Einzelne W\u00f6rter k\u00f6nnen eine eigene Farbe "
+            "haben: Wort im aktiven Textfeld markieren und auf Farbe "
+            "dr\u00fccken \u2014 der Knopf nimmt die angezeigte "
+            "Farbe, der Pfeil \u00f6ffnet die Liste, einen "
+            "Farbw\u00e4hler und \u201eFarbe entfernen\u201c. Es "
+            "steht als {#e03030|Wort} in der Zeile, wie **fett**, "
+            "\u00fcberlebt also Speichern und Bearbeiten und l\u00e4sst "
+            "sich auch von Hand tippen ({red|Wort} geht ebenso). Kontur "
+            "und Schatten behalten ihre eigene Farbe \u2014 genau das "
+            "h\u00e4lt ein farbiges Wort lesbar.",
+        ],
+    }),
     ("1.16", {
         "en": [
             "A Swap tab: once the cleans arrive, lift the finished "
