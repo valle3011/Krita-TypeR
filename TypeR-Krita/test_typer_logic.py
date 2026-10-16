@@ -1889,12 +1889,12 @@ check("whatsnew: an untranslated entry falls back to English",
       WNN.lines_for(WNN.entries_since("1.10", "1.11", _CL), "de")
       == [("1.11", ["eleven"])])
 check("whatsnew: the shipped changelog covers the shipped version",
-      any(v == "1.15" for v, _ in WNN.CHANGELOG)
+      any(v == "1.16" for v, _ in WNN.CHANGELOG)
       and all(WNN.lines_for([e], "de") and WNN.lines_for([e], "en")
               for e in WNN.CHANGELOG))
 check("whatsnew: it goes back far enough to span several versions",
       len(WNN.CHANGELOG) >= 3
-      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.15")) >= 2)
+      and len(WNN.entries_since(WNN.CHANGELOG[-1][0], "1.16")) >= 2)
 check("whatsnew: the shipped entries are newest first",
       [WNN.parse_version(v) for v, _ in WNN.CHANGELOG]
       == sorted((WNN.parse_version(v) for v, _ in WNN.CHANGELOG),
@@ -1982,6 +1982,167 @@ check("drivefs: path_parts lists the folders from the file outwards",
       _name == "Ch. 19 TL.gdoc" and _folders[:2] == ["Ch. 19 RAW", "My Drive"])
 
 shutil.rmtree(_tmpdir, ignore_errors=True)
+
+
+# --- Swap: the vendored .kra core ------------------------------------------
+# kra.py and pairing.py are copies of the standalone SwapR's, which has its own
+# suite. What is re-checked here is what breaks a Krita file if it ever stops
+# holding, measured there over 206596 tiles of 120 real documents: the tile
+# flag byte is always 1, and a tile's payload never reaches the raw size.
+# Krita renders a flag-0 tile as stripes and crashes on an oversized one, and
+# neither shows up when a writer is only ever read back by its own reader.
+import random as _random
+
+_kspec = importlib.util.spec_from_file_location(
+    "swapr_kra", os.path.join(_HERE, "typer_kr", "swapr", "kra.py"))
+KRA = importlib.util.module_from_spec(_kspec)
+_kspec.loader.exec_module(KRA)
+
+import types as _types
+_spkg = _types.ModuleType("swapr_pkg")
+_spkg.__path__ = [os.path.join(_HERE, "typer_kr", "swapr")]
+sys.modules.setdefault("swapr_pkg", _spkg)
+sys.modules["swapr_pkg.kra"] = KRA
+_pspec = importlib.util.spec_from_file_location(
+    "swapr_pkg.pairing", os.path.join(_HERE, "typer_kr", "swapr", "pairing.py"))
+PAIR = importlib.util.module_from_spec(_pspec)
+sys.modules["swapr_pkg.pairing"] = PAIR
+_pspec.loader.exec_module(PAIR)
+
+
+def _page_pixels(w, h, seed=7):
+    """Image-like pixels: mostly white with dark runs, alpha constant.
+
+    Pure noise would be the wrong input - that is the case the compressor is
+    supposed to refuse, and it is tested separately below.
+    """
+    rnd = _random.Random(seed)
+    buf = bytearray(b"\xff" * (w * h * 4))
+    for _ in range(w * h // 40):
+        i = rnd.randrange(w * h)
+        tone = rnd.randrange(256)
+        for j in range(i, min(i + rnd.randrange(1, 12), w * h)):
+            buf[j * 4:j * 4 + 3] = bytes([tone, tone, tone])
+    return bytes(buf)
+
+
+def _decode_tiles(blob, w, h, tile=64):
+    """Tiles back into one row-by-row BGRA buffer."""
+    buf = bytearray(w * h * 4)
+    plane = tile * tile
+    for tx, ty, data in KRA.iter_tiles(blob):
+        inter = bytearray(plane * 4)
+        for c in range(4):
+            inter[c::4] = data[c * plane:(c + 1) * plane]
+        for row in range(tile):
+            y = ty + row
+            if not (0 <= y < h):
+                continue
+            n = min(tile, w - tx) * 4
+            if n <= 0:
+                continue
+            src = row * tile * 4
+            dst = y * w * 4 + tx * 4
+            buf[dst:dst + n] = inter[src:src + n]
+    return bytes(buf)
+
+
+_bad_sizes = []
+for _w, _h in [(64, 64), (65, 63), (1, 1), (200, 130)]:
+    _src = _page_pixels(_w, _h)
+    if _decode_tiles(KRA.build_tile_blob(_src, _w, _h), _w, _h) != _src:
+        _bad_sizes.append((_w, _h))
+check("swap: tiles round-trip, also at sizes that do not divide by 64",
+      not _bad_sizes)
+
+_blob = KRA.build_tile_blob(bytes(100 * 100 * 4), 100, 100)
+check("swap: the tile header is the one Krita writes",
+      _blob.startswith(b"VERSION 2\n") and b"DATA 4\n" in _blob)
+
+_RAW = 64 * 64 * 4
+_pos = _blob.index(b"DATA 4\n") + 7
+_flags, _sizes, _lzf_ok = set(), [], True
+for _ in range(4):
+    _eol = _blob.index(b"\n", _pos)
+    _size = int(_blob[_pos:_eol].decode().split(",")[3])
+    _pos = _eol + 1
+    _flags.add(_blob[_pos])
+    _sizes.append(_size)
+    if KRA.lzf_decompress(_blob[_pos + 1:_pos + _size], _RAW) != bytes(_RAW):
+        _lzf_ok = False
+    _pos += _size
+check("swap: every tile is marked LZF (flag 0 renders as stripes)",
+      _flags == {1})
+check("swap: no tile reaches the raw size (Krita crashes on one that does)",
+      max(_sizes) <= _RAW)
+check("swap: each tile's payload decodes back to its pixels", _lzf_ok)
+
+_nrnd = _random.Random(3)      # one generator, not one per byte
+_noise = bytes(_nrnd.getrandbits(8) for _ in range(16384))
+check("swap: incompressible data is refused, not written",
+      KRA.lzf_compress(_noise) is None)
+
+# worst case of an opaque page: three incompressible colour planes and a
+# constant alpha. The guarantee is arithmetic, so it must hold exactly here.
+_rnd = _random.Random(11)
+_worst = b"".join(bytes(_rnd.getrandbits(8) for _ in range(4096))
+                  for _ in range(3)) + b"\xff" * 4096
+_packed = KRA.lzf_compress(_worst, 4096)
+check("swap: the worst tile of an opaque page still fits",
+      _packed is not None and len(_packed) < 16384)
+check("swap: ...and decodes back unchanged",
+      _packed is not None
+      and KRA.lzf_decompress(_packed, len(_worst)) == _worst)
+
+# control byte < 32 is a literal run of ctrl+1 bytes - hand-computed input,
+# so the decoder is checked against the format and not against our encoder
+_lit = bytes(range(30))
+check("swap: LZF literals decode by the book",
+      KRA.lzf_decompress(bytes([29]) + _lit, 30) == _lit)
+
+check("swap: a page number is read out of a messy file name",
+      KRA.page_number("page 5-Recuperado.jpg") == 5
+      and KRA.page_number("page 12.JPG.kra") == 12)
+
+_ts = ["c/page 1.JPG.kra", "c/page 2.JPG.kra", "c/page 10.JPG.kra"]
+_cl = ["d/page 10-Recuperado.png", "d/page 1.png", "d/page 2.png"]
+_pairs, _rest = PAIR.make_pairs(_ts, _cl)   # (pairs, unused cleans)
+check("swap: pages pair by their number, not by their name",
+      [os.path.basename(p.clean or "") for p in _pairs]
+      == ["page 1.png", "page 2.png", "page 10-Recuperado.png"])
+check("swap: a page with no clean is reported, not guessed",
+      PAIR.make_pairs(["c/page 3.kra"], [])[0][0].clean is None)
+check("swap: a clean nobody claimed is handed back, not silently dropped",
+      PAIR.make_pairs(["c/page 1.kra"], ["d/page 1.png", "d/page 9.png"])[1]
+      == ["d/page 9.png"])
+check("swap: 'page 2' sorts before 'page 10'",
+      PAIR.natural_key("a/page 2.kra") < PAIR.natural_key("a/page 10.kra"))
+
+# the vendored copies must stay the copies they claim to be
+_vspec = importlib.util.spec_from_file_location(
+    "swapr_init", os.path.join(_HERE, "typer_kr", "swapr", "__init__.py"))
+VEND = importlib.util.module_from_spec(_vspec)
+_vspec.loader.exec_module(VEND)
+import hashlib as _hashlib
+_mismatch = []
+for _name, _want in VEND.UPSTREAM.items():
+    _data = open(os.path.join(_HERE, "typer_kr", "swapr", _name), "rb").read()
+    if _hashlib.sha256(_data).hexdigest() != _want:
+        _mismatch.append(_name)
+check("swap: the vendored files match the hashes recorded for them",
+      not _mismatch)
+
+# ...and if the original is on this machine, that it has not moved on
+_UPSTREAM_DIR = os.path.join(os.path.dirname(_HERE), "SwapR", "swapr")
+if os.path.isdir(_UPSTREAM_DIR):
+    _drift = []
+    for _name in VEND.UPSTREAM:
+        _src = os.path.join(_UPSTREAM_DIR, _name)
+        if os.path.exists(_src) and open(_src, "rb").read() != open(
+                os.path.join(_HERE, "typer_kr", "swapr", _name), "rb").read():
+            _drift.append(_name)
+    check("swap: the standalone SwapR has not drifted away from the copy",
+          not _drift)
 
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

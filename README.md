@@ -85,6 +85,9 @@ nothing was removed, everything is one click away. **Type**, **Style** and
   soft/blurred outlines, rotation, its own presets (see *SFX helper* below).
 - **Fonts** – star fonts and sort them into your own categories (see *Font
   favourites* below).
+- **Swap** – once the cleans arrive, lift the finished typesetting off the
+  raws onto them: only the bottom layer of each `.kra` is replaced (see *Swap*
+  below).
 
 A **BubblR** tab with automatic bubble detection exists in the source but is
 locked off in a release build, so you will not see it or its switch. The Batch
@@ -200,6 +203,51 @@ line instead of stacking it, and **Match size** on the TextShapR tab — worth
 switching on for a batch so the whole page keeps one text size.
 
 ---
+
+## Swap: typeset on the raws, finish on the cleans
+
+You typeset while the cleans are still being made, so every `.kra` sits on a
+raw. When the cleans arrive, the **Swap** tab puts them underneath: for each
+page it writes a new `.kra` in which **only the bottom layer** is the clean.
+Text layers, vector layers, masks, transforms and layer effects are copied
+across **byte for byte** — nothing is re-encoded, nothing is re-rendered, so
+nothing can shift.
+
+1. **Typeset pages** – the folder with your `.kra` files.
+2. **Clean pages** – the folder with the cleans: images (`png`, `jpg`, `tif`,
+   `webp`, …) **or `.kra` files**.
+3. Check the table. Pages are paired by the **page number in the file name**,
+   so `page 1-Recuperado.jpg` finds `page 1.JPG.kra`; the third column says
+   what will happen to each page before anything is written, and the drop-down
+   fixes a pairing it got wrong.
+4. Pick a **target folder** — it may not be either source folder — and press
+   **Transfer**.
+
+Worth knowing:
+
+- **Different sizes.** If you typeset on an upscale, the clean is often
+  smaller. Tick *"Scale the clean to canvas size"* and it is scaled up
+  smoothly; without the tick the page is refused rather than quietly
+  distorted. A clean that is itself a `.kra` can never be scaled.
+- **A dimmed raw** (typesetting often leaves it at reduced opacity) is
+  replaced by a **fully opaque** clean — otherwise the finished page would
+  come out pale.
+- **A clean that is a `.kra`** (typically `Background` = raw plus a retouch
+  layer) hands over **all of its layers** in place of the raw, so you can keep
+  correcting the retouch afterwards.
+- **PNG** is optional and rendered by **Krita itself**: each finished page is
+  opened in the background and exported, and the result is put into the `.kra`
+  as its own preview, so the file manager stops showing the raw. It is the
+  slow part of the run — leave it off and you get the `.kra` files alone.
+- **Nothing of yours is touched.** Only the target folder is written to, and
+  existing files are kept unless you tick *"Overwrite"*.
+
+The page is written in a worker thread, so a chapter can run while you keep
+typesetting in another tab.
+
+> The same thing also exists as a **standalone program** (`SwapR`), which does
+> not need Krita at all — handy for running a chapter while Krita is closed.
+> The plugin and the program share the same `.kra` code.
 
 ## PDF scripts
 
@@ -533,6 +581,8 @@ the text cleanly for the current bubble.
 | `typer_kr/layout.py` | Pure layout logic: wrapping, balancing, ellipse fit, **hyphenation / de-hyphenation**, **TextShapR shape candidates + quality scoring** |
 | `typer_kr/bubbles.py` | BubblR: speech-bubble detection, reading order, round/rect shape, bubble↔unit mapping |
 | `typer_kr/drivefs.py` | The document id behind a `.gdoc` Google Drive refuses to read |
+| `typer_kr/swapr/` | Swap: reading and writing `.kra` (Krita's tile format), pairing pages, putting a clean under finished typesetting |
+| `typer_kr/swapr_ui.py` | The Swap tab |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
 | `typer_kr/sfx/` | The MangaSFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
 | `typer_kr/__init__.py` | Registers the docker with Krita |

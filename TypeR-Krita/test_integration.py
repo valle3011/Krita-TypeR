@@ -672,7 +672,7 @@ if imported:
         _got = [_bar.tabData(i) for i in range(_d.main_tabs.count())]
         check("absent id ignored + unlisted tabs appended at the end",
               _got == ["type", "style", "setup", "shapr", "sfx",
-                       "batch", "fonts"])
+                       "batch", "fonts", "swap"])
         check("content stays in sync with a ghost-id order",
               all(_d.main_tabs.widget(i) is _d._tab_pages.get(_bar.tabData(i))
                   for i in range(_d.main_tabs.count())))
@@ -2107,6 +2107,150 @@ try:
     _app.processEvents()
 except Exception:
     pass
+
+# --- the Swap tab (raws out, cleaned pages in) -----------------------------
+if imported:
+    try:
+        import shutil as _shutil
+        import tempfile as _tempfile
+        import time as _time
+        import zipfile as _swzip
+        import typer_kr.swapr_ui as _SWUI
+        from typer_kr.swapr.kra import build_tile_blob as _build_tiles
+
+        _swtmp = _tempfile.mkdtemp(prefix="typer-swaptab-")
+        _ts_dir = os.path.join(_swtmp, "ts")
+        _cl_dir = os.path.join(_swtmp, "clean")
+        _out_dir = os.path.join(_swtmp, "out")
+        for _d2 in (_ts_dir, _cl_dir, _out_dir):
+            os.makedirs(_d2)
+
+        def _mini_kra(path, w=40, h=30, opacity=140):
+            maindoc = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                "<!DOCTYPE DOC PUBLIC '-//KDE//DTD krita 2.0//EN' "
+                "'http://www.calligra.org/DTD/krita-2.0.dtd'>\n"
+                '<DOC xmlns="http://www.calligra.org/DTD/krita" '
+                'syntaxVersion="2.0"><IMAGE name="Unnamed" width="%d" '
+                'height="%d" colorspacename="RGBA" x-res="72" y-res="72">'
+                '<layers><layer name="Text" filename="layer2" '
+                'nodetype="shapelayer" visible="1" opacity="255" '
+                'compositeop="normal" x="0" y="0" uuid="{a}"/>'
+                '<layer name="Background" filename="layer4" '
+                'nodetype="paintlayer" visible="1" opacity="%d" '
+                'compositeop="normal" x="0" y="0" uuid="{b}"/>'
+                '</layers></IMAGE></DOC>' % (w, h, opacity))
+            with _swzip.ZipFile(path, "w") as z:
+                z.writestr("mimetype", "application/x-kra")
+                z.writestr("maindoc.xml", maindoc)
+                z.writestr("Unnamed/layers/layer2.shapelayer/content.svg",
+                           b"<svg/>")
+                z.writestr("Unnamed/layers/layer4",
+                           _build_tiles(bytes((0, 0, 255, 255)) * (w * h),
+                                        w, h))
+
+        for _n in (1, 2):
+            _mini_kra(os.path.join(_ts_dir, "page %d.kra" % _n))
+        _clean_img = _QImage(40, 30, _QImage.Format.Format_ARGB32)
+        _clean_img.fill(QColor(10, 200, 30))
+        _clean_img.save(os.path.join(_cl_dir, "page 1-Recuperado.png"), "PNG")
+        _clean_img.save(os.path.join(_cl_dir, "page 2.png"), "PNG")
+        # one clean of the wrong size, to see the refusal in the table
+        _small = _clean_img.scaled(20, 15)
+
+        _KR_APP._settings[("typer_kr", "enableSwap")] = "true"
+        _sd = TK.TyperDocker()
+        check("the Swap tab is there when it is switched on",
+              _sd._tab_index_of("swap") is not None
+              and _sd.swap_panel is not None)
+
+        _panel = _sd.swap_panel
+        _panel.ts_edit.setText(_ts_dir)
+        _panel.clean_edit.setText(_cl_dir)
+        _panel._rescan()
+        check("both pages show up, paired by page number",
+              _panel.table.rowCount() == 2
+              and [os.path.basename(p.clean or "") for p in _panel._pairs]
+              == ["page 1-Recuperado.png", "page 2.png"])
+        check("the table says what will happen, in the interface language",
+              "Background" in _panel.table.item(0, 2).text())
+
+        # the target folder may not be a source folder
+        _panel.out_edit.setText(_ts_dir)
+        _panel.log.clear()
+        _panel._on_run()
+        check("the typeset folder is refused as the target",
+              _panel._worker is None
+              and _panel.log.toPlainText().strip() != "")
+
+        # a real run, with Krita's exporter replaced so no document is opened
+        _exported = []
+
+        def _stub_export(kra_path, png_path):
+            _exported.append(kra_path)
+            _QImage(40, 30, _QImage.Format.Format_ARGB32).save(png_path, "PNG")
+            return ""
+
+        _real_add_png = _SWUI.SW.add_png
+        _SWUI.SW.add_png = (
+            lambda out, exporter=None: _real_add_png(out, _stub_export))
+        try:
+            _panel.out_edit.setText(_out_dir)
+            _panel.png_chk.setChecked(True)
+            _panel._on_run()
+            _deadline = _time.time() + 30
+            while _panel._worker is not None and _time.time() < _deadline:
+                _app.processEvents()
+                _time.sleep(0.02)
+            check("both pages were transferred",
+                  os.path.exists(os.path.join(_out_dir, "page 1.kra"))
+                  and os.path.exists(os.path.join(_out_dir, "page 2.kra")))
+            check("the PNG step ran on the UI thread, once per page",
+                  len(_exported) == 2)
+            check("the PNGs are there too",
+                  os.path.exists(os.path.join(_out_dir, "page 1.png")))
+        finally:
+            _SWUI.SW.add_png = _real_add_png
+
+        with _swzip.ZipFile(os.path.join(_out_dir, "page 1.kra")) as _z:
+            check("the text layer came through untouched",
+                  _z.read("Unnamed/layers/layer2.shapelayer/content.svg")
+                  == b"<svg/>")
+            check("the finished page is the file's own preview now",
+                  _z.read("mergedimage.png")[:4] == b"\x89PNG")
+        _doc = _SWUI.SW.KraDocument(os.path.join(_out_dir, "page 1.kra"))
+        _bg = [l for l in _doc.top_level_layers()
+               if l.get("name") == "Background"][0]
+        check("the dimmed raw is replaced by a fully opaque clean",
+              _bg.get("opacity") == "255")
+
+        # a second run must not overwrite without being told to
+        _panel.log.clear()
+        _panel.overwrite_chk.setChecked(False)
+        _panel._on_run()
+        _deadline = _time.time() + 30
+        while _panel._worker is not None and _time.time() < _deadline:
+            _app.processEvents()
+            _time.sleep(0.02)
+        check("existing files are kept unless overwriting is asked for",
+              "page 1.kra" in _panel.log.toPlainText())
+
+        # switching the tab off keeps the panel alive (a run may be going on)
+        _sd._on_enable_swap(False)
+        check("switching the tab off hides it but keeps the panel",
+              _sd._tab_index_of("swap") is None and _sd.swap_panel is not None)
+        _sd._on_enable_swap(True)
+        check("and switching it back on brings it back",
+              _sd._tab_index_of("swap") is not None)
+
+        _panel.shutdown()
+        _sd.deleteLater()
+        _app.processEvents()
+        _shutil.rmtree(_swtmp, ignore_errors=True)
+    except Exception:                               # pragma: no cover
+        check("swap-tab suite ran", False)
+        import traceback
+        traceback.print_exc()
 
 # --- the update check in the docker ---------------------------------------
 if imported:

@@ -88,7 +88,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.15"
+VERSION = "1.16"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -912,6 +912,7 @@ LANG = {
         "tab_shapr": "TextShapR",
         "tab_sfx": "SFX",
         "tab_fonts": "Fonts",
+        "tab_swap": "Swap",
         "st_font_applied": "Font applied: {name}",
         "st_font_starred": "★ Added to favourites: {name}",
         "fav_star_current": "☆ Favourite",
@@ -1265,6 +1266,53 @@ LANG = {
         "enable_shapr": "Enable TextShapR",
         "enable_sfx": "Enable SFX tab",
         "enable_fonts": "Enable Fonts tab",
+        # --- Swap tab (raws out, cleaned pages in) ---
+        "enable_swap": "Enable Swap tab",
+        "enable_swap_tip": ("Lift finished typesetting off the raws onto the "
+                           "cleaned pages: only the bottom layer of each .kra is "
+                           "replaced."),
+        "sw_busy": "Page {i} of {n}…",
+        "sw_cancel": "Cancel",
+        "sw_choose": "Choose…",
+        "sw_clean_folder": "Clean pages:",
+        "sw_col_clean": "Clean page",
+        "sw_col_status": "What will happen",
+        "sw_col_ts": "Typeset page",
+        "sw_done": "Done: {ok} transferred, {fail} not.",
+        "sw_exists": "skipped, already there",
+        "sw_intro": ("Lift finished typesetting off the raws: every .kra "
+                           "keeps its text and vector layers, only the bottom "
+                           "layer is replaced by the cleaned page."),
+        "sw_no_out": "Pick a target folder first.",
+        "sw_none": "no clean page",
+        "sw_nothing": "Nothing to transfer.",
+        "sw_out_folder": "Target folder:",
+        "sw_overwrite": "Overwrite files that are already there",
+        "sw_png": "Also write a PNG (rendered by Krita)",
+        "sw_png_tip": ("Krita opens each finished page in the background and "
+                           "exports it. Slower, and the image also goes into the "
+                           ".kra as its preview, so the file manager stops "
+                           "showing the raw."),
+        "sw_ready": "{ok} page(s) ready, {skip} without a clean.",
+        "sw_replaced": "replaced ‘{layer}’ with {clean}",
+        "sw_replaced_layers": "replaced ‘{layer}’ with {count} layer(s) from {clean}",
+        "sw_run": "Transfer",
+        "sw_same_folder": ("The target folder may not be the typeset or the "
+                           "clean folder."),
+        "sw_scale": "Scale the clean to canvas size",
+        "sw_scale_tip": ("Off, a clean of a different size is refused so "
+                           "nothing is distorted unnoticed. A clean that is "
+                           "itself a .kra can never be scaled."),
+        "sw_scaled_note": " (scaled)",
+        "sw_st_aspect": "proportions do not match ({cw}x{ch} vs {w}x{h})",
+        "sw_st_no_clean": "no clean page",
+        "sw_st_ok": "OK – replaces ‘{layer}’",
+        "sw_st_ok_layers": "OK – replaces ‘{layer}’ with {count} layer(s)",
+        "sw_st_scaled": "scales {cw}x{ch} -> {w}x{h}, replaces ‘{layer}’",
+        "sw_st_size": "size {cw}x{ch} != {w}x{h} – switch scaling on",
+        "sw_st_size_kra": "size {cw}x{ch} != {w}x{h} – a clean .kra cannot be scaled",
+        "sw_st_unreadable": "clean image not readable",
+        "sw_ts_folder": "Typeset pages (.kra):",
         "enable_balloon": "Enable balloon tools (shape + Insert balloon)",
         "enable_patterns": "Enable pattern fills (experimental)",
         "enable_texttypes": "Enable text types / kinds (experimental)",
@@ -1799,6 +1847,7 @@ LANG = {
         "tab_shapr": "TextShapR",
         "tab_sfx": "SFX",
         "tab_fonts": "Schriften",
+        "tab_swap": "Swap",
         "st_font_applied": "Schrift übernommen: {name}",
         "st_font_starred": "★ Zu Favoriten hinzugefügt: {name}",
         "fav_star_current": "☆ Favorit",
@@ -2234,6 +2283,56 @@ LANG = {
         "enable_shapr": "TextShapR aktivieren",
         "enable_sfx": "SFX-Tab aktivieren",
         "enable_fonts": "Schriften-Tab aktivieren",
+        # --- Swap-Tab (Raws raus, Cleans rein) ---
+        "enable_swap": "Swap-Tab aktivieren",
+        "enable_swap_tip": ("Hebt fertiges Typesetting von den Raws auf die "
+                           "gecleanten Seiten: Nur die unterste Ebene jeder .kra "
+                           "wird ersetzt."),
+        "sw_busy": "Seite {i} von {n}…",
+        "sw_cancel": "Abbrechen",
+        "sw_choose": "Wählen…",
+        "sw_clean_folder": "Clean-Seiten:",
+        "sw_col_clean": "Clean-Seite",
+        "sw_col_status": "Was passieren wird",
+        "sw_col_ts": "Typeset-Seite",
+        "sw_done": "Fertig: {ok} übertragen, {fail} nicht.",
+        "sw_exists": "übersprungen, schon vorhanden",
+        "sw_intro": ("Hebt fertiges Typesetting von den Raws auf die "
+                           "gecleanten Seiten: Jede .kra behält Text- und "
+                           "Vektorebenen, nur die unterste Ebene wird durch die "
+                           "Clean-Seite ersetzt."),
+        "sw_no_out": "Erst einen Zielordner wählen.",
+        "sw_none": "keine Clean-Seite",
+        "sw_nothing": "Nichts zu übertragen.",
+        "sw_out_folder": "Zielordner:",
+        "sw_overwrite": "Vorhandene Dateien überschreiben",
+        "sw_png": "Zusätzlich als PNG ausgeben (von Krita gerendert)",
+        "sw_png_tip": ("Krita öffnet jede fertige Seite im Hintergrund und "
+                           "exportiert sie. Langsamer, dafür kommt das Bild auch "
+                           "als Vorschau in die .kra — der Explorer zeigt dann "
+                           "nicht mehr das Raw."),
+        "sw_ready": "{ok} Seite(n) bereit, {skip} ohne Clean.",
+        "sw_replaced": "„{layer}“ ersetzt durch {clean}",
+        "sw_replaced_layers": "„{layer}“ ersetzt durch {count} Ebene(n) aus {clean}",
+        "sw_run": "Übertragen",
+        "sw_same_folder": ("Der Zielordner darf nicht der Typeset- oder "
+                           "Clean-Ordner sein."),
+        "sw_scale": "Clean auf Leinwandgröße skalieren",
+        "sw_scale_tip": ("Ohne Haken wird ein Clean mit anderer Größe "
+                           "abgelehnt, damit nichts unbemerkt verzerrt wird. Ein "
+                           "Clean, das selbst eine .kra ist, kann nie skaliert "
+                           "werden."),
+        "sw_scaled_note": " (skaliert)",
+        "sw_st_aspect": "Seitenverhältnis passt nicht ({cw}x{ch} vs {w}x{h})",
+        "sw_st_no_clean": "keine Clean-Seite",
+        "sw_st_ok": "OK – ersetzt „{layer}“",
+        "sw_st_ok_layers": "OK – ersetzt „{layer}“ durch {count} Ebene(n)",
+        "sw_st_scaled": "skaliert {cw}x{ch} -> {w}x{h}, ersetzt „{layer}“",
+        "sw_st_size": "Größe {cw}x{ch} != {w}x{h} – Skalieren einschalten",
+        "sw_st_size_kra": ("Größe {cw}x{ch} != {w}x{h} – eine Clean-.kra kann "
+                           "nicht skaliert werden"),
+        "sw_st_unreadable": "Clean-Bild nicht lesbar",
+        "sw_ts_folder": "Typeset-Seiten (.kra):",
         "enable_balloon": "Blasen-Werkzeuge aktivieren (Form + Blase einfügen)",
         "enable_patterns": "Muster-Füllungen aktivieren (experimentell)",
         "enable_texttypes": "Textarten aktivieren (experimentell)",
@@ -6052,6 +6151,7 @@ class TyperDocker(DockWidget):
         lay_shapr = _page()      # TextShapR: pick a shape arrangement
         lay_sfx = _page()        # SFX Helper (embedded MangaSFX docker)
         lay_fonts = _page()      # Font favourites (starred fonts + categories)
+        lay_swap = _page()       # Swap: raws out, cleaned pages in
 
         # Presets are no longer their own tab: they live inside the Type
         # tab as a self-contained panel container. Building them into this
@@ -6334,6 +6434,11 @@ class TyperDocker(DockWidget):
             app.readSetting("typer_kr", "enableFonts", "true") == "true")
         self.enable_fonts_chk.toggled.connect(self._on_enable_fonts)
         exp_lay.addWidget(self.enable_fonts_chk)
+        self.enable_swap_chk = QCheckBox()
+        self.enable_swap_chk.setChecked(
+            app.readSetting("typer_kr", "enableSwap", "true") == "true")
+        self.enable_swap_chk.toggled.connect(self._on_enable_swap)
+        exp_lay.addWidget(self.enable_swap_chk)
         # balloon tools are off by default: most pages come with their balloons
         self.enable_balloon_chk = QCheckBox()
         self.enable_balloon_chk.setChecked(
@@ -7174,6 +7279,25 @@ class TyperDocker(DockWidget):
             _lbl.setStyleSheet("color: gray;")
             lay_fonts.addWidget(_lbl)
 
+        # --- Swap tab (lift typesetting off the raws onto the cleans) -----
+        # Same deal as the fonts panel: it only talks to us through callbacks,
+        # so it cannot take the docker down with it.
+        self.swap_panel = None
+        try:
+            from .swapr_ui import SwapPanel
+            self.swap_panel = SwapPanel(
+                tr=self._tr,
+                get_setting=lambda k, d="": Krita.instance().readSetting(
+                    "typer_kr", k, d),
+                set_setting=lambda k, v: Krita.instance().writeSetting(
+                    "typer_kr", k, v))
+            lay_swap.addWidget(self.swap_panel, 1)
+        except Exception as _sw_exc:      # noqa: BLE001
+            _lbl = QLabel("Swap could not load:\n%s" % _sw_exc)
+            _lbl.setWordWrap(True)
+            _lbl.setStyleSheet("color: gray;")
+            lay_swap.addWidget(_lbl)
+
         # status line below the tabs, always visible
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -7207,7 +7331,8 @@ class TyperDocker(DockWidget):
                               ("setup", "tab_setup"), ("bubblr", "tab_bubblr"),
                               ("batch", "tab_batch"),
                               ("shapr", "tab_shapr"), ("sfx", "tab_sfx"),
-                              ("fonts", "tab_fonts")]
+                              ("fonts", "tab_fonts"),
+                              ("swap", "tab_swap")]
         self._tab_pages = {}          # id -> tab page widget (kept when hidden)
         for i, (tid, _nk) in enumerate(self._tab_defaults):
             self.main_tabs.tabBar().setTabData(i, tid)
@@ -7220,6 +7345,7 @@ class TyperDocker(DockWidget):
         self._on_enable_shapr(self.enable_shapr_chk.isChecked(), save=False)
         self._on_enable_sfx(self.enable_sfx_chk.isChecked(), save=False)
         self._on_enable_fonts(self.enable_fonts_chk.isChecked(), save=False)
+        self._on_enable_swap(self.enable_swap_chk.isChecked(), save=False)
         self._on_enable_balloon(self.enable_balloon_chk.isChecked(), save=False)
         self._on_enable_patterns(self.enable_patterns_chk.isChecked(), save=False)
         self._on_enable_texttypes(
@@ -8021,6 +8147,11 @@ class TyperDocker(DockWidget):
         self.enable_shapr_chk.setText(t("enable_shapr"))
         self.enable_sfx_chk.setText(t("enable_sfx"))
         self.enable_fonts_chk.setText(t("enable_fonts"))
+        self.enable_swap_chk.setText(t("enable_swap"))
+        self.enable_swap_chk.setToolTip(t("enable_swap_tip"))
+        _swp = getattr(self, "swap_panel", None)
+        if _swp is not None:
+            _swp.retranslate()
         self.enable_balloon_chk.setText(t("enable_balloon"))
         self.enable_patterns_chk.setText(t("enable_patterns"))
         self.enable_texttypes_chk.setText(t("enable_texttypes"))
@@ -9388,6 +9519,21 @@ class TyperDocker(DockWidget):
         if save:
             Krita.instance().writeSetting(
                 "typer_kr", "enableFonts", "true" if on else "false")
+
+    def _on_enable_swap(self, on, save=True):
+        """Show or hide the Swap tab (kept alive when hidden, so a running
+        transfer is not interrupted by switching it off)."""
+        idx = self._tab_index_of("swap")
+        if on and idx is None:
+            page = self._tab_pages.get("swap")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("swap"))
+                self.main_tabs.tabBar().setTabData(i, "swap")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableSwap", "true" if on else "false")
 
     def _sync_gated_panels(self):
         """Re-apply the switches that hide a whole panel. Every layout move

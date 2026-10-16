@@ -577,6 +577,49 @@ Scans, encryption and object streams are refused by name (`PdfError.kind`,
 which the docker looks up in its own language) rather than quietly returning
 an empty or half script.
 
+### Swap: the cleans go under the typesetting
+
+A chapter is typeset on the raws because the cleans are not finished yet. The
+Swap tab writes, per page, a new `.kra` whose **bottom layer** is the clean and
+whose every other ZIP entry is copied over unchanged.
+
+- `swapr/kra.py`, `swapr/pairing.py` — **vendored unchanged** from the
+  standalone SwapR (`ClaudeProgram/SwapR`), which keeps running without Krita
+- `swapr/swap.py` — the engine: load the clean, scale it, put it in, render
+- `swapr_ui.py` — the tab (folders, pairing table, worker thread)
+- Stored in kritarc as `enableSwap`, `swapTsDir`, `swapCleanDir`, `swapOutDir`,
+  `swapScale`, `swapPng`
+
+**Why the core is a copy and not a rewrite.** `kra.py` carries format knowledge
+that was measured, not read: over 206596 tiles of 120 real documents, two
+invariants hold that no specification states — the tile flag byte is always 1
+(Krita renders a flag-0 tile as stripes, although the format allows it), and a
+tile's payload never reaches the raw size (Krita crashes on one that does).
+Rewriting that from the docs would have thrown both away. It imports nothing
+but the standard library, which is the only reason it can live in a Krita
+plugin at all. `typer_kr/swapr/__init__.py` records the sha256 of each copy and
+the test suite compares it against the original when that is on the machine, so
+the two cannot drift apart in silence.
+
+**What did not come along is the renderer.** SwapR's `render.py` composites the
+page itself with numpy, because `krita --export` hangs while Krita is open
+(single instance), and it goes as far as re-doing Krita's artificial bold and
+forcing Qt's FreeType engine to match Krita's text metrics. Inside the plugin
+Krita is open *and* is running the code, so `swap.export_png` hands the file to
+Krita's own exporter — the renderer the other one was approximating. It could
+not have come anyway: Krita ships Python 3.10 and **no numpy**.
+
+**Which thread does what.** Writing a `.kra` is zipping and LZF, no Krita, so
+it runs in a `QThread` and a 20-page chapter does not freeze Krita. The PNG is
+the opposite — Krita's API may only be touched from the UI thread — so the
+worker emits each page the moment its `.kra` is on disk and `swapr_ui` renders
+it in the slot, which Qt runs on the UI thread.
+
+**The status column is written by the UI**, not taken from the engine, so it
+follows the interface language; only an unexpected malformed-file message comes
+through from the vendored reader, which is German because that copy is kept
+byte-identical.
+
 ### Is there a newer version?
 
 A Krita plugin has no updater and no package manager behind it, so nothing

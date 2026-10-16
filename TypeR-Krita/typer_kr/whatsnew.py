@@ -13,6 +13,31 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.16", {
+        "en": [
+            "A Swap tab: once the cleans arrive, lift the finished "
+            "typesetting off the raws onto them. Point it at the two "
+            "folders, check the table \u2014 pages pair by the number "
+            "in their name, and each row says what will happen before "
+            "anything is written \u2014 and transfer. Only the bottom "
+            "layer of each .kra is replaced; text, vectors, masks and "
+            "effects are copied byte for byte. A smaller clean is "
+            "refused unless you allow scaling, and a PNG per page is "
+            "optional (rendered by Krita).",
+        ],
+        "de": [
+            "Ein Swap-Reiter: Wenn die Cleans fertig sind, hebt er das "
+            "fertige Typesetting von den Raws auf sie her\u00fcber. "
+            "Beide Ordner angeben, Tabelle pr\u00fcfen \u2014 "
+            "gepaart wird \u00fcber die Seitenzahl im Dateinamen, und "
+            "jede Zeile sagt vorher, was passieren wird \u2014 dann "
+            "\u00fcbertragen. Ersetzt wird nur die unterste Ebene "
+            "jeder .kra; Text, Vektoren, Masken und Effekte kommen "
+            "byteweise mit. Ein kleineres Clean wird abgelehnt, solange "
+            "du Skalieren nicht erlaubst, und ein PNG pro Seite ist "
+            "optional (von Krita gerendert).",
+        ],
+    }),
     ("1.15", {
         "en": [
             "The docker says when a newer TypeR has been published: a "
