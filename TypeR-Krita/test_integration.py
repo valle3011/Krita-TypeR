@@ -2108,6 +2108,135 @@ try:
 except Exception:
     pass
 
+# --- the mouse wheel must not change a control you are scrolling past ------
+if imported:
+    try:
+        from typer_kr._qt import (Qt, QWheelEvent, QPoint, QPointF, QSlider,
+                                  QSpinBox, QComboBox)
+        from typer_kr.nowheel import (NoScrollSlider, NoScrollSpinBox,
+                                      NoScrollComboBox)
+
+        def _turn(widget, steps=1):
+            centre = widget.rect().center()
+            return QWheelEvent(QPointF(centre), widget.mapToGlobal(centre),
+                               QPoint(0, 0), QPoint(0, 120 * steps),
+                               Qt.MouseButton.NoButton,
+                               Qt.KeyboardModifier.NoModifier,
+                               Qt.ScrollPhase.ScrollUpdate, False)
+
+        _ws = NoScrollSlider(Qt.Orientation.Horizontal)
+        _ws.setRange(0, 100)
+        _ws.setValue(50)
+        _wsp = NoScrollSpinBox()
+        _wsp.setRange(0, 100)
+        _wsp.setValue(50)
+
+        _ev = _turn(_ws)
+        _app.sendEvent(_ws, _ev)
+        check("a wheel turn over an unfocused slider changes nothing",
+              _ws.value() == 50)
+        check("...and the event is left for the scroll area underneath",
+              not _ev.isAccepted())
+
+        # A real focus chain needs an active window, which this suite has
+        # not got - so the branch is driven directly: what is under test is
+        # "the wheel works once the control has focus".
+        _ws.hasFocus = lambda: True
+        _app.sendEvent(_ws, _turn(_ws))
+        check("a slider you clicked still answers the wheel",
+              _ws.value() != 50)
+        del _ws.hasFocus
+
+        _app.sendEvent(_wsp, _turn(_wsp))
+        check("the same rule holds for a spin box", _wsp.value() == 50)
+
+        check("the wheel cannot hand focus to a control either",
+              _ws.focusPolicy() == Qt.FocusPolicy.StrongFocus
+              and _wsp.focusPolicy() == Qt.FocusPolicy.StrongFocus)
+
+        # the panels must actually use them - this is the part that rots
+        _KR_APP._settings[("typer_kr", "enableGiongo")] = "true"
+        _wd = TK.TyperDocker()
+        _plain = []
+        for _panel, _label in ((_wd.giongo_panel, "Giongo"),
+                               (_wd.fonts_panel, "Fonts")):
+            if _panel is None:
+                continue
+            for _c in _panel.findChildren((QSlider, QSpinBox, QComboBox)):
+                if not isinstance(_c, (NoScrollSlider, NoScrollSpinBox,
+                                       NoScrollComboBox)):
+                    _plain.append("%s: %s" % (_label, type(_c).__name__))
+        if _plain:
+            print("       ungeschuetzt: " + "; ".join(_plain[:6]))
+        check("every slider and picker in the scrolling tabs is wheel-safe",
+              not _plain)
+        _wd.deleteLater()
+        _app.processEvents()
+    except Exception:                               # pragma: no cover
+        check("wheel-guard suite ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- Giongo must cost nothing while its tab is behind another --------------
+# Krita builds every docker tab at startup. The panel used to schedule a
+# preview in its constructor, so Krita froze for 2.2 s drawing a picture into
+# a hidden widget at 640x480 - a size nobody would ever see.
+if imported:
+    try:
+        _KR_APP._settings[("typer_kr", "enableGiongo")] = "true"
+        _gd = TK.TyperDocker()
+        _gp = _gd.giongo_panel
+        check("the Giongo panel exists", _gp is not None)
+
+        _gd.main_tabs.setCurrentIndex(0)
+        _app.processEvents()
+        check("a tab that is not in front is switched off",
+              _gp is not None and _gp._active is False)
+
+        _drawn = []
+        _real_framed = _gp._framed
+        _gp._framed = lambda *a, **k: _drawn.append(1) or _real_framed(*a, **k)
+        _gp._refresh_preview()
+        check("...and refuses to render while it is switched off",
+              not _drawn and _gp._pending)
+
+        # opening it pays the bill, once
+        _gi_idx = _gd._tab_index_of("giongo")
+        _gd.main_tabs.setCurrentIndex(_gi_idx)
+        _app.processEvents()
+        check("opening the tab switches it on", _gp._active is True)
+        _gp._refresh_preview()
+        check("...and then it does render", bool(_drawn))
+
+        # leaving it again stops the work, and the pending render is kept
+        _drawn[:] = []
+        _gd.main_tabs.setCurrentIndex(0)
+        _app.processEvents()
+        _gp.text_edit.setPlainText("ドン")
+        _gp._refresh_preview()
+        check("editing a closed tab costs nothing but is not forgotten",
+              not _drawn and _gp._pending)
+
+        # a resize that changes nothing must not schedule anything either:
+        # setting a pixmap changes the label's size hint, and an
+        # unconditional reschedule there lets a layout pass feed itself
+        _gp.set_active(True)
+        _gp._refresh_preview()
+        _gp._preview_timer.stop()
+        from typer_kr._qt import QResizeEvent, QSize as _QSize
+        _same = _QSize(_gp.preview.width(), _gp.preview.height())
+        _gp.resizeEvent(QResizeEvent(_same, _same))
+        check("a resize to the same size schedules no new render",
+              not _gp._preview_timer.isActive())
+
+        _gp._framed = _real_framed
+        _gd.deleteLater()
+        _app.processEvents()
+    except Exception:                               # pragma: no cover
+        check("giongo-idle suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- a loaded pattern crop offers its tile ---------------------------------
 if imported:
     try:

@@ -18,6 +18,7 @@ import tempfile
 import zipfile
 
 from ._qt import Qt, pyqtSignal, QSize, QTimer
+from .nowheel import NoScrollComboBox, NoScrollSlider
 from ._qt import QFont, QFontMetrics, QColor, QPixmap, QPainter
 from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
@@ -250,7 +251,7 @@ class FontFavoritesPanel(QWidget):
         lay.addWidget(self.intro)
 
         filt = QHBoxLayout()
-        self.cat_combo = QComboBox()
+        self.cat_combo = NoScrollComboBox()
         self.cat_combo.currentIndexChanged.connect(lambda _i: self._on_filter_changed())
         filt.addWidget(self.cat_combo, 1)
         self.search = QLineEdit()
@@ -263,7 +264,7 @@ class FontFavoritesPanel(QWidget):
         # preview size: drag to make the font faces bigger for a closer look
         size_row = QHBoxLayout()
         size_row.addWidget(QLabel(self.t("fav_size")))
-        self.size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.size_slider = NoScrollSlider(Qt.Orientation.Horizontal)
         self.size_slider.setRange(10, 64)
         self.size_slider.setValue(self._face_px)
         self.size_slider.setToolTip(self.t("fav_size_tip"))

@@ -454,28 +454,11 @@ class PresetKeyHook(QObject):
             return False
 
 
-class NoScrollComboBox(QComboBox):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    def wheelEvent(self, event):
-        if self.hasFocus():
-            super().wheelEvent(event)
-        else:
-            event.ignore()
-
-
-class NoScrollSpinBox(QSpinBox):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    def wheelEvent(self, event):
-        if self.hasFocus():
-            super().wheelEvent(event)
-        else:
-            event.ignore()
+# The wheel-safe controls live in nowheel.py so the panel modules can use
+# them too - they cannot import them from here, because this module imports
+# them. The names stay, so every use below is unchanged.
+from .nowheel import NoScrollComboBox, NoScrollSpinBox     # noqa: E402,F401
+from .nowheel import NoScrollSlider                        # noqa: E402,F401
 
 
 class ScriptTabBar(QTabBar):
@@ -7579,6 +7562,9 @@ class TyperDocker(DockWidget):
                     "typer_kr", k, v),
                 families_fn=font_families)
             lay_giongo.addWidget(self.giongo_panel, 1)
+            # built while another tab is in front: no preview until it is
+            # actually opened (a hidden render cost 2.2 s of Krita's startup)
+            self.giongo_panel.set_active(False)
         except Exception as _gi_exc:      # noqa: BLE001
             _lbl = QLabel("Giongo could not load:\n%s" % _gi_exc)
             _lbl.setWordWrap(True)
@@ -10109,6 +10095,13 @@ class TyperDocker(DockWidget):
         # by hand works straight away — without this you would have to run
         # detection once just to see the page. Re-read on every visit so
         # switching documents in Krita is picked up; never mid-run.
+        _gi = getattr(self, "giongo_panel", None)
+        if _gi is not None:
+            try:
+                _gi.set_active(
+                    self.main_tabs.tabBar().tabData(index) == "giongo")
+            except Exception:                           # noqa: BLE001
+                pass
         try:
             bar = self.main_tabs.tabBar()
             if bar.tabData(index) == "batch" and self._bp_run is None:

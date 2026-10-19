@@ -17,6 +17,8 @@ import json
 import random
 
 from ._qt import Qt, QTimer, QSize, QPointF, QTransform
+from .nowheel import (NoScrollComboBox, NoScrollDoubleSpinBox,
+                      NoScrollSlider, NoScrollSpinBox)
 from ._qt import QColor, QPixmap, QIcon, QImage, QPainter
 from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
@@ -366,6 +368,10 @@ class GiongoPanel(QWidget):
         self._sliders = {}          # key -> (slider, value label, label, steps)
         self._loading = False
         self._rng = random.Random()
+        self._active = True         # the docker turns this off for a tab
+        self._pending = True        # owes a preview as soon as it is shown
+        self._last_size = (0, 0)    # what the last preview was rendered for
+        self._fonts_filled = False  # the family list is filled on first show
         try:
             self._open = json.loads(self._get("giongoOpen", "{}")) or {}
         except ValueError:
@@ -455,7 +461,7 @@ class GiongoPanel(QWidget):
         row = QHBoxLayout()
         self.type_lbl = QLabel()
         row.addWidget(self.type_lbl)
-        self.type_combo = QComboBox()
+        self.type_combo = NoScrollComboBox()
         for tid in G.TYPE_IDS:
             self.type_combo.addItem("", tid)
         self.type_combo.currentIndexChanged.connect(self._on_type)
@@ -468,15 +474,15 @@ class GiongoPanel(QWidget):
         row = QHBoxLayout()
         self.font_lbl = QLabel()
         row.addWidget(self.font_lbl)
-        self.font_combo = QComboBox()
+        self.font_combo = NoScrollComboBox()
         self.font_combo.setEditable(True)
         self.font_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.font_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.font_combo.setMinimumContentsLength(8)
         self.font_combo.addItem("", "")
-        for fam in sorted(self.families(), key=lambda s: s.lower()):
-            self.font_combo.addItem(fam, fam)
+        # the families are added on first show: at Krita's startup nobody is
+        # looking at this tab, and there can be a few thousand of them
         self.font_combo.activated.connect(self._on_font)
         row.addWidget(self.font_combo, 1)
         self.bold_chk = QCheckBox()
@@ -499,7 +505,7 @@ class GiongoPanel(QWidget):
         row = QHBoxLayout()
         self.bg_lbl = QLabel()
         row.addWidget(self.bg_lbl)
-        self.bg_combo = QComboBox()
+        self.bg_combo = NoScrollComboBox()
         for val, _k in _BACKGROUNDS:
             self.bg_combo.addItem("", val)
         bg = self._get("giongoBg", "check")
@@ -564,7 +570,7 @@ class GiongoPanel(QWidget):
         g = self.sec_layout.grid
         self.letter_lbl = QLabel()
         g.addWidget(self.letter_lbl, 0, 0)
-        self.letter_spin = QSpinBox()
+        self.letter_spin = NoScrollSpinBox()
         self.letter_spin.setRange(*G.RANGES["letter_px"])
         self.letter_spin.valueChanged.connect(
             lambda v: self._set_param("letter_px", v))
@@ -588,7 +594,7 @@ class GiongoPanel(QWidget):
             self._add_slider(g, r, *spec)
         self.seed_lbl = QLabel()
         g.addWidget(self.seed_lbl, len(_VAR_SLIDERS), 0)
-        self.seed_spin = QSpinBox()
+        self.seed_spin = NoScrollSpinBox()
         self.seed_spin.setRange(*G.RANGES["seed"])
         self.seed_spin.valueChanged.connect(
             lambda v: self._set_param("seed", v))
@@ -605,7 +611,7 @@ class GiongoPanel(QWidget):
             lambda b: self._pick_color(b, lambda c: self._set_param("fill",
                                                                     c)))
         frow.addWidget(self.fill_btn)
-        self.fill_mode = QComboBox()
+        self.fill_mode = NoScrollComboBox()
         for m in G.FILL_MODES:
             self.fill_mode.addItem("", m)
         self.fill_mode.currentIndexChanged.connect(
@@ -631,7 +637,7 @@ class GiongoPanel(QWidget):
             btn.setFixedWidth(42)
             btn.clicked.connect(lambda *_a, n=i: self._pick_outline(n))
             orow.addWidget(btn)
-            spin = QDoubleSpinBox()
+            spin = NoScrollDoubleSpinBox()
             spin.setRange(0.2, 40.0)
             spin.setSingleStep(0.5)
             spin.setDecimals(1)
@@ -643,7 +649,7 @@ class GiongoPanel(QWidget):
         r = 3 + G.MAX_OUTLINES
         self.omode_lbl = QLabel()
         g.addWidget(self.omode_lbl, r, 0)
-        self.omode_combo = QComboBox()
+        self.omode_combo = NoScrollComboBox()
         for m in G.OUTLINE_MODES:
             self.omode_combo.addItem("", m)
         self.omode_combo.currentIndexChanged.connect(
@@ -702,7 +708,7 @@ class GiongoPanel(QWidget):
     def _add_slider(self, grid, row, key, label_key, lo, hi, steps):
         lbl = QLabel()
         grid.addWidget(lbl, row, 0)
-        sl = QSlider(Qt.Orientation.Horizontal)
+        sl = NoScrollSlider(Qt.Orientation.Horizontal)
         sl.setRange(int(lo * steps), int(hi * steps))
         sl.valueChanged.connect(
             lambda v, k=key, s=steps: self._on_slider(k, v, s))
@@ -947,9 +953,44 @@ class GiongoPanel(QWidget):
             img = base
         return img
 
+    def _fill_fonts(self):
+        if self._fonts_filled:
+            return
+        self._fonts_filled = True
+        keep = self._params.get("font") or ""
+        self.font_combo.blockSignals(True)
+        for fam in sorted(self.families(), key=lambda s: s.lower()):
+            self.font_combo.addItem(fam, fam)
+        self.font_combo.blockSignals(False)
+        self._refresh_font_ui()
+        if keep:
+            idx = self.font_combo.findData(keep)
+            if idx >= 0:
+                self.font_combo.setCurrentIndex(idx)
+
+    def set_active(self, on):
+        """The docker calls this when its tab comes to the front or leaves.
+
+        A panel nobody can see must not render: Krita builds every docker tab
+        at startup, and a preview drawn into a hidden widget cost 2.2 s of the
+        UI thread (measured) to show the result to nobody.
+        """
+        on = bool(on)
+        was = self._active
+        self._active = on
+        if on and not was:
+            self._fill_fonts()
+            if self._pending:
+                self._preview_timer.start()
+
     def _refresh_preview(self):
+        if not self._active:
+            self._pending = True
+            return
+        self._pending = False
         w = max(240, self.preview.width() - 4)
         h = max(160, self.preview.height() - 4)
+        self._last_size = (self.preview.width(), self.preview.height())
         try:
             scene = self.scene()
             img = self._framed(scene, w, h)
@@ -958,9 +999,18 @@ class GiongoPanel(QWidget):
             return
         self.preview.setPixmap(QPixmap.fromImage(img))
 
+    def showEvent(self, ev):            # noqa: N802 (Qt API)
+        super().showEvent(ev)
+        self.set_active(True)
+
     def resizeEvent(self, ev):          # noqa: N802 (Qt API)
         super().resizeEvent(ev)
-        self._preview_timer.start()
+        # Only when the preview really has a different size to fill. A new
+        # pixmap changes the label's size hint, so an unconditional reschedule
+        # here lets a layout pass feed itself.
+        size = (self.preview.width(), self.preview.height())
+        if size != self._last_size:
+            self._preview_timer.start()
 
     def _save_state(self):
         self._set("giongoParams", G.to_json(self._params))
