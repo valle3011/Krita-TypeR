@@ -953,6 +953,7 @@ LANG = {
         "tab_sfx": "SFX",
         "tab_fonts": "Fonts",
         "tab_swap": "Swap",
+        "tab_giongo": "Giongo",
         "st_font_applied": "Font applied: {name}",
         "st_font_starred": "★ Added to favourites: {name}",
         "fav_star_current": "☆ Favourite",
@@ -1311,6 +1312,9 @@ LANG = {
         "enable_swap_tip": ("Lift finished typesetting off the raws onto the "
                            "cleaned pages: only the bottom layer of each .kra is "
                            "replaced."),
+        "enable_giongo": "Enable Giongo tab",
+        "enable_giongo_tip": ("Type a sound effect and get drawn manga SFX "
+                              "lettering: auto type, gacha, outlines, shadow."),
         "sw_busy": "Page {i} of {n}…",
         "sw_cancel": "Cancel",
         "sw_choose": "Choose…",
@@ -1928,6 +1932,7 @@ LANG = {
         "tab_sfx": "SFX",
         "tab_fonts": "Schriften",
         "tab_swap": "Swap",
+        "tab_giongo": "Giongo",
         "st_font_applied": "Schrift übernommen: {name}",
         "st_font_starred": "★ Zu Favoriten hinzugefügt: {name}",
         "fav_star_current": "☆ Favorit",
@@ -2368,6 +2373,10 @@ LANG = {
         "enable_swap_tip": ("Hebt fertiges Typesetting von den Raws auf die "
                            "gecleanten Seiten: Nur die unterste Ebene jeder .kra "
                            "wird ersetzt."),
+        "enable_giongo": "Giongo-Tab aktivieren",
+        "enable_giongo_tip": ("Soundeffekt eintippen und als gezeichneten "
+                              "Manga-Schriftzug bekommen: automatische Art, "
+                              "Gacha, Konturen, Schatten."),
         "sw_busy": "Seite {i} von {n}…",
         "sw_cancel": "Abbrechen",
         "sw_choose": "Wählen…",
@@ -6396,6 +6405,7 @@ class TyperDocker(DockWidget):
         lay_sfx = _page()        # SFX Helper (embedded MangaSFX docker)
         lay_fonts = _page()      # Font favourites (starred fonts + categories)
         lay_swap = _page()       # Swap: raws out, cleaned pages in
+        lay_giongo = _page()     # Giongo: typed sound -> drawn SFX lettering
 
         # Presets are no longer their own tab: they live inside the Type
         # tab as a self-contained panel container. Building them into this
@@ -6683,6 +6693,11 @@ class TyperDocker(DockWidget):
             app.readSetting("typer_kr", "enableSwap", "true") == "true")
         self.enable_swap_chk.toggled.connect(self._on_enable_swap)
         exp_lay.addWidget(self.enable_swap_chk)
+        self.enable_giongo_chk = QCheckBox()
+        self.enable_giongo_chk.setChecked(
+            app.readSetting("typer_kr", "enableGiongo", "true") == "true")
+        self.enable_giongo_chk.toggled.connect(self._on_enable_giongo)
+        exp_lay.addWidget(self.enable_giongo_chk)
         # balloon tools are off by default: most pages come with their balloons
         self.enable_balloon_chk = QCheckBox()
         self.enable_balloon_chk.setChecked(
@@ -7551,6 +7566,25 @@ class TyperDocker(DockWidget):
             _lbl.setStyleSheet("color: gray;")
             lay_swap.addWidget(_lbl)
 
+        # --- Giongo tab (typed sound -> drawn SFX lettering) --------------
+        # Same deal again: a language getter and settings callbacks only.
+        self.giongo_panel = None
+        try:
+            from .giongo_ui import GiongoPanel
+            self.giongo_panel = GiongoPanel(
+                lang_fn=lambda: self._lang,
+                get_setting=lambda k, d="": Krita.instance().readSetting(
+                    "typer_kr", k, d),
+                set_setting=lambda k, v: Krita.instance().writeSetting(
+                    "typer_kr", k, v),
+                families_fn=font_families)
+            lay_giongo.addWidget(self.giongo_panel, 1)
+        except Exception as _gi_exc:      # noqa: BLE001
+            _lbl = QLabel("Giongo could not load:\n%s" % _gi_exc)
+            _lbl.setWordWrap(True)
+            _lbl.setStyleSheet("color: gray;")
+            lay_giongo.addWidget(_lbl)
+
         # status line below the tabs, always visible
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -7585,7 +7619,8 @@ class TyperDocker(DockWidget):
                               ("batch", "tab_batch"),
                               ("shapr", "tab_shapr"), ("sfx", "tab_sfx"),
                               ("fonts", "tab_fonts"),
-                              ("swap", "tab_swap")]
+                              ("swap", "tab_swap"),
+                              ("giongo", "tab_giongo")]
         self._tab_pages = {}          # id -> tab page widget (kept when hidden)
         for i, (tid, _nk) in enumerate(self._tab_defaults):
             self.main_tabs.tabBar().setTabData(i, tid)
@@ -7599,6 +7634,7 @@ class TyperDocker(DockWidget):
         self._on_enable_sfx(self.enable_sfx_chk.isChecked(), save=False)
         self._on_enable_fonts(self.enable_fonts_chk.isChecked(), save=False)
         self._on_enable_swap(self.enable_swap_chk.isChecked(), save=False)
+        self._on_enable_giongo(self.enable_giongo_chk.isChecked(), save=False)
         self._on_enable_balloon(self.enable_balloon_chk.isChecked(), save=False)
         self._on_enable_patterns(self.enable_patterns_chk.isChecked(), save=False)
         self._on_enable_texttypes(
@@ -8407,6 +8443,11 @@ class TyperDocker(DockWidget):
         _swp = getattr(self, "swap_panel", None)
         if _swp is not None:
             _swp.retranslate()
+        self.enable_giongo_chk.setText(t("enable_giongo"))
+        self.enable_giongo_chk.setToolTip(t("enable_giongo_tip"))
+        _gip = getattr(self, "giongo_panel", None)
+        if _gip is not None:
+            _gip.retranslate()
         self.enable_balloon_chk.setText(t("enable_balloon"))
         self.enable_patterns_chk.setText(t("enable_patterns"))
         self.enable_texttypes_chk.setText(t("enable_texttypes"))
@@ -9934,6 +9975,21 @@ class TyperDocker(DockWidget):
         if save:
             Krita.instance().writeSetting(
                 "typer_kr", "enableSwap", "true" if on else "false")
+
+    def _on_enable_giongo(self, on, save=True):
+        """Show or hide the Giongo tab (kept alive when hidden, so its
+        settings and the last rolled options survive switching it off)."""
+        idx = self._tab_index_of("giongo")
+        if on and idx is None:
+            page = self._tab_pages.get("giongo")
+            if page is not None:
+                i = self.main_tabs.addTab(page, self._tab_label("giongo"))
+                self.main_tabs.tabBar().setTabData(i, "giongo")
+        elif not on and idx is not None:
+            self.main_tabs.removeTab(idx)
+        if save:
+            Krita.instance().writeSetting(
+                "typer_kr", "enableGiongo", "true" if on else "false")
 
     def _sync_gated_panels(self):
         """Re-apply the switches that hide a whole panel. Every layout move

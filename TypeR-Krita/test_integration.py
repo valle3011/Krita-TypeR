@@ -672,7 +672,7 @@ if imported:
         _got = [_bar.tabData(i) for i in range(_d.main_tabs.count())]
         check("absent id ignored + unlisted tabs appended at the end",
               _got == ["type", "style", "setup", "shapr", "sfx",
-                       "batch", "fonts", "swap"])
+                       "batch", "fonts", "swap", "giongo"])
         check("content stays in sync with a ghost-id order",
               all(_d.main_tabs.widget(i) is _d._tab_pages.get(_bar.tabData(i))
                   for i in range(_d.main_tabs.count())))

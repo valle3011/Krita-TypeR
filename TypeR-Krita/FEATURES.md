@@ -719,6 +719,36 @@ follows the interface language; only an unexpected malformed-file message comes
 through from the vendored reader, which is German because that copy is kept
 byte-identical.
 
+### Giongo: drawn SFX lettering
+
+Modelled on MIYADAIKU's browser tool 擬音ジェネレーター
+(tools.oyasumi-gamedev.com/giongo/). That tool publishes no licence for its
+code, so nothing of it is copied: only the idea and the workflow (auto type
+from the sound, gacha sheet, macro sliders) are rebuilt here. Its bundled fonts
+are SIL OFL / M+ and could be shipped legally, but are not bundled — the types
+name them as suggestions and fall back to the default sans.
+
+- `giongo.py` — Qt-free: `TYPES` (look + font suggestions per kind of sound),
+  `DEFAULTS`/`RANGES` + `sanitize()` (every loaded or shared set is clamped),
+  `classify()`/`omakase()` (the rule table), `effective()` (macros on top of
+  the individual settings), `layout()` (placements along a quadratic path
+  whose *arc* length matches the letters, so bending never squeezes them),
+  `gacha()`/`mutate()`/`reroll()` (reproducible from the seed)
+- `giongo_render.py` — placements → a *scene* (layers back to front, one path
+  and one paint each); the same scene is painted into a QImage or written as
+  SVG, so preview, paint layer, vector layer and files cannot drift apart.
+  Glyphs are outlines (`QPainterPath.addText`), never live text, so shear,
+  stretch and thicken work on them and the SVG does not need the font.
+- `giongo_ui.py` — the tab; Krita is imported only when inserting
+- Stored in kritarc as `enableGiongo`, `giongoParams` (JSON), `giongoText`,
+  `giongoOpen`, `giongoBg`, `giongoFit`, `giongoSaveDir`
+- Tests: `test_giongo.py`
+
+Not (yet) rebuilt from the original: brush lettering drawn from extracted
+centrelines (pen / marker / brush / slab / lightning strokes), decorations
+(impact rays, debris, sparkle, drops), point editing and liquify, the page
+mode, PSD / per-layer export.
+
 ### Is there a newer version?
 
 A Krita plugin has no updater and no package manager behind it, so nothing

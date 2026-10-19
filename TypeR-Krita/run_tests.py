@@ -20,6 +20,7 @@ SUITES = [
     "test_integration.py",     # #12 Krita-stub integration #13 font picker
     "test_fontfav.py",         # font-favourites core (categories, 1..n links)
     "test_fontmatch.py",       # tolerant font-family matching (spelling drift)
+    "test_giongo.py",          # Giongo: sound rules, layout, render, panel
 ]
 
 MODULES = [
@@ -36,6 +37,8 @@ MODULES = [
     "typer_kr/swapr/kra.py", "typer_kr/swapr/pairing.py",
     "typer_kr/swapr/swap.py",
     "typer_kr/texttypes.py", "typer_kr/sfx/sfx_docker.py",
+    "typer_kr/giongo.py", "typer_kr/giongo_render.py",
+    "typer_kr/giongo_ui.py",
     "typer_kr/sfx/svg_builder.py", "typer_kr/sfx/i18n.py",
     "typer_kr/sfx/config.py",
 ]

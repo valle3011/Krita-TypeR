@@ -106,6 +106,8 @@ nothing was removed, everything is one click away. **Type**, **Style** and
 - **Swap** – once the cleans arrive, lift the finished typesetting off the
   raws onto them: only the bottom layer of each `.kra` is replaced (see *Swap*
   below).
+- **Giongo** – type a sound effect (`ドーーン！`, `BOOM!`) and get drawn manga
+  SFX lettering: auto type, gacha, outlines, shadow (see *Giongo* below).
 
 A **BubblR** tab with automatic bubble detection exists in the source but is
 locked off in a release build, so you will not see it or its switch. The Batch
@@ -333,6 +335,48 @@ typesetting in another tab.
 > The same thing also exists as a **standalone program** (`SwapR`), which does
 > not need Krita at all — handy for running a chapter while Krita is closed.
 > The plugin and the program share the same `.kra` code.
+
+## Giongo: drawn SFX lettering from a typed sound
+
+The **Giongo** tab turns a typed sound effect into manga lettering: every
+letter placed on its own along a curved path, growing toward you or shrinking
+away, leaning, bouncing and wobbling, with stacked outlines, a shadow or 3D
+extrusion, trembling and afterimages. The idea comes from MIYADAIKU's browser
+tool [擬音ジェネレーター](https://tools.oyasumi-gamedev.com/giongo/) (Oyasumi
+Game Dev); this is an independent implementation for Krita, none of that
+tool's code is used.
+
+1. **Type the sound.** A line break splits it into groups placed one below the
+   other (or side by side when vertical). `ーー` becomes one long stroke.
+2. **✨ Auto** picks the kind of sound from how the word is built — dakuten,
+   ッ, ー, ン, repeats, small kana, a few known words — with a fixed rule
+   table (no AI): `ドーーン！` hits, `ゴゴゴゴ` rumbles, `シュッ` slashes,
+   `ふわふわ` is soft, `きゃぁぁぁ` is a shriek. Each kind brings its look and a
+   list of free fonts to try (Dela Gothic One, Reggae One, Mochiy Pop One, …);
+   the first one installed is used, otherwise the default sans. Pick any font
+   yourself in **Font**.
+3. **🎲 Gacha** rolls a sheet of six options — mostly the kinds the sound
+   suggests, now and then another — and **🧬 Mutate** rolls variations of the
+   current look. Click one to take it; **↶ Back** returns to the previous
+   settings. **🎲 Other shape** keeps everything and only re-rolls the wobble
+   (the **Seed** under *Variation* brings a shape back exactly).
+4. **Power / Roughness / Momentum** push a whole group of settings at once
+   (thickness + size progression + outlines; wobble + angle and size
+   variation; lean + slant + stretch + rise). The individual settings below
+   them stay the truth: 0 on a macro changes nothing.
+5. **Insert (vector)** puts the lettering on a new vector layer as editable
+   shapes — the glyph outlines themselves, so the file does not need the font.
+   **Insert (pixels)** makes a paint layer. With a selection the lettering is
+   centred in it and, with **Fit into the selection**, scaled to fill it;
+   otherwise it lands in the middle of the canvas at the letter size. A
+   **halftone** fill has no vector form Krita imports, so it is always
+   inserted as pixels. **Save PNG… / Save SVG…** write it to a file instead.
+
+Outlines are listed inner first; **Per letter** lets each nearer letter's
+outline cut into the one behind it, **Merged** draws one outline around the
+whole word. Widths and offsets are a percentage of the letter size, so a look
+stays the same at any size. Everything — text, settings, open sections — is
+remembered between sessions.
 
 ## PDF scripts
 
@@ -677,6 +721,9 @@ the text cleanly for the current bubble.
 | `typer_kr/patternfind.py` | Finds the repeating tile in a crop of a pattern |
 | `typer_kr/swapr/` | Swap: reading and writing `.kra` (Krita's tile format), pairing pages, putting a clean under finished typesetting |
 | `typer_kr/swapr_ui.py` | The Swap tab |
+| `typer_kr/giongo.py` | Giongo, Qt-free: sound types, the auto rule table, macro sliders, letter layout along a path, gacha / mutate |
+| `typer_kr/giongo_render.py` | Giongo drawing: glyph outlines, outlines / shadow / extrusion / afterimage layers, image + SVG output |
+| `typer_kr/giongo_ui.py` | The Giongo tab |
 | `typer_kr/hyph/` | Bundled, freely-licensed hyphenation patterns + LICENSE |
 | `typer_kr/sfx/` | The MangaSFX docker: SFX styling, double outline, texture/pattern fill, vector + raster insert |
 | `typer_kr/__init__.py` | Registers the docker with Krita |
@@ -693,9 +740,10 @@ python run_tests.py
 ```
 
 It runs static checks (`py_compile`, `pyflakes`, plus a guard against
-PyQt6-incompatible spellings) and six suites — pure layout and script logic,
+PyQt6-incompatible spellings) and seven suites — pure layout and script logic,
 metamorphic/property/boundary/regression checks, SVG structure + i18n integrity,
-font favourites, tolerant font-family matching, and a Krita-stub integration
+font favourites, tolerant font-family matching, the Giongo tab (rules, layout,
+rendering, inserting into a stub document), and a Krita-stub integration
 suite that drives the real insert path, font picker, keybinds and session
 persistence headless.
 
