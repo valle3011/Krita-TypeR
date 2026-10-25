@@ -19,6 +19,14 @@ _spec = importlib.util.spec_from_file_location(
 FF = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(FF)
 
+# fontinfo asks fontmatch for the vocabulary of cut names, so the package
+# directory goes on the path and the plain import inside it resolves.
+sys.path.insert(0, os.path.join(_HERE, "typer_kr"))
+_ispec = importlib.util.spec_from_file_location(
+    "fontinfo", os.path.join(_HERE, "typer_kr", "fontinfo.py"))
+FI = importlib.util.module_from_spec(_ispec)
+_ispec.loader.exec_module(FI)
+
 _pass = _fail = 0
 
 
@@ -191,6 +199,88 @@ check("ui state does not leak into the data model",
 check("None category round-trips as None",
       FF.FavoritesStore.from_json(
           FF.FavoritesStore().to_json()).ui_get("last_category") is None)
+
+# --- what the properties window knows (fontinfo) ---------------------------
+check("the same font spelled two ways is one font",
+      FI.same_font("CC Wild Words", "CCWildWords")
+      and FI.same_font("Anime Ace", "anime ace"))
+check("...but two different fonts are not",
+      not FI.same_font("Arial", "Arial Black")
+      and not FI.same_font("Anime Ace", "Anime Ace 2.0")
+      and not FI.same_font("", "Arial"))
+
+check("a cut is split off the name",
+      FI.split_cut_name("Anime Ace Bold Italic") == ("Anime Ace",
+                                                     "Bold Italic"))
+check("a font with no cut keeps its whole name",
+      FI.split_cut_name("CC Wild Words") == ("CC Wild Words", ""))
+check("a font NAMED after a weight does not dissolve into a cut",
+      FI.split_cut_name("Black") == ("Black", ""))
+check("Regular is a cut like any other",
+      FI.split_cut_name("Badaboom BB Regular") == ("Badaboom BB", "Regular"))
+
+_installed = ["Anime Ace", "Anime Ace Bold", "AnimeAce Italic",
+              "Anime Ace 2.0", "CC Wild Words", "Arial"]
+_kin = FI.relatives("Anime Ace", _installed)
+check("a family gathers its own cuts, however they are spelled",
+      _kin == ["Anime Ace", "Anime Ace Bold", "AnimeAce Italic"])
+check("...and leaves a different family alone",
+      "Anime Ace 2.0" not in _kin and "Arial" not in _kin)
+check("a font nothing is installed for still reports itself",
+      FI.relatives("Ghost Sans", []) == ["Ghost Sans"])
+check("the cuts come back named",
+      FI.cuts_of("Anime Ace", _installed)[1] == ("Anime Ace Bold", "Bold"))
+check("an empty name asks nothing", FI.relatives("", _installed) == []
+      and FI.split_cut_name("") == ("", ""))
+
+_groups = {
+    "Chainsaw Man": {
+        "Denji": {"normal": {"font": "CC Wild Words", "size": 12},
+                  "shout": {"font": "Badaboom BB"}},
+        "": {"narration": {"font": "CCWildWords"}},
+    },
+    "Berserk": {
+        "Guts": {"normal": {"font": "Anime Ace Bold"},
+                 "broken": {"font": ""},
+                 "odd": "not a dict"},
+    },
+    "empty": {},
+    "wrong": "not a dict either",
+}
+_rows = FI.preset_uses(_groups, "CC Wild Words")
+check("a preset that uses the font is found, whatever the spelling",
+      len(_rows) == 2 and {r[2] for r in _rows} == {"normal", "narration"})
+check("...with its manga and its character",
+      _rows[0][0] == "Chainsaw Man" and ("Denji", "") ==
+      (_rows[1][1], _rows[0][1]))
+check("rubbish in the tree is stepped over, not tripped on",
+      FI.preset_uses(_groups, "Anime Ace Bold") == [
+          ("Berserk", "Guts", "normal", "Anime Ace Bold")])
+check("asking for a whole family finds the cut too",
+      len(FI.preset_uses(_groups, ["Anime Ace", "Anime Ace Bold"])) == 1)
+check("a font in no preset says so, rather than guessing",
+      FI.preset_uses(_groups, "Comic Sans MS") == []
+      and FI.preset_uses({}, "CC Wild Words") == []
+      and FI.preset_uses(_groups, "") == [])
+check("the rows read manga, character, preset",
+      all(len(r) == 4 for r in _rows))
+
+_types = {"SFX": "Badaboom BB", "Dialogue": "CC Wild Words", "Thought": ""}
+check("a text type set to the font is found",
+      FI.type_uses(_types, "CCWildWords") == [("Dialogue", "CC Wild Words")])
+check("...and none is honestly none",
+      FI.type_uses(_types, "Arial") == [] and FI.type_uses({}, "Arial") == [])
+
+check("a font file is named by its kind",
+      FI.file_kind("C:/x/Wild.TTF") == "TrueType"
+      and FI.file_kind("x.otf") == "OpenType" and FI.file_kind("x") == "")
+check("a size reads the way a properties window writes it",
+      FI.human_size(22204).startswith("21.7 KB")
+      and "22,204 bytes" in FI.human_size(22204)
+      and FI.human_size(900) == "900 bytes" and FI.human_size(None) == "")
+check("...in the separators of whoever is reading it",
+      FI.human_size(22204, ".", ",") == "21,7 KB (22.204 bytes)"
+      and FI.human_size(9000, ".", ",") == "8,8 KB (9.000 bytes)")
 
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

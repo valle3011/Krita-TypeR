@@ -14,6 +14,7 @@ the one that fits, then fine-tune with the three macro sliders or the
 individual settings below them.
 """
 import json
+import os
 import random
 
 from ._qt import Qt, QTimer, QSize, QPointF, QTransform
@@ -23,11 +24,12 @@ from ._qt import QColor, QPixmap, QIcon, QImage, QPainter
 from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QComboBox, QCheckBox, QSlider, QSpinBox, QPlainTextEdit, QToolButton,
-    QColorDialog, QFileDialog, QSizePolicy, QDoubleSpinBox,
+    QColorDialog, QFileDialog, QSizePolicy, QDoubleSpinBox, QDialog,
 )
 
 from . import giongo as G
 from . import giongo_render as R
+from . import strokefont as SF
 
 _EN = {
     "gi_intro": ("Type a sound effect and get drawn manga lettering. Line "
@@ -71,6 +73,26 @@ _EN = {
     "gi_rough_tip": "Wobble, angle and size variation together",
     "gi_momentum": "Momentum",
     "gi_momentum_tip": "Lean, slant, stretch and rise together",
+    "gi_sec_pen": "Stroke lettering",
+    "gi_pen": "Pen:",
+    "gi_pen_tip": ("Draws each letter along the middle of its strokes, "
+                   "in the order and the direction a hand writes them, "
+                   "instead of filling the font's outline. Kana, Latin, "
+                   "digits and punctuation are covered; anything else keeps "
+                   "the font."),
+    "gi_pen_off": "Off (use the font)",
+    "gi_pen_pen": "Pen - thin and even",
+    "gi_pen_marker": "Marker - one weight",
+    "gi_pen_brush": "Brush - heavy, runs out",
+    "gi_pen_board": "Board - heaviest, cut ends",
+    "gi_pen_lightning": "Lightning - splintered",
+    "gi_pen_rough": "Dry - scratchy, specks",
+    "gi_pen_width": "Weight",
+    "gi_pen_taper": "Taper",
+    "gi_pen_wobble": "Wobble",
+    "gi_pen_angle": "Cut angle",
+    "gi_pen_dry": "Dry gaps",
+    "gi_pen_missing": "{n} character(s) have no stroke lines: {chars}",
     "gi_sec_layout": "Layout",
     "gi_sec_var": "Variation",
     "gi_sec_fill": "Fill & outlines",
@@ -99,6 +121,14 @@ _EN = {
     "gi_fill_gradient": "Gradient",
     "gi_fill_tone": "Halftone",
     "gi_fill2": "to",
+    "gi_fill_pattern": "Pattern",
+    "gi_pattern_pick": "Choose tile\u2026",
+    "gi_pattern_none": "no tile chosen",
+    "gi_pattern_scale": "Tile size",
+    "gi_pattern_tip": ("Fills the letters with a tile from your pattern "
+                       "library - the generated ones and the ones lifted "
+                       "from a crop of a page. Inserted as pixels, like a "
+                       "halftone."),
     "gi_tone_dot": "Dot spacing",
     "gi_thicken": "Thicken",
     "gi_outline_n": "Outline {n}",
@@ -117,6 +147,13 @@ _EN = {
     "gi_fit": "Fit into the selection",
     "gi_fit_tip": ("With a selection, the lettering is scaled to fill it; "
                    "otherwise it is placed at the letter size."),
+    "gi_popout": "↗ Own window",
+    "gi_popout_tip": ("Move this panel into a window of its own. It gets "
+                      "wider there and arranges itself in columns; Krita "
+                      "stays usable. Closing the window puts it back in "
+                      "the tab."),
+    "gi_popin": "↙ Back into the tab",
+    "gi_window": "Giongo – drawn sound effects",
     "gi_insert_vec": "Insert (vector)",
     "gi_insert_vec_tip": ("Editable shapes on a new vector layer. A halftone "
                           "fill is inserted as pixels instead."),
@@ -187,6 +224,26 @@ _DE = {
     "gi_rough_tip": "Wackeln, Winkel- und Größenstreuung zusammen",
     "gi_momentum": "Schwung",
     "gi_momentum_tip": "Neigung, Schräge, Streckung und Anstieg zusammen",
+    "gi_sec_pen": "Strichschrift",
+    "gi_pen": "Stift:",
+    "gi_pen_tip": ("Zeichnet jeden Buchstaben entlang der Mitte seiner "
+                   "Striche – in der Reihenfolge und der Richtung, in der "
+                   "man sie schreibt –, statt den Umriss der Schrift zu "
+                   "füllen. Kana, Latein, Ziffern und Satzzeichen sind "
+                   "abgedeckt; alles andere behält die Schrift."),
+    "gi_pen_off": "Aus (Schrift benutzen)",
+    "gi_pen_pen": "Stift – dünn und gleichmäßig",
+    "gi_pen_marker": "Marker – eine Stärke",
+    "gi_pen_brush": "Pinsel – schwer, läuft aus",
+    "gi_pen_board": "Brett – am schwersten, geschnitten",
+    "gi_pen_lightning": "Blitz – gesplittert",
+    "gi_pen_rough": "Trocken – kratzig, Spritzer",
+    "gi_pen_width": "Stärke",
+    "gi_pen_taper": "Auslauf",
+    "gi_pen_wobble": "Wackeln",
+    "gi_pen_angle": "Schnittwinkel",
+    "gi_pen_dry": "Trockenlücken",
+    "gi_pen_missing": "{n} Zeichen haben keine Strichlinien: {chars}",
     "gi_sec_layout": "Anordnung",
     "gi_sec_var": "Streuung",
     "gi_sec_fill": "Füllung & Konturen",
@@ -216,6 +273,14 @@ _DE = {
     "gi_fill_gradient": "Verlauf",
     "gi_fill_tone": "Raster",
     "gi_fill2": "bis",
+    "gi_fill_pattern": "Muster",
+    "gi_pattern_pick": "Kachel wählen\u2026",
+    "gi_pattern_none": "keine Kachel gewählt",
+    "gi_pattern_scale": "Kachelgröße",
+    "gi_pattern_tip": ("Füllt die Buchstaben mit einer Kachel aus deiner "
+                       "Musterbibliothek – den erzeugten und den aus einem "
+                       "Ausschnitt geholten. Wird als Pixel eingefügt, wie "
+                       "ein Raster."),
     "gi_tone_dot": "Punktabstand",
     "gi_thicken": "Verdicken",
     "gi_outline_n": "Kontur {n}",
@@ -234,6 +299,13 @@ _DE = {
     "gi_fit": "In die Auswahl einpassen",
     "gi_fit_tip": ("Mit Auswahl wird der Schriftzug auf ihre Größe skaliert, "
                    "sonst in der Zeichengröße eingesetzt."),
+    "gi_popout": "↗ Eigenes Fenster",
+    "gi_popout_tip": ("Verschiebt dieses Panel in ein eigenes Fenster. Dort "
+                      "ist es breiter und ordnet sich in Spalten; Krita "
+                      "bleibt bedienbar. Schließt du das Fenster, sitzt es "
+                      "wieder im Tab."),
+    "gi_popin": "↙ Zurück in den Tab",
+    "gi_window": "Giongo – gezeichnete Soundeffekte",
     "gi_insert_vec": "Einfügen (Vektor)",
     "gi_insert_vec_tip": ("Bearbeitbare Formen auf einer neuen Vektorebene. "
                           "Eine Rasterfüllung wird stattdessen als Pixel "
@@ -350,16 +422,36 @@ class _Section(QWidget):
             self._on_toggle(self.key, on)
 
 
+class GiongoWindow(QDialog):
+    """A plain window holding the panel. Not modal: Krita stays usable."""
+
+    def __init__(self, panel, parent=None):
+        super().__init__(parent)
+        self._panel = panel
+        self.setModal(False)
+        self.setSizeGripEnabled(True)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.addWidget(panel)
+
+    def closeEvent(self, ev):           # noqa: N802 (Qt API)
+        # hand the panel back before the window goes, or it would be
+        # destroyed along with it
+        self._panel.dock_back()
+        super().closeEvent(ev)
+
+
 class GiongoPanel(QWidget):
     """Text in, a sheet of options, lettering on the page."""
 
     def __init__(self, lang_fn=None, get_setting=None, set_setting=None,
-                 families_fn=None, parent=None):
+                 families_fn=None, pick_pattern_fn=None, parent=None):
         super().__init__(parent)
         self._lang_fn = lang_fn or (lambda: "en")
         self._get = get_setting or (lambda _k, d="": d)
         self._set = set_setting or (lambda _k, _v: None)
         self._families_fn = families_fn or (lambda: [])
+        self._pick_pattern_fn = pick_pattern_fn
         self._families = None
         self._params = G.from_json(self._get("giongoParams", "")) \
             if self._get("giongoParams", "") else G.default_params("impact")
@@ -369,6 +461,12 @@ class GiongoPanel(QWidget):
         self._loading = False
         self._rng = random.Random()
         self._active = True         # the docker turns this off for a tab
+        self._tab_active = True     # ...kept apart from the window, which is
+        self._popped = False        # on screen whatever the tab is doing
+        self._blocks = []           # the groups the grid arranges
+        self._cols = 0              # how many columns they sit in now
+        self._home = None           # the layout to go back to
+        self._window = None
         self._pending = True        # owes a preview as soon as it is shown
         self._last_size = (0, 0)    # what the last preview was rendered for
         self._fonts_filled = False  # the family list is filled on first show
@@ -380,6 +478,12 @@ class GiongoPanel(QWidget):
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(90)
         self._preview_timer.timeout.connect(self._refresh_preview)
+        # owned by the panel, so it cannot fire into a panel that is gone
+        # (a bare QTimer.singleShot once took Krita down that way)
+        self._layout_timer = QTimer(self)
+        self._layout_timer.setSingleShot(True)
+        self._layout_timer.setInterval(0)
+        self._layout_timer.timeout.connect(self._recheck_columns)
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(600)
@@ -441,16 +545,37 @@ class GiongoPanel(QWidget):
 
     # --- building ----------------------------------------------------------
 
+    def _new_block(self):
+        """Start a new group. Everything added after this lands in it.
+
+        The build code below keeps writing to `lay` as it always did; only
+        where a new group begins does `lay` come to point at a fresh one.
+        """
+        box = QWidget()
+        inner = QVBoxLayout(box)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.setSpacing(6)
+        self._blocks.append(box)
+        return inner
+
     def _build(self):
-        lay = QVBoxLayout()
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
-        self.setLayout(lay)
+        self._grid = QGridLayout()
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setHorizontalSpacing(14)
+        self._grid.setVerticalSpacing(6)
+        self.setLayout(self._grid)
+        lay = self._new_block()
 
         self.intro = QLabel()
         self.intro.setWordWrap(True)
         self.intro.setStyleSheet("color: gray;")
         lay.addWidget(self.intro)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.popout_btn = QPushButton()
+        self.popout_btn.clicked.connect(self.on_popout)
+        row.addWidget(self.popout_btn)
+        lay.addLayout(row)
 
         self.text_edit = QPlainTextEdit()
         self.text_edit.setFixedHeight(58)
@@ -585,6 +710,7 @@ class GiongoPanel(QWidget):
         g.addWidget(self.bars_chk, 2, 0, 1, 3)
         for r, spec in enumerate(_LAYOUT_SLIDERS, start=3):
             self._add_slider(g, r, *spec)
+        lay = self._new_block()
         lay.addWidget(self.sec_layout)
 
         self.sec_var = _Section("var", self._open.get("var", False),
@@ -599,6 +725,35 @@ class GiongoPanel(QWidget):
         self.seed_spin.valueChanged.connect(
             lambda v: self._set_param("seed", v))
         g.addWidget(self.seed_spin, len(_VAR_SLIDERS), 1, 1, 2)
+        lay = self._new_block()
+        self.sec_pen = _Section("pen", self._open.get("pen", True),
+                                self._on_section)
+        g = self.sec_pen.grid
+        self.pen_lbl = QLabel()
+        g.addWidget(self.pen_lbl, 0, 0)
+        self.pen_combo = NoScrollComboBox()
+        for name in G.PENS:
+            self.pen_combo.addItem("", name)
+        self.pen_combo.currentIndexChanged.connect(
+            lambda *_a: self._set_param("pen",
+                                        self.pen_combo.currentData() or "off"))
+        g.addWidget(self.pen_combo, 0, 1, 1, 2)
+        self.pen_hint = QLabel()
+        self.pen_hint.setWordWrap(True)
+        self.pen_hint.setStyleSheet("color: #a07000;")
+        self.pen_hint.setVisible(False)
+        g.addWidget(self.pen_hint, 1, 0, 1, 3)
+        for r, (key, lk) in enumerate(
+                (("pen_width", "gi_pen_width"),
+                 ("pen_taper", "gi_pen_taper"),
+                 ("pen_wobble", "gi_pen_wobble"),
+                 ("pen_angle", "gi_pen_angle"),
+                 ("pen_dry", "gi_pen_dry"))):
+            lo, hi = G.RANGES[key]
+            self._add_slider(g, r + 2, key, lk, lo, hi, 1)
+        lay.addWidget(self.sec_pen)
+
+        lay = self._new_block()
         lay.addWidget(self.sec_var)
 
         self.sec_fill = _Section("fill", self._open.get("fill", True),
@@ -626,6 +781,17 @@ class GiongoPanel(QWidget):
         frow.addWidget(self.fill2_btn)
         g.addLayout(frow, 0, 1, 1, 2)
         self._add_slider(g, 1, "tone_dot", "gi_tone_dot", 3, 60, 1)
+        prow = QHBoxLayout()
+        self.pattern_btn = QPushButton()
+        self.pattern_btn.clicked.connect(self.on_pick_pattern)
+        prow.addWidget(self.pattern_btn)
+        self.pattern_lbl = QLabel()
+        self.pattern_lbl.setStyleSheet("color: gray;")
+        prow.addWidget(self.pattern_lbl, 1)
+        g.addLayout(prow, 2, 0, 1, 3)
+        self._add_slider(g, 3, "fill_pattern_scale", "gi_pattern_scale",
+                         10, 400, 1)
+
         self._add_slider(g, 2, "thicken", "gi_thicken", 0, 12, 4)
         self._outline_rows = []
         for i in range(G.MAX_OUTLINES):
@@ -656,6 +822,7 @@ class GiongoPanel(QWidget):
             lambda _i: self._set_param("outline_mode",
                                        self.omode_combo.currentData()))
         g.addWidget(self.omode_combo, r, 1, 1, 2)
+        lay = self._new_block()
         lay.addWidget(self.sec_fill)
 
         self.sec_shadow = _Section("shadow", self._open.get("shadow", False),
@@ -669,9 +836,11 @@ class GiongoPanel(QWidget):
             lambda b: self._pick_color(
                 b, lambda c: self._set_param("shadow_color", c)))
         g.addWidget(self.shadow_btn, len(_SHADOW_SLIDERS), 1)
+        lay = self._new_block()
         lay.addWidget(self.sec_shadow)
 
         # output
+        lay = self._new_block()
         self.fit_chk = QCheckBox()
         self.fit_chk.setChecked(self._get("giongoFit", "true") == "true")
         self.fit_chk.toggled.connect(
@@ -704,6 +873,7 @@ class GiongoPanel(QWidget):
         self.status_lbl.setStyleSheet("color: gray;")
         lay.addWidget(self.status_lbl)
         lay.addStretch(1)
+        self._place_blocks(1)
 
     def _add_slider(self, grid, row, key, label_key, lo, hi, steps):
         lbl = QLabel()
@@ -783,7 +953,18 @@ class GiongoPanel(QWidget):
         self.insert_px_btn.setText(t("gi_insert_px"))
         self.save_png_btn.setText(t("gi_save_png"))
         self.save_svg_btn.setText(t("gi_save_svg"))
+        self.pattern_btn.setText(t("gi_pattern_pick"))
+        self.pattern_btn.setToolTip(t("gi_pattern_tip"))
+        self._refresh_pattern_name()
+        self.pen_lbl.setText(t("gi_pen"))
+        self.pen_combo.setToolTip(t("gi_pen_tip"))
+        for i, name in enumerate(G.PENS):
+            self.pen_combo.setItemText(i, t("gi_pen_" + name))
+        self._refresh_pen_hint()
         self.reset_btn.setText(t("gi_reset"))
+        self.popout_btn.setText(t("gi_popin") if self._popped
+                                else t("gi_popout"))
+        self.popout_btn.setToolTip(t("gi_popout_tip"))
         self._refresh_font_ui()
         self._refresh_option_tips()
 
@@ -835,6 +1016,12 @@ class GiongoPanel(QWidget):
         if sl:
             for w in sl[:3]:
                 w.setEnabled(p["fill_mode"] == "tone")
+        sl = self._sliders.get("fill_pattern_scale")
+        if sl:
+            for w in sl[:3]:
+                w.setEnabled(p["fill_mode"] == "pattern")
+        if hasattr(self, "pattern_lbl"):
+            self.pattern_lbl.setEnabled(p["fill_mode"] == "pattern")
         # outline k only makes sense when the ones before it are on
         prev_on = True
         for chk, btn, spin in self._outline_rows:
@@ -968,6 +1155,132 @@ class GiongoPanel(QWidget):
             if idx >= 0:
                 self.font_combo.setCurrentIndex(idx)
 
+    # --- arranging in columns ---------------------------------------
+
+    def _columns_for(self, width):
+        """How many columns this width can carry.
+
+        A Krita docker is rarely wider than 500 px, so it gets one; a window
+        the user has pulled open gets two or three.
+        """
+        if width < 780:
+            return 1
+        if width < 1180:
+            return 2
+        return 3
+
+    def _split_blocks(self, cols):
+        """Which block goes in which column, in reading order.
+
+        The first block holds the text and the preview and is what the eye
+        goes to, so it keeps a column of its own as soon as there are two.
+        """
+        blocks = [b for b in self._blocks if b is not None]
+        if not blocks:
+            return []
+        if cols <= 1:
+            return [blocks]
+        if cols == 2:
+            return [[blocks[0]], blocks[1:]]
+        rest = blocks[1:]
+        half = (len(rest) + 1) // 2
+        return [[blocks[0]], rest[:half], rest[half:]]
+
+    def _recheck_columns(self):
+        """Re-read the width once the layout has settled.
+
+        Right after a move the panel still reports the width it had in the
+        place it came from, so asking straight away gives the old answer.
+        """
+        self._place_blocks(self._columns_for(self.width()))
+
+    def _place_blocks(self, cols):
+        """(Re)arrange the groups. Does nothing when the count is unchanged."""
+        cols = max(1, int(cols))
+        if cols == self._cols:
+            return
+        self._cols = cols
+        grid = self._grid
+        for i in reversed(range(grid.count())):
+            item = grid.takeAt(i)
+            w = item.widget() if item is not None else None
+            if w is not None:
+                w.setParent(None)       # self._blocks still holds it
+        columns = self._split_blocks(cols)
+        rows = 0
+        for c, column in enumerate(columns):
+            for r, block in enumerate(column):
+                grid.addWidget(block, r, c)
+                block.setParent(self)
+                block.show()
+            rows = max(rows, len(column))
+            # the first column carries the preview, so it may take more room
+            grid.setColumnStretch(c, 3 if c == 0 else 2)
+        for c in range(len(columns), 4):
+            grid.setColumnStretch(c, 0)
+        grid.setRowStretch(rows, 1)
+
+    # --- tab or window ------------------------------------------------------
+
+    def on_popout(self, *_a):
+        """The button: out into a window, or back into the tab."""
+        if self._popped:
+            if self._window is not None:
+                self._window.close()    # its closeEvent docks the panel back
+            return
+        self.pop_out()
+
+    def pop_out(self):
+        """Move this panel into a window of its own."""
+        if self._popped:
+            if self._window is not None:
+                self._window.raise_()
+            return
+        parent = self.parentWidget()
+        self._home = parent.layout() if parent is not None else None
+        win = GiongoWindow(self, self.window())
+        win.setWindowTitle(self._t("gi_window"))
+        self._window = win
+        self._popped = True
+        self._restore_geometry(win)
+        self.popout_btn.setText(self._t("gi_popin"))
+        self._apply_active()
+        win.show()
+        self._layout_timer.start()
+
+    def dock_back(self):
+        """Put the panel back where it came from."""
+        if not self._popped:
+            return
+        if self._window is not None:
+            self._remember_geometry(self._window)
+        self._popped = False
+        self._window = None
+        if self._home is not None:
+            self._home.addWidget(self)
+        self.popout_btn.setText(self._t("gi_popout"))
+        self._apply_active()
+        self._layout_timer.start()
+
+    def _remember_geometry(self, win):
+        g = win.geometry()
+        self._set("giongoWinGeom", "%d,%d,%d,%d"
+                  % (g.x(), g.y(), g.width(), g.height()))
+
+    def _restore_geometry(self, win):
+        """Put the window back where it was, if that is still on a screen."""
+        raw = self._get("giongoWinGeom", "")
+        parts = [p for p in str(raw).split(",") if p.strip()]
+        if len(parts) == 4:
+            try:
+                x, y, w, h = (int(p) for p in parts)
+            except ValueError:
+                x = y = w = h = 0
+            if w >= 420 and h >= 320:
+                win.setGeometry(x, y, w, h)
+                return
+        win.resize(1180, 760)
+
     def set_active(self, on):
         """The docker calls this when its tab comes to the front or leaves.
 
@@ -975,7 +1288,12 @@ class GiongoPanel(QWidget):
         at startup, and a preview drawn into a hidden widget cost 2.2 s of the
         UI thread (measured) to show the result to nobody.
         """
-        on = bool(on)
+        self._tab_active = bool(on)
+        self._apply_active()
+
+    def _apply_active(self):
+        """A window is on screen whatever the tab behind it is doing."""
+        on = self._tab_active or self._popped
         was = self._active
         self._active = on
         if on and not was:
@@ -983,11 +1301,58 @@ class GiongoPanel(QWidget):
             if self._pending:
                 self._preview_timer.start()
 
+    def on_pick_pattern(self, *_a):
+        """Ask the docker for a tile out of the pattern library."""
+        if self._pick_pattern_fn is None:
+            self._status(self._t("gi_pattern_none"))
+            return
+        try:
+            img, path = self._pick_pattern_fn()
+        except Exception:                           # noqa: BLE001
+            img, path = None, ""
+        if not path:
+            return
+        self._push_history()
+        self._set_param("fill_pattern", path)
+        self._set_param("fill_mode", "pattern")
+        self.fill_mode.setCurrentIndex(
+            max(0, self.fill_mode.findData("pattern")))
+        self._refresh_pattern_name()
+        self._refresh_enabled()
+        self._schedule()
+
+    def _refresh_pattern_name(self):
+        """Show which tile is in use, by its file name."""
+        if not hasattr(self, "pattern_lbl"):
+            return
+        path = self._params.get("fill_pattern", "")
+        self.pattern_lbl.setText(os.path.basename(path) if path
+                                 else self._t("gi_pattern_none"))
+
+    def _refresh_pen_hint(self):
+        """Say which characters the pen cannot draw, if any.
+
+        Silence would be worse than a note: a kanji simply keeps the font's
+        outline, and seeing one letter in a different hand without being told
+        why looks like a fault.
+        """
+        if not hasattr(self, "pen_hint"):
+            return
+        if self._params.get("pen", "off") == "off":
+            self.pen_hint.setVisible(False)
+            return
+        missing = SF.missing(self.text())
+        self.pen_hint.setVisible(bool(missing))
+        if missing:
+            self.pen_hint.setText(self._t("gi_pen_missing").format(
+                n=len(missing), chars=" ".join(missing[:12])))
+
     def _refresh_preview(self):
         if not self._active:
             self._pending = True
             return
         self._pending = False
+        self._refresh_pen_hint()
         w = max(240, self.preview.width() - 4)
         h = max(160, self.preview.height() - 4)
         self._last_size = (self.preview.width(), self.preview.height())
@@ -1001,13 +1366,16 @@ class GiongoPanel(QWidget):
 
     def showEvent(self, ev):            # noqa: N802 (Qt API)
         super().showEvent(ev)
-        self.set_active(True)
+        if not self._popped:
+            self.set_active(True)
+        self._place_blocks(self._columns_for(self.width()))
 
     def resizeEvent(self, ev):          # noqa: N802 (Qt API)
         super().resizeEvent(ev)
         # Only when the preview really has a different size to fill. A new
         # pixmap changes the label's size hint, so an unconditional reschedule
         # here lets a layout pass feed itself.
+        self._place_blocks(self._columns_for(self.width()))
         size = (self.preview.width(), self.preview.height())
         if size != self._last_size:
             self._preview_timer.start()

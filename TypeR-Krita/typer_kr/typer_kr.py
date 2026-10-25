@@ -89,7 +89,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.19"
+VERSION = "1.20"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -1955,6 +1955,53 @@ LANG = {
                            "du siehst, welche Schrift dazu passt. Leer zeigt "
                            "wieder den Namen jeder Schrift. Der Name bleibt "
                            "grau hinter der Vorschau lesbar."),
+        "fav_ctx_props": "Eigenschaften",
+        "fp_title": "{name} – Eigenschaften",
+        "fp_tab_general": "Allgemein",
+        "fp_tab_family": "Familie",
+        "fp_tab_presets": "Presets",
+        "fp_name": "Name:",
+        "fp_cut": "Schnitt:",
+        "fp_cut_plain": "Normal",
+        "fp_family": "Familie:",
+        "fp_family_of": "{base} ({n} Schnitte installiert)",
+        "fp_family_alone": "{base} (nur dieser Schnitt)",
+        "fp_styles": "Stile:",
+        "fp_scripts": "Schriftsysteme:",
+        "fp_traits": "Eigenschaften:",
+        "fp_fixed": "feste Laufweite",
+        "fp_proportional": "proportional",
+        "fp_scalable": "skalierbar",
+        "fp_bitmap": "Bitmap",
+        "fp_favourite": "Favorit:",
+        "fp_fav_yes": "ja",
+        "fp_fav_no": "nein",
+        "fp_cats": "Kategorien:",
+        "fp_none": "—",
+        "fp_files": "Schriftdateien:",
+        "fp_location": "Ort:",
+        "fp_size": "Größe:",
+        "fp_find_files": "Schriftdateien suchen…",
+        "fp_searching": "wird gesucht…",
+        "fp_no_files": "keine Datei zu dieser Familie gefunden",
+        "fp_preview": "Vorschau:",
+        "fp_preview_text": "Handgloves 123",
+        "fp_family_one": "Von „{base}“ ist nur dieser eine Schnitt "
+                         "installiert.",
+        "fp_family_many": "Von „{base}“ sind {n} Schnitte installiert. "
+                          "Doppelklick zeigt einen davon.",
+        "fp_this_one": "dieser",
+        "fp_used_none": "„{name}“ wird in keinem Preset benutzt.",
+        "fp_used_n": "„{name}“ wird in {n} Preset(s) benutzt.",
+        "fp_used_family": "Davon {n} über einen anderen Schnitt der Familie.",
+        "fp_no_presets": "Hier sind keine Presets verfügbar.",
+        "fp_col_manga": "Manga",
+        "fp_col_char": "Charakter",
+        "fp_col_preset": "Preset",
+        "fp_col_font": "gespeichert als",
+        "fp_default_char": "(Standard)",
+        "fp_types": "Als Schrift für Textarten gesetzt: {list}",
+        "fp_close": "Schließen",
         "fav_ctx_edit": "Kategorien bearbeiten…",
         "fav_ctx_delete": "Löschen…",
         "fav_import": "Importieren…",
@@ -7522,7 +7569,10 @@ class TyperDocker(DockWidget):
                 # exported bundle needs no manual installing on the other side
                 find_fonts_fn=lambda fams: _FF.collect_font_files(
                     fams, parent=self.widget(), label=self._tr("font_scan"))[0],
-                install_fonts_fn=self._install_fonts_and_refresh)
+                install_fonts_fn=self._install_fonts_and_refresh,
+                # what the properties window shows under "Presets"
+                presets_fn=lambda: getattr(self, "_groups", {}),
+                type_fonts_fn=self._tt_font_labels)
             lay_fonts.addWidget(self.fonts_panel, 1)
         except Exception as _ff_exc:      # noqa: BLE001
             _lbl = QLabel("Font favourites could not load:\n%s" % _ff_exc)
@@ -7560,7 +7610,10 @@ class TyperDocker(DockWidget):
                     "typer_kr", k, d),
                 set_setting=lambda k, v: Krita.instance().writeSetting(
                     "typer_kr", k, v),
-                families_fn=font_families)
+                families_fn=font_families,
+                # the panel does not know the pattern library; the
+                # docker already has the picker for it
+                pick_pattern_fn=self._pick_saved_pattern)
             lay_giongo.addWidget(self.giongo_panel, 1)
             # built while another tab is in front: no preview until it is
             # actually opened (a hidden render cost 2.2 s of Krita's startup)
@@ -10527,6 +10580,19 @@ class TyperDocker(DockWidget):
             return d if isinstance(d, dict) else {}
         except Exception:
             return {}
+
+    def _tt_font_labels(self):
+        """{text type as the user sees it: the font set for it}.
+
+        Only the docker can name a text type - a custom one is whatever the
+        user called it - so the label is resolved here and the properties
+        window only has to read it.
+        """
+        out = {}
+        for tid, fam in (self._tt_overrides() or {}).items():
+            if fam:
+                out[self._tt_label(tid) or str(tid)] = str(fam)
+        return out
 
     def _save_tt_overrides(self, d):
         try:

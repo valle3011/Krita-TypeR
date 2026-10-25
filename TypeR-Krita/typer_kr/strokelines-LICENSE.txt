@@ -1,0 +1,58 @@
+Stroke centre lines in strokelines.txt
+=====================================
+
+The file holds no glyph outlines. It is a set of polylines through the
+middle of each stroke of a letter, in the order and the direction the
+stroke is written, built by tools/make_strokes.py from two sources.
+
+
+KanjiVG - the kana and the Japanese marks
+-----------------------------------------
+
+Copyright (C) 2009-2026 Ulrich Apel and the KanjiVG contributors.
+http://kanjivg.tagaini.net
+
+Licensed under the Creative Commons Attribution-Share Alike 3.0 licence,
+https://creativecommons.org/licenses/by-sa/3.0/
+
+The lines for the kana, for the iteration mark and for the Japanese comma,
+full stop and exclamation mark are derived from KanjiVG's stroke paths:
+scaled and simplified, but the strokes and their order are KanjiVG's work.
+Share Alike applies, so strokelines.txt is itself distributed under CC
+BY-SA 3.0, whatever licence the rest of TypeR carries.
+
+
+The Hershey fonts - the Latin letters
+-------------------------------------
+
+The Hershey fonts were created by Dr. A. V. Hershey while working at the
+U.S. National Bureau of Standards, and the data was prepared for
+distribution by James Hurt. The data is in the public domain, with the
+distributor's notice:
+
+    USE RESTRICTION:
+    This distribution of the Hershey Fonts may be used by anyone for any
+    purpose, commercial or otherwise, providing that:
+      1. The following acknowledgements must be distributed with the
+         font data:
+         - The Hershey Fonts were originally created by Dr. A. V. Hershey
+           while working at the U.S. National Bureau of Standards.
+         - The format of the Font data in this distribution was originally
+           created by James Hurt, Cognition, Inc., 900 Technology Park
+           Drive, Billerica, MA 01821.
+      2. The font data in this distribution may be converted into any
+         other format *EXCEPT* that the font data is not to be
+         incorporated into any commercial product in which the fonts
+         are sold for profit.
+      3. This notice may not be removed or altered.
+
+The Latin letters, digits and punctuation come from futural.jhf, the
+Simplex Roman, fitted onto the same frame as the kana.
+
+
+Drawn here
+----------
+
+Neither source has the corner brackets, the wave dash, the ellipsis or the
+eszett, and neither carries the two marks over a German vowel. Those are a
+handful of straight lines and ticks written out in tools/make_strokes.py.

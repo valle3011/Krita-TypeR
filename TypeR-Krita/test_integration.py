@@ -629,6 +629,97 @@ except Exception as _ff_e:                          # pragma: no cover
     import traceback
     traceback.print_exc()
 
+# --- Font properties window (Qt widget, headless) --------------------------
+try:
+    from typer_kr import fontprops_ui as _FPU
+    from typer_kr.fontfav_ui import _FALLBACK as _FF_STR
+    _fp_groups = {
+        "Chainsaw Man": {"Denji": {"normal": {"font": "CC Wild Words"},
+                                   "shout": {"font": "CC Wild Words Bold"}},
+                         "": {"narration": {"font": "Arial"}}},
+        "Berserk": {"Guts": {"normal": {"font": "CC Wild Words"}}},
+    }
+    _fp_families = ["Arial", "CC Wild Words", "CC Wild Words Bold",
+                    "CCWildWords Italic", "Anime Ace 2"]
+    _fp = _FPU.FontPropertiesDialog(
+        "CC Wild Words", tr=lambda k: k,
+        families_fn=lambda: _fp_families,
+        categories_fn=lambda f: ["Dialog", "SFX"],
+        files_fn=lambda f: [],
+        presets_fn=lambda: _fp_groups,
+        type_fonts_fn=lambda: {"SFX": "CC Wild Words Bold"})
+    check("the properties window has the three tabs, like the shell's",
+          _fp.tabs.count() == 3)
+    check("the general tab names the font and its cut",
+          _fp.v_name.text() == "CC Wild Words"
+          and _fp.v_cut.text() == _FPU.FALLBACK["fp_cut_plain"])
+    check("...and says it is a favourite, with its categories",
+          _fp.v_fav.text() == _FPU.FALLBACK["fp_fav_yes"]
+          and "SFX" in _fp.v_cats.text())
+    check("the family tab lists every cut of the family",
+          _fp.family_list.count() == 3)
+    check("...each row drawn in its own font, the open one marked",
+          _fp.family_list.item(0).font().family() == "CC Wild Words"
+          and _FPU.FALLBACK["fp_this_one"]
+          in _fp.family_list.item(0).text())
+    check("the presets tab finds every preset that uses the font",
+          _fp.used_tree.topLevelItemCount() == 3)
+    _rows = [tuple(_fp.used_tree.topLevelItem(i).text(c) for c in range(4))
+             for i in range(3)]
+    check("...with manga, character and preset name in the row",
+          ("Berserk", "Guts", "normal", "CC Wild Words") in _rows
+          and ("Chainsaw Man", "Denji", "shout", "CC Wild Words Bold")
+          in _rows)
+    check("a preset saved without a character shows as the default one",
+          not any(r[1] == "" for r in _rows))
+    check("the spelling column shows up only because a cut differs",
+          not _fp.used_tree.isColumnHidden(3))
+    check("a text type set to the family is named too",
+          "SFX" in _fp.types_hint.text())
+
+    _fp.set_family("Anime Ace 2")
+    check("double-clicking a relative moves the window to that font",
+          _fp.v_name.text() == "Anime Ace 2"
+          and _fp.family_list.count() == 1)
+    check("...and a font in no preset is told so plainly",
+          _fp.used_tree.topLevelItemCount() == 0
+          and _fp.used_hint.text() == _FPU.FALLBACK["fp_used_none"].format(
+              name="Anime Ace 2"))
+    check("a column of nothing but the same spelling stays hidden",
+          _fp.used_tree.isColumnHidden(3))
+
+    _fp2 = _FPU.FontPropertiesDialog("Arial", tr=lambda k: k,
+                                     families_fn=lambda: _fp_families)
+    check("without a preset source the tab says so instead of 'unused'",
+          _fp2.used_hint.text() == _FPU.FALLBACK["fp_no_presets"]
+          and not _fp2.used_tree.isVisible())
+    check("a font that is not a favourite says no",
+          _fp2.v_fav.text() == _FPU.FALLBACK["fp_fav_no"])
+    _fp.close()
+    _fp2.close()
+
+    _host = QWidget()
+    _w1 = _FPU.open_for("Arial", _host, tr=lambda k: k,
+                        families_fn=lambda: _fp_families)
+    _w2 = _FPU.open_for("ARIAL", _host, tr=lambda k: k,
+                        families_fn=lambda: _fp_families)
+    check("asking twice for the same font raises the open window, not a second",
+          _w1 is _w2 and len(_host._font_prop_windows) == 1)
+    _w1.close()
+    _w3 = _FPU.open_for("Arial", _host, tr=lambda k: k,
+                        families_fn=lambda: _fp_families)
+    check("once it is closed, asking again opens a fresh one",
+          _w3 is not _w1 and len(_host._font_prop_windows) == 1)
+    _w3.close()
+
+    check("the favourites list offers Properties on the right click",
+          "fav_ctx_props" in _FF_STR
+          and hasattr(_ff_panel, "show_properties"))
+except Exception as _fp_e:                          # pragma: no cover
+    check("font-properties window smoke test ran", False)
+    import traceback
+    traceback.print_exc()
+
 # --- Main-tab order/label integrity (regression) ---------------------------
 # A custom, persisted tab order must reorder the *pages* together with the tab
 # labels. The old _apply_tab_order blocked the tab bar's signals, so QTabWidget
@@ -658,6 +749,14 @@ if imported:
             if _order == "":
                 check("Setup 'missing favourite fonts' button is present",
                       hasattr(_d, "fav_missing_btn"))
+                # the properties window is only useful if the docker actually
+                # handed the panel its presets - the panel builds either way,
+                # so nothing else here would notice if the wiring broke
+                _fp_panel = getattr(_d, "fonts_panel", None)
+                check("the docker hands the favourites panel its presets",
+                      _fp_panel is not None
+                      and isinstance(_fp_panel._presets_fn(), dict)
+                      and isinstance(_fp_panel._type_fonts_fn(), dict))
             _d.deleteLater()
 
         # Robustness: a saved order that names an ABSENT tab (BubblR hidden) and

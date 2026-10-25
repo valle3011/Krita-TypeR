@@ -823,6 +823,36 @@ reason the deferred check hangs off a `QTimer` owned by the docker rather
 than a bare `QTimer.singleShot`, which would still fire after the docker was
 gone and reach a deleted C++ object.
 
+### Font properties
+
+Right-click a favourite → **Properties** (or Alt+Enter): a window with a
+tab bar, the way the shell shows the properties of a file. **General** is
+what the font is — cut, styles, writing systems, whether it is starred
+and in which categories, its files with their location and size, a preview.
+**Family** lists every installed cut of the same family, each row set in its
+own face; a double-click moves the window to that cut. **Presets** is the
+one that answers the question worth asking before uninstalling a font: every
+preset that uses it, with its manga, its character and the preset's name,
+plus the text types set to it.
+
+- `fontinfo.py` (Qt-free: `relatives`, `split_cut_name`, `preset_uses`,
+  `type_uses`), `fontprops_ui.py` (the window), the context menu and
+  `show_properties` in `fontfav_ui.py`
+- The docker hands the panel `presets_fn` (its `_groups` tree) and
+  `type_fonts_fn` (`_tt_font_labels`)
+
+Three things it has to get right. **A cut is not a family**: Qt lists "Anime
+Ace" and "Anime Ace Bold" as two families, so the relation is rebuilt through
+`fontmatch`, which already knows which trailing words are cut names — and
+knows not to peel the last one, or the font called "Black" would dissolve
+into a weight. **A preset saved years ago may spell the font differently**;
+matching is by `fontmatch.squash`, so "CCWildWords" and "CC Wild Words" are
+one font, and a hit through another cut of the family is shown in its own
+column rather than silently counted as this one. And **the font files are
+looked up lazily**: the first lookup parses every installed font file, which
+is not something a window may do merely because it opened, so it waits behind
+a button until the index is warm.
+
 ### Font preview text
 
 The Fonts tab draws each favourite in its own face. The **Preview:** field

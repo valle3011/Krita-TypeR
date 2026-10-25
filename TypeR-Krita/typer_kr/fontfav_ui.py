@@ -20,6 +20,7 @@ import zipfile
 from ._qt import Qt, pyqtSignal, QSize, QTimer
 from .nowheel import NoScrollComboBox, NoScrollSlider
 from ._qt import QFont, QFontMetrics, QColor, QPixmap, QPainter
+from ._qt import QShortcut, QKeySequence
 from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
     QListWidget, QListWidgetItem, QPushButton, QDialog, QDialogButtonBox,
@@ -29,7 +30,9 @@ from ._qt import (
 
 from .fontfav import FavoritesStore, UNCATEGORIZED
 from . import fontmatch
+from . import fontprops_ui as _FP
 from .fontfiles import add_fonts_to_zip as _zip_font_files
+from .fontfiles import index_ready as _FF_INDEX_READY
 
 _ROLE_FAMILY = Qt.ItemDataRole.UserRole
 _ROLE_CATS = Qt.ItemDataRole.UserRole + 1
@@ -134,6 +137,7 @@ _FALLBACK = {
     "fav_count": "{n} fonts",
     "fav_ctx_edit": "Edit categories…",
     "fav_ctx_delete": "Delete…",
+    "fav_ctx_props": "Properties",
     "fav_size": "Aa",
     "fav_size_tip": "Preview size — drag to see the fonts bigger.",
     "fav_sample": "Preview:",
@@ -171,7 +175,7 @@ class FontFavoritesPanel(QWidget):
 
     def __init__(self, families_fn, apply_fn, load_fn, save_fn, tr=None,
                  current_font_fn=None, find_fonts_fn=None, install_fonts_fn=None,
-                 parent=None):
+                 presets_fn=None, type_fonts_fn=None, parent=None):
         super().__init__(parent)
         self._families_fn = families_fn
         self._apply_fn = apply_fn
@@ -182,6 +186,11 @@ class FontFavoritesPanel(QWidget):
         # import. When absent, export/import falls back to the list only.
         self._find_fonts_fn = find_fonts_fn
         self._install_fonts_fn = install_fonts_fn
+        # optional: what the properties window shows under "Presets" - the
+        # docker's manga/character/preset tree and the per-text-type fonts.
+        # Without them the tab says so instead of claiming the font is unused.
+        self._presets_fn = presets_fn
+        self._type_fonts_fn = type_fonts_fn
         self._tr = tr or (lambda k: _FALLBACK.get(k, k))
         self._store = FavoritesStore.from_json(self._safe_load())
 
@@ -296,6 +305,9 @@ class FontFavoritesPanel(QWidget):
         self.list.itemDoubleClicked.connect(self._on_double)
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._list_context_menu)
+        _props = QShortcut(QKeySequence("Alt+Return"), self.list)
+        _props.setContext(Qt.ShortcutContext.WidgetShortcut)
+        _props.activated.connect(self.show_properties)
         lay.addWidget(self.list, 1)
 
         self.count_lbl = QLabel("")
@@ -686,11 +698,36 @@ class FontFavoritesPanel(QWidget):
         act_edit = menu.addAction(self.t("fav_ctx_edit"))
         menu.addSeparator()
         act_del = menu.addAction(self.t("fav_ctx_delete"))
+        menu.addSeparator()
+        act_props = menu.addAction(self.t("fav_ctx_props"))
         chosen = menu.exec(self.list.mapToGlobal(pos))
         if chosen is act_edit:
             self._edit_categories()
         elif chosen is act_del:
             self._remove_current()      # already asks for confirmation
+        elif chosen is act_props:
+            self.show_properties()
+
+    def show_properties(self, family=None):
+        """Open the properties window of the selected font.
+
+        Everything it needs is already here: the installed families, the
+        store that knows the categories, the font-file index behind the
+        export - and the presets, which the docker hands in.
+        """
+        family = family or self._selected_family()
+        if not family:
+            return
+        _FP.open_for(
+            family, self,
+            tr=self.t,
+            families_fn=self._families,
+            categories_fn=lambda f: (self._store.font_categories(f)
+                                     if self._store.is_favorite(f) else None),
+            files_fn=lambda f: self._lookup_font_files([f]).get(f, []),
+            files_ready_fn=_FF_INDEX_READY,
+            presets_fn=self._presets_fn,
+            type_fonts_fn=self._type_fonts_fn)
 
     # -- import / export ----------------------------------------------------
     def _export_favorites(self):

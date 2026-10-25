@@ -129,7 +129,15 @@ DEFAULTS = {
     "size_var": 0,          # % random size
     "thicken": 0.0,         # % of the size added around each stroke
     "fill": "#111111",
-    "fill_mode": "solid",   # solid | gradient | tone
+    "pen": "off",           # off = the font's own outline, else a pen
+    "pen_width": 100,       # % of the pen's own weight
+    "pen_taper": 100,       # % of how far it runs out at the end
+    "pen_wobble": 100,      # % of how much the line wanders
+    "pen_angle": 100,       # % of the tilt of a cut end
+    "pen_dry": 100,         # % of the bristle gaps and specks
+    "fill_mode": "solid",   # solid | gradient | tone | pattern
+    "fill_pattern": "",     # a tile from TypeR's pattern library
+    "fill_pattern_scale": 100,
     "fill2": "#d02020",     # gradient end
     "tone_dot": 8,          # halftone dot spacing (px)
     "outlines": [["#ffffff", 5.0]],   # [colour, width % of size], inner first
@@ -152,6 +160,10 @@ RANGES = {
     "lean": (0, 100), "slant": (-45, 45), "stretch": (-60, 150),
     "bounce": (0, 100), "jitter": (0, 100), "rot_var": (0, 60),
     "size_var": (0, 60), "thicken": (0.0, 12.0), "tone_dot": (3, 60),
+    "fill_pattern_scale": (10, 400),
+    "pen_width": (40, 220), "pen_taper": (0, 200),
+    "pen_wobble": (0, 300), "pen_angle": (0, 200),
+    "pen_dry": (0, 250),
     "shadow_dx": (-40.0, 40.0), "shadow_dy": (-40.0, 40.0),
     "extrude": (0, 30), "shake": (0, 5), "afterimage": (0, 6),
     "power": (-100, 100), "rough": (-100, 100), "momentum": (-100, 100),
@@ -159,7 +171,10 @@ RANGES = {
 }
 
 MAX_OUTLINES = 3
-FILL_MODES = ("solid", "gradient", "tone")
+FILL_MODES = ("solid", "gradient", "tone", "pattern")
+#: how a letter is drawn: from the font's outline, or along its centre
+#: lines with one of the pens in giongo_brush
+PENS = ("off", "pen", "marker", "brush", "board", "lightning", "rough")
 OUTLINE_MODES = ("letter", "merged")
 
 
@@ -178,10 +193,13 @@ def default_params(tid="impact"):
 
 
 def apply_type(params, tid):
-    """Switch to type `tid`, keeping what is not a matter of style: the font
-    choice, the letter size, the seed and the macro sliders."""
+    """Switch to type `tid`, keeping what is not a matter of style: the
+    letter size, the seed, the macro sliders - and the pattern tile, which
+    the user went and picked out of their own library rather than it being
+    part of the look of a type."""
     keep = {k: params.get(k, DEFAULTS[k])
-            for k in ("letter_px", "seed", "power", "rough", "momentum")}
+            for k in ("letter_px", "seed", "power", "rough", "momentum",
+                      "fill_pattern", "fill_pattern_scale")}
     p = default_params(tid)
     p.update(keep)
     return p
@@ -223,6 +241,12 @@ def sanitize(params):
             p[k] = int(round(v)) if isinstance(dv, int) else v
         elif k in ("fill", "fill2", "shadow_color"):
             if _is_color(v):
+                p[k] = v
+        elif k == "pen":
+            if v in PENS:
+                p[k] = v
+        elif k == "fill_pattern":
+            if isinstance(v, str):
                 p[k] = v
         elif k == "fill_mode":
             if v in FILL_MODES:
@@ -662,11 +686,46 @@ def gacha(text, params, rng=None, wild=False):
     for k in ("power", "rough", "momentum"):
         p[k] = int(_clamp(k, rng.uniform(-amp, amp)))
     p["seed"] = rng.randint(1, 2 ** 31 - 1)
+    _roll_fill(p, tid, rng, wild)
     if rng.random() < 0.3:
         p["bend"] = int(_clamp("bend", p["bend"] + rng.uniform(-25, 25)))
     if rng.random() < 0.3:
         p["rise"] = int(_clamp("rise", p["rise"] + rng.uniform(-15, 15)))
     return sanitize(p)
+
+
+#: how readily each type takes something other than solid black. An impact
+#: is meant to hit, so it mostly stays heavy; a glare or a shriek is where a
+#: screentone belongs.
+_TONE_TASTE = {
+    "impact": 0.12, "rumble": 0.3, "slash": 0.2, "cute": 0.3,
+    "drops": 0.35, "small": 0.3, "glare": 0.6, "pop": 0.35,
+    "machine": 0.45,
+}
+
+
+def _roll_fill(p, tid, rng, wild=False):
+    """Give the option a fill, now and then something other than solid.
+
+    A pattern from the user's own library is only offered when one has been
+    chosen already: the gacha may vary what is there, not go looking through
+    their files.
+    """
+    taste = _TONE_TASTE.get(tid, 0.3) * (1.4 if wild else 1.0)
+    if rng.random() > taste:
+        p["fill_mode"] = "solid"
+        return
+    choices = ["tone", "tone", "gradient"]
+    if p.get("fill_pattern"):
+        choices.append("pattern")
+    p["fill_mode"] = rng.choice(choices)
+    if p["fill_mode"] == "tone":
+        lo, hi = RANGES["tone_dot"]
+        # a coarse screen reads as a texture, a fine one just as grey
+        p["tone_dot"] = int(_clamp("tone_dot", rng.uniform(lo + 1, hi * 0.45)))
+    elif p["fill_mode"] == "pattern":
+        p["fill_pattern_scale"] = int(_clamp("fill_pattern_scale",
+                                             rng.uniform(60, 180)))
 
 
 _MUTABLE = ("spacing", "rise", "bend", "size_start", "size_end", "lean",

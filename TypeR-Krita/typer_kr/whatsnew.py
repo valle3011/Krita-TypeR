@@ -13,6 +13,39 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.20", {
+        "en": [
+            "A font in the Fonts tab now has a properties window: "
+            "right-click a favourite and choose Properties, or press "
+            "Alt+Enter. General says what the font is, where its files "
+            "are and how big they are; Family lists every cut of it "
+            "that is installed, and a double-click moves the window to "
+            "that cut; Presets shows every preset the font is used by "
+            "\u2014 with its manga, its character and the preset's "
+            "name \u2014 and names the text types set to it.",
+            "The mouse wheel no longer moves a slider or changes a "
+            "dropdown while you scroll past it: it scrolls the tab, "
+            "the way a wheel should. A control still answers the wheel "
+            "once you have clicked into it.",
+        ],
+        "de": [
+            "Eine Schrift im Fonts-Tab hat jetzt ein "
+            "Eigenschaften-Fenster: Rechtsklick auf einen Favoriten, "
+            "\u201eEigenschaften\u201c, oder Alt+Enter. "
+            "\u201eAllgemein\u201c sagt, was die Schrift ist, wo ihre "
+            "Dateien liegen und wie gro\u00df sie sind; "
+            "\u201eFamilie\u201c listet jeden installierten Schnitt "
+            "davon, und ein Doppelklick holt diesen Schnitt ins "
+            "Fenster; \u201ePresets\u201c zeigt jedes Preset, das die "
+            "Schrift benutzt \u2014 mit Manga, Charakter und "
+            "Preset-Name \u2014 und nennt die Textarten, die auf sie "
+            "gesetzt sind.",
+            "Das Mausrad verstellt keinen Regler und kein Auswahlfeld "
+            "mehr, wenn du daran vorbeiscrollst: Es scrollt den Tab, "
+            "wie ein Mausrad soll. Angeklickt reagiert ein "
+            "Bedienelement weiterhin auf das Rad.",
+        ],
+    }),
     ("1.19", {
         "en": [
             "Patterns are far less work to get in: load any piece of a "

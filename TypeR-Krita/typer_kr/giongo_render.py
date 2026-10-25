@@ -19,6 +19,7 @@ letter's outline cuts into the one behind; with "merged" the outlines of all
 letters are drawn first and the word reads as one block.
 """
 import math
+import os
 import random
 
 from ._qt import (
@@ -27,9 +28,13 @@ from ._qt import (
     QRectF, Qt,
 )
 from . import giongo as G
+from . import strokefont as SF
+from . import giongo_brush as BR
 
 _REF = 200.0          # glyph outlines are built at this pixel size, then scaled
 _glyph_cache = {}
+#: the same for letters drawn along their centre lines
+_stroke_cache = {}
 
 
 def _font(family, bold):
@@ -39,6 +44,47 @@ def _font(family, bold):
     f.setPixelSize(int(_REF))
     f.setBold(bool(bold))
     return f
+
+
+def stroke_glyph(ch, pen, seed, width=100, style=None):
+    """(outline at _REF px centred on the em box, advance in em), or None.
+
+    None means this character has no centre lines - a kanji, say - and the
+    caller falls back to the font outline, so a mixed line still comes out
+    whole rather than with holes in it.
+    """
+    key = (ch, pen, int(seed), int(width))
+    hit = _stroke_cache.get(key)
+    if hit is not None:
+        return hit
+    got = SF.scaled(ch, _REF)
+    if not got:
+        return None
+    advance, strokes = got
+    polys = BR.letter_outlines(strokes, _REF, pen=pen, seed=int(seed),
+                               width_scale=max(0.1, width / 100.0),
+                               style=style)
+    if not polys:
+        return None
+    path = QPainterPath()
+    for poly in polys:
+        if len(poly) < 3:
+            continue
+        path.moveTo(QPointF(poly[0][0], poly[0][1]))
+        for (x, y) in poly[1:]:
+            path.lineTo(QPointF(x, y))
+        path.closeSubpath()
+    # centred the same way an outline glyph is, with the metrics of the font
+    # the lines were taken from
+    asc, desc = SF.metrics()
+    k = _REF / float(SF.EM)
+    path.translate(-advance / 2.0, (asc - desc) * k / 2.0)
+    path.setFillRule(Qt.FillRule.WindingFill)
+    res = (path, (advance / _REF) if advance > 0 else 1.0)
+    if len(_stroke_cache) > 2000:
+        _stroke_cache.clear()
+    _stroke_cache[key] = res
+    return res
 
 
 def glyph(ch, family, bold):
@@ -96,7 +142,8 @@ def _stroke(path, width):
     return out
 
 
-def letter_path(pl, family, bold, thicken_pct):
+def letter_path(pl, family, bold, thicken_pct, pen="off", seed=0,
+                pen_width=100, pen_style=None):
     """One placement → its filled outline in page coordinates."""
     size = pl["size"]
     if pl["bar"]:
@@ -106,7 +153,14 @@ def letter_path(pl, family, bold, thicken_pct):
         tr.rotate(pl["angle"])
         path = tr.map(base)
     else:
-        base, _adv = glyph(pl["ch"], family, bold)
+        base = None
+        if pen and pen != "off":
+            got = stroke_glyph(pl["ch"], pen, seed + pl.get("i", 0) * 13,
+                               pen_width, pen_style)
+            if got is not None:
+                base = got[0]
+        if base is None:                 # no centre lines for this character
+            base, _adv = glyph(pl["ch"], family, bold)
         k = size / _REF
         tr = QTransform()
         tr.translate(pl["x"], pl["y"])
@@ -147,8 +201,8 @@ class Scene(object):
         return not self.layers or self.bounds.isEmpty()
 
     def needs_raster(self):
-        """A halftone fill has no faithful vector form Krita imports."""
-        return any(l.paint == "tone" for l in self.layers)
+        """Fills Krita cannot be handed as vector art and get back whole."""
+        return any(l.paint in ("tone", "pattern") for l in self.layers)
 
 
 def build_scene(text, params, family=""):
@@ -157,13 +211,24 @@ def build_scene(text, params, family=""):
     p = G.effective(params)
     bold = p["bold"]
 
+    pen = p.get("pen", "off")
+
     def adv(ch):
+        # the advance must come from whatever will actually be drawn, or the
+        # letters would shift when a pen is switched on
+        if pen and pen != "off":
+            got = SF.glyph(ch)
+            if got:
+                return (got[0] / float(SF.EM)) or 1.0
         return glyph(ch, family, bold)[1]
 
     places = G.layout(text, p, advance_fn=adv)
     S = float(p["letter_px"])
     rng = random.Random(p["seed"] * 7 + 3)
-    letters = [(pl, letter_path(pl, family, bold, p["thicken"]))
+    letters = [(pl, letter_path(pl, family, bold, p["thicken"],
+                                pen=pen, seed=p["seed"],
+                                pen_width=p.get("pen_width", 100),
+                                pen_style=BR.style_from(p, pen)))
                for pl in places]
     outs = p["outlines"]
     # cumulative: outline k is everything up to and including its width
@@ -258,6 +323,49 @@ def _fill_bounds(scene):
     return r
 
 
+_tile_cache = {}
+
+
+def pattern_tile(path, scale=100):
+    """The library tile at `path`, scaled, or None.
+
+    A missing file is not worth an error: the letter is simply filled with
+    its colour instead, which is what it looked like before a pattern was
+    picked.
+    """
+    key = (path, int(scale))
+    if key in _tile_cache:
+        return _tile_cache[key]
+    img = None
+    try:
+        if path and os.path.exists(path):
+            loaded = QImage(path)
+            if not loaded.isNull():
+                k = max(0.1, float(scale) / 100.0)
+                w = max(1, int(round(loaded.width() * k)))
+                h = max(1, int(round(loaded.height() * k)))
+                img = loaded.scaled(w, h,
+                                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation)
+    except Exception:                               # noqa: BLE001
+        img = None
+    if len(_tile_cache) > 32:
+        _tile_cache.clear()
+    _tile_cache[key] = img
+    return img
+
+
+def _paint_pattern(painter, path, tile):
+    """Lay the tile across the letter, clipped to its shape."""
+    painter.save()
+    painter.setClipPath(path)
+    painter.setPen(Qt.PenStyle.NoPen)
+    brush = QBrush(tile)
+    painter.setBrush(brush)
+    painter.drawRect(path.boundingRect())
+    painter.restore()
+
+
 def _paint_tone(painter, path, color, rect, spacing):
     """Halftone: dots on a 45° grid, growing from nothing at the top of the
     word to solid at the bottom (網点のグラデ)."""
@@ -320,6 +428,16 @@ def paint(scene, painter, offset=QPointF(0, 0), scale=1.0):
             painter.setBrush(QBrush(QColor("#ffffff")))
             painter.drawPath(l.path)
             _paint_tone(painter, l.path, col, frect, p["tone_dot"])
+        elif l.paint == "pattern":
+            tile = pattern_tile(p.get("fill_pattern", ""),
+                                p.get("fill_pattern_scale", 100))
+            if tile is None:
+                painter.setBrush(QBrush(col))       # no tile: just the colour
+                painter.drawPath(l.path)
+            else:
+                painter.setBrush(QBrush(QColor("#ffffff")))
+                painter.drawPath(l.path)
+                _paint_pattern(painter, l.path, tile)
         else:
             painter.setBrush(QBrush(col))
             painter.drawPath(l.path)
