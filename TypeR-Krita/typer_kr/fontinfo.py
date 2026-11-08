@@ -20,6 +20,8 @@ and a family listed as "CC Wild Words" are the same font, and a tab that
 said otherwise would be worse than no tab.
 """
 
+import re
+
 try:
     from . import fontmatch
 except (ImportError, ValueError):       # loaded as a plain file by the tests
@@ -105,6 +107,62 @@ def relatives(family, families):
 def cuts_of(family, families):
     """[(family, cut)] for the whole family - '' as the cut of the plain one."""
     return [(f, split_cut_name(f)[1]) for f in relatives(family, families)]
+
+
+#: a token that is a version rather than part of the name: "2", "2.0" - and
+#: the lone "v" that introduces one in "v3".
+_VERSION = re.compile(r"^\d+(?:[.,]\d+)*$")
+
+
+def significant(family):
+    """The words of a name that say which font this is.
+
+    Dropped: the cut ("Bold"), the foundry's initials ("BB", "CC" - the set
+    `fontmatch` already keeps, so there is one list and not two), and the
+    version. What is left is in the order it was written, because the order
+    is what tells an extension of a name from a different name.
+    """
+    toks, _bold, _italic = fontmatch.split_cut(fontmatch.tokens(family or ""))
+    out = []
+    for i, t in enumerate(toks):
+        if t in fontmatch._TAGS or _VERSION.match(t):
+            continue
+        if t == "v" and i + 1 < len(toks) and _VERSION.match(toks[i + 1]):
+            continue
+        out.append(t)
+    return out
+
+
+def related(family, families):
+    """Faces of the same name that are not cuts of it: other versions,
+    other repacks, other spellings. The family's own cuts are left out -
+    they are `relatives()` - and so is anything with nothing to compare.
+
+    The test is a prefix: one name's significant words begin with the
+    other's. That gathers a face with its extensions - "Segoe UI" with
+    "Segoe UI Emoji", "Anime Ace" with "Anime Ace 2.0 BB Int" - without
+    dragging in everything that merely starts the same way, since "Segoe
+    Script" is a prefix of nothing here and nothing is a prefix of it.
+    """
+    mine = significant(family)
+    if not mine:
+        return []
+    kin = set(f.lower() for f in relatives(family, families))
+    out, seen = [], set()
+    for f in list(families or []):
+        f = (f or "").strip()
+        low = f.lower()
+        if not f or low in seen or low in kin:
+            continue
+        theirs = significant(f)
+        if not theirs:
+            continue
+        n = min(len(mine), len(theirs))
+        if mine[:n] == theirs[:n]:
+            seen.add(low)
+            out.append(f)
+    out.sort(key=lambda f: (bool(split_cut_name(f)[1]), f.lower()))
+    return out
 
 
 def preset_uses(groups, wanted):

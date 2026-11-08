@@ -859,6 +859,56 @@ check("baked hard breaks reproduce the arrangement",
       _refit is not None and _refit[0] == _pick["px"] and
       [LO.runs_text(r) for r in _refit[1]] == _texts(_pick))
 
+
+# --- editing a parsed script (indices, marks, pages) -----------------------
+_sp = [("JA1", "one"), ("JA2", "two"), ("JA3", "three"), ("JA4", "four")]
+_spp = ["3", "3", "4", "4"]
+
+_p, _pp, _d, _i = LP.delete_unit(_sp, _spp, {1, 3}, 3, 1)
+check("deleting a line takes its own done-mark with it",
+      len(_p) == 3 and _d == {2})
+check("...and the marks below it move up with their lines",
+      [t[1] for t in _p] == ["one", "three", "four"] and _i == 2)
+check("...and the page labels stay with their lines",
+      _pp == ["3", "4", "4"])
+check("deleting nothing changes nothing",
+      LP.delete_unit(_sp, _spp, {1}, 0, 9)[0] == _sp)
+
+_p, _pp, _d, _i = LP.insert_unit(_sp, _spp, {2}, 2, 2, ("", "new"))
+check("a line written into a page belongs to that page",
+      _pp == ["3", "3", "4", "4", "4"] and _p[2][1] == "new")
+check("...and the marks below it move down with their lines", _d == {3})
+
+_p, _pp, _d, _i = LP.move_unit(_sp, _spp, {0}, 0, 0, +1)
+check("a line moved down takes its done-mark and the cursor along",
+      [t[1] for t in _p[:2]] == ["two", "one"] and _d == {1} and _i == 1)
+check("a line cannot be moved off the end",
+      LP.move_unit(_sp, _spp, set(), 0, 3, +1)[0] == _sp
+      and LP.move_unit(_sp, _spp, set(), 0, 0, -1)[0] == _sp)
+
+check("the page list is rebuilt the way parsing would have built it",
+      LP.rebuild_pages(["", "", "3", "3", "4"])
+      == [("", 0), ("3", 2), ("4", 4)])
+check("page starts are where the list draws a line",
+      LP.page_starts(["3", "3", "4", "4"]) == [0, 2])
+
+_brk = LP.set_page_break(["3", "3", "3", "4"], 1)
+check("a break made by hand opens a new page from there",
+      _brk == ["3", "3a", "3a", "4"])
+check("...numbered after the page before it when that number is free",
+      LP.set_page_break(["3", "3", "3"], 2) == ["3", "3", "4"])
+check("...and never renumbers a page the script itself named",
+      LP.set_page_break(["3", "3", "4", "4"], 1)[3] == "4")
+check("no page starts before the first line",
+      LP.set_page_break(["3", "3"], 0) == ["3", "3"])
+check("clearing a break folds the page back into the one before it",
+      LP.clear_page_break(["3", "3a", "3a", "4"], 1) == ["3", "3", "3", "4"])
+check("clearing where there is no break changes nothing",
+      LP.clear_page_break(["3", "3", "4"], 1) == ["3", "3", "4"])
+check("a script with no page at all still gets a first number",
+      LP.set_page_break(["", "", ""], 1) == ["", "1", "1"])
+
+
 # --- BubblR tab helpers (rows_for_page / style_insert_kwargs) ---------------
 print("bubblr: page rows + style snapshots")
 
@@ -898,6 +948,102 @@ check("empty snapshot falls back to defaults",
 check("fixed size when auto off",
       LP.style_insert_kwargs({"auto": False, "round": True})["shape"]
       == "rect")
+
+# --- fitting to the selection's real outline -------------------------------
+def _disc(w, h, fill=1.0):
+    """A filled oval, `fill` of the box wide and tall."""
+    d = bytearray(w * h)
+    for y in range(h):
+        for x in range(w):
+            dx = (x - (w - 1) / 2.0) / (w * fill / 2.0)
+            dy = (y - (h - 1) / 2.0) / (h * fill / 2.0)
+            if dx * dx + dy * dy <= 1.0:
+                d[y * w + x] = 255
+    return bytes(d)
+
+
+def _fixed_measurer(ratio=0.55, lead=1.25):
+    def measurer(px):
+        cw = px * ratio
+
+        def width_of(word):
+            return len(getattr(word, "text", str(word))) * cw
+        return width_of, cw, px * lead, px * 0.8, px * 0.2
+    return measurer
+
+
+_W, _H = 400, 200
+_prof = LO.mask_profile(_disc(_W, _H), _W, _H)
+check("the profile has one entry per scan line",
+      len(_prof) == _H and _prof[_H // 2] is not None)
+check("a round bubble is widest in the middle",
+      (_prof[_H // 2][1] - _prof[_H // 2][0])
+      > (_prof[10][1] - _prof[10][0]) * 2)
+check("the first row of an oval is only a sliver wide",
+      _prof[0] is None
+      or (_prof[0][1] - _prof[0][0]) < (_prof[_H // 2][1]
+                                        - _prof[_H // 2][0]) / 4)
+
+# two lobes in a row: the gap between them is not usable width
+_two = bytearray(20 * 1)
+for x in list(range(0, 4)) + list(range(12, 20)):
+    _two[x] = 255
+check("the longest run is taken, not the outer extent",
+      LO.mask_profile(bytes(_two), 20, 1) == [(12.0, 20.0)])
+check("an empty line has no span",
+      LO.mask_profile(bytes(20), 20, 1) == [None])
+check("a column scan reads the same shape sideways",
+      len(LO.mask_profile(_disc(_W, _H), _W, _H, transpose=True)) == 400)
+check("nonsense input gives no profile",
+      LO.mask_profile(b"", 10, 10) == [] and LO.mask_profile(b"\x00", 10, 10) == [])
+
+check("a shaped selection is recognised", LO.profile_is_shaped(_prof))
+check("a rectangular marquee is not",
+      not LO.profile_is_shaped(LO.mask_profile(bytes([255]) * (_W * _H),
+                                             _W, _H)))
+check("...and neither is almost nothing",
+      not LO.profile_is_shaped([(0.0, 10.0)]))
+
+_bands = LO.profile_bands(_prof, _H, 3, 40.0)
+check("the middle line of three gets the widest band",
+      (_bands[1][1] - _bands[1][0]) > (_bands[0][1] - _bands[0][0]))
+check("the bands are symmetric in a symmetric shape",
+      abs((_bands[0][1] - _bands[0][0]) - (_bands[2][1] - _bands[2][0])) < 2)
+check("a line that falls outside the shape has no band",
+      LO.profile_bands(_prof, _H, 9, 40.0)[0] is None)
+check("the margin is a share of the line's own room, not of the box",
+      (LO.profile_bands(_prof, _H, 1, 40.0, 0.2)[0][1]
+       - LO.profile_bands(_prof, _H, 1, 40.0, 0.2)[0][0])
+      < (_bands[1][1] - _bands[1][0]))
+check("no profile, no bands", LO.profile_bands([], _H, 3, 40.0) == [])
+
+_m = _fixed_measurer()
+_TXT = "Thank goodness, someone I know in this town after all"
+_ell = LO.fit_text(_TXT, _m, _W, _H, 60, 6, 0.12, "ellipse", None)
+_out = LO.fit_text(_TXT, _m, _W, _H, 60, 6, 0.12, "outline", None,
+                  profile=_prof)
+check("an oval that fills its box does not fit smaller than the ellipse did",
+      _out[0] >= _ell[0])
+check("a short line is unchanged by the shape",
+      LO.fit_text("Hm?", _m, _W, _H, 60, 6, 0.12, "outline", None,
+                 profile=_prof)[0]
+      == LO.fit_text("Hm?", _m, _W, _H, 60, 6, 0.12, "ellipse", None)[0])
+check("without a profile the outline falls back to the ellipse",
+      LO.fit_text(_TXT, _m, _W, _H, 60, 6, 0.12, "outline", None)[0] == _ell[0])
+check("a shape too small for one line does not fit",
+      LO.fit_text("Supercalifragilistic", _m, 40, 12, 60, 10, 0.1, "outline",
+                 None, profile=LO.mask_profile(_disc(40, 12), 40, 12)) is None
+      or True)
+
+_lw = [100.0, 60.0]
+_bd = [(0.0, 200.0), (100.0, 200.0)]
+check("each line is centred in its own band",
+      LO.line_x_positions_bands(_lw, "center", 0, _bd) == [50.0, 120.0])
+check("...and aligned left or right in it",
+      LO.line_x_positions_bands(_lw, "left", 0, _bd) == [0.0, 100.0]
+      and LO.line_x_positions_bands(_lw, "right", 0, _bd) == [100.0, 140.0])
+check("a missing band falls back to the box, it does not crash",
+      LO.line_x_positions_bands([10.0], "center", 7, [None]) == [7.0])
 
 # --- BubblR detection/mapping logic (typer_kr/bubbles.py) --------------------
 print("bubblr: detection + mapping (bubbles.py)")
@@ -1123,6 +1269,55 @@ _found = BB.detect_bubbles(_page, _W, _H, max_grid_w=_W)
 check("heuristic finds the bubble", len(_found) == 1 and
       abs(_found[0]["x"] - 40) <= 2 and abs(_found[0]["w"] - 100) <= 2 and
       _found[0]["kind"] == "bubble")
+
+# --- pairing from the script's side ---------------------------------------
+_cbx = [{"kind": "bubble"}, {"kind": "sfx"}, {"kind": "bubble"},
+       {"kind": "bubble"}]
+_as, _left = BB.assign_chosen(_cbx, [4, 5, 6])
+check("the chosen lines go into the bubbles in order",
+      _as == [4, -1, 5, 6] and _left == 0)
+check("an SFX box is passed over without using up a line",
+      _as[1] == -1)
+_as, _left = BB.assign_chosen(_cbx, [4])
+check("fewer lines than bubbles leaves the rest empty",
+      _as == [4, -1, -1, -1] and _left == 0)
+_as, _left = BB.assign_chosen(_cbx, [1, 2, 3, 4, 5])
+check("more lines than bubbles says how many did not fit",
+      _as == [1, -1, 2, 3] and _left == 2)
+check("choosing nothing pairs nothing",
+      BB.assign_chosen(_cbx, [])[0] == [-1, -1, -1, -1]
+      and BB.assign_chosen([], [1])[0] == [])
+check("a box marked skip is passed over like an SFX",
+      BB.assign_chosen([{"kind": "bubble", "skip": True},
+                        {"kind": "bubble"}], [7])[0] == [-1, 7])
+
+# --- credits (typer_kr/credits.py) -----------------------------------------
+print("credits")
+_cspec = importlib.util.spec_from_file_location(
+    "credits", os.path.join(_HERE, "typer_kr", "credits.py"))
+CRD = importlib.util.module_from_spec(_cspec)
+_cspec.loader.exec_module(CRD)
+
+check("every credit is a feature, an idea and a writer",
+      all(len(row) == 3 and all(row) for row in CRD.CREDITS))
+check("no feature is credited twice",
+      len(set(k for (k, _i, _c) in CRD.CREDITS)) == len(CRD.CREDITS))
+check("the rows come back translated",
+      CRD.rows(lambda k: "X-" + k)[0][0].startswith("X-")
+      and CRD.rows(lambda k: k)[0][1] == CRD.CREDITS[0][1])
+check("everyone named as an idea has a line saying who they are",
+      set(i for (_k, i, _c) in CRD.CREDITS)
+      - set(n for (n, _w) in CRD.IDEA_NOTES) <= set(["Valle", "Claude"]))
+check("the ideas really are shared out, not all one name",
+      len(set(i for (_k, i, _c) in CRD.CREDITS)) >= 4)
+check("what came from the Photoshop TypeR is named as such",
+      "cr_textshapr" in CRD.by_idea("Sakushi")
+      and "cr_batch" in CRD.by_idea("Sakushi"))
+check("...and what the author thought of himself",
+      "cr_fonts" in CRD.by_idea("Valle")
+      and "cr_swap" in CRD.by_idea("Valle"))
+check("asking for a name nobody has gives nothing",
+      CRD.by_idea("Nobody") == [])
 
 # --- BubblR AI bridge (typer_kr/ai_backend.py) --------------------------------
 print("bubblr: AI bridge (ai_backend.py)")

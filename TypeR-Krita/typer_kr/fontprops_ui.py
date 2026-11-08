@@ -58,6 +58,8 @@ FALLBACK = {
     "fp_no_files": "no file found for this family",
     "fp_preview": "Preview:",
     "fp_preview_text": "Handgloves 123",
+    "fp_family_rel": "Other versions and spellings of this font:",
+    "fp_family_rel_n": " \u2014 {n} related",
     "fp_family_one": "Only this one cut of “{base}” is installed.",
     "fp_family_many": "{n} cuts of “{base}” are installed. "
                       "Double-click one to look at it.",
@@ -189,7 +191,7 @@ class FontPropertiesDialog(QDialog):
         bb.rejected.connect(self.close)
         bb.accepted.connect(self.close)
         lay.addWidget(bb)
-        self.resize(420, 470)
+        self.resize(470, 470)
 
     def _build_general(self):
         page = QWidget()
@@ -237,6 +239,12 @@ class FontPropertiesDialog(QDialog):
         self.family_hint.setWordWrap(True)
         lay.addWidget(self.family_hint)
         self.family_list = QListWidget()
+        # a long repack name would otherwise push a scrollbar under the list
+        # and hide its own end; elided with the full name on hover reads
+        # better, and the name is in the row's own face either way
+        self.family_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.family_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.family_list.itemDoubleClicked.connect(
             lambda it: self.set_family(it.data(Qt.ItemDataRole.UserRole)))
         lay.addWidget(self.family_list, 1)
@@ -294,9 +302,12 @@ class FontPropertiesDialog(QDialog):
         kin = FI.relatives(fam, self._families)
         self.v_name.setText(fam)
         self.v_cut.setText(cut or self.t("fp_cut_plain"))
-        self.v_family.setText(
-            self.t("fp_family_of", base=base, n=len(kin)) if len(kin) > 1
-            else self.t("fp_family_alone", base=base))
+        text = (self.t("fp_family_of", base=base, n=len(kin)) if len(kin) > 1
+                else self.t("fp_family_alone", base=base))
+        others = len(FI.related(fam, self._families))
+        if others:
+            text += self.t("fp_family_rel_n", n=others)
+        self.v_family.setText(text)
         self.v_styles.setText(", ".join(_styles_of(fam)) or self.t("fp_none"))
         scripts = _writing_systems_of(fam)
         self.v_scripts.setText(", ".join(scripts[:8])
@@ -366,21 +377,37 @@ class FontPropertiesDialog(QDialog):
 
     def _fill_family(self):
         self.family_list.clear()
+        self._rel_head = False
         kin = FI.cuts_of(self._family, self._families)
         base = FI.split_cut_name(self._family)[0]
         self.family_hint.setText(
             self.t("fp_family_one", base=base) if len(kin) < 2
             else self.t("fp_family_many", n=len(kin), base=base))
         for name, cut in kin:
-            label = "%s — %s" % (name, cut or self.t("fp_cut_plain"))
-            if FI.same_font(name, self._family):
-                label += "  (%s)" % self.t("fp_this_one")
-            it = QListWidgetItem(label)
-            it.setData(Qt.ItemDataRole.UserRole, name)
-            f = QFont(name)
-            f.setPointSize(11)
-            it.setFont(f)
-            self.family_list.addItem(it)
+            self._family_row(name, cut)
+        # The other releases of the same face. They are not cuts - a line set
+        # in Anime Ace is not a line set in Anime Ace 3 - but they are what
+        # somebody means by "the Anime Ace fonts", and a tab that showed one
+        # of them while hiding the others would be hiding the answer.
+        for name in FI.related(self._family, self._families):
+            if not self._rel_head:
+                head = QListWidgetItem(self.t("fp_family_rel"))
+                head.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.family_list.addItem(head)
+                self._rel_head = True
+            self._family_row(name, FI.split_cut_name(name)[1])
+
+    def _family_row(self, name, cut):
+        label = "%s — %s" % (name, cut or self.t("fp_cut_plain"))
+        if FI.same_font(name, self._family):
+            label += "  (%s)" % self.t("fp_this_one")
+        it = QListWidgetItem(label)
+        it.setToolTip(label)
+        it.setData(Qt.ItemDataRole.UserRole, name)
+        f = QFont(name)
+        f.setPointSize(11)
+        it.setFont(f)
+        self.family_list.addItem(it)
 
     def _fill_presets(self):
         self.used_tree.clear()

@@ -271,6 +271,42 @@ check("a text type set to the font is found",
 check("...and none is honestly none",
       FI.type_uses(_types, "Arial") == [] and FI.type_uses({}, "Arial") == [])
 
+_ace = ["Anime Ace", "Anime Ace 2.0 BB", "Anime Ace 2.0 BB Int Bold",
+        "Anime Ace 2.0 BB Int Italic", "Anime Ace 2.0 BB Int Regular",
+        "Anime Ace 3 BB", "Anime Ace v3", "Arial", "Arial Narrow",
+        "Comic Sans MS", "Comic Neue", "Segoe UI", "Segoe UI Emoji",
+        "Segoe Script"]
+check("a version is not part of the name",
+      FI.significant("Anime Ace 2.0 BB") == ["anime", "ace"]
+      and FI.significant("Anime Ace v3") == ["anime", "ace"]
+      and FI.significant("Anime Ace 3 BB Bold") == ["anime", "ace"])
+check("...but a word that is not a version stays",
+      FI.significant("Anime Ace 2.0 BB Int") == ["anime", "ace", "int"]
+      and FI.significant("Arial Narrow") == ["arial", "narrow"])
+
+_rel = FI.related("Anime Ace 2.0 BB", _ace)
+check("the other releases of a face are found, however they are spelled",
+      "Anime Ace" in _rel and "Anime Ace 3 BB" in _rel
+      and "Anime Ace v3" in _rel)
+check("...including the repack that carries its own cuts",
+      "Anime Ace 2.0 BB Int Bold" in _rel)
+check("a cut of the same family is not listed twice",
+      not set(_rel) & set(FI.relatives("Anime Ace 2.0 BB", _ace)))
+check("and it works from any of them",
+      "Anime Ace 2.0 BB" in FI.related("Anime Ace v3", _ace)
+      and "Anime Ace" in FI.related("Anime Ace 3 BB", _ace))
+
+check("a name that merely starts the same way is left out",
+      "Comic Neue" not in FI.related("Comic Sans MS", _ace)
+      and "Segoe Script" not in FI.related("Segoe UI", _ace))
+check("...while a real extension of a name is kept",
+      FI.related("Segoe UI", _ace) == ["Segoe UI Emoji"])
+check("a width is not a version: Arial Narrow is related, not the same",
+      FI.related("Arial", _ace) == ["Arial Narrow"]
+      and FI.relatives("Arial", _ace) == ["Arial"])
+check("a name of nothing but tags and numbers relates to nothing",
+      FI.related("BB 2.0", _ace) == [] and FI.significant("") == [])
+
 check("a font file is named by its kind",
       FI.file_kind("C:/x/Wild.TTF") == "TrueType"
       and FI.file_kind("x.otf") == "OpenType" and FI.file_kind("x") == "")

@@ -751,8 +751,169 @@ def wrap_ellipse(words, width_of, space_w, a, b, line_h, hyph=None):
     return None                 # did not converge -> smaller font
 
 
+# ---------------------------------------------------------------------------
+# Fitting to the real outline of a selection
+# ---------------------------------------------------------------------------
+
+#: a selected pixel, after thresholding, is 1 and the rest 0 - so the longest
+#: run of selection in a row is one regex away instead of a Python loop over
+#: every pixel. A bubble is a few hundred thousand pixels and this runs on
+#: every insert.
+_RUN_RE = re.compile(b"\x01+")
+
+
+def _thresh_table(thresh):
+    return bytes(0 if i < thresh else 1 for i in range(256))
+
+
+def mask_profile(data, w, h, thresh=128, transpose=False, max_lines=400):
+    """The usable span of a selection, scan line by scan line.
+
+    `data` is one byte per pixel, row-major, as Krita's Selection.pixelData
+    hands it over. Returns a list of ``(x0, x1)`` spans - the **longest**
+    run of selected pixels in that line - or None where the line holds no
+    selection. The spans are in pixel coordinates inside the box.
+
+    The longest run, not the outer extent: a bubble with a tail, or two
+    lobes, must not be treated as if the gap between them were usable.
+
+    `transpose` scans columns instead of rows, for vertical text, where the
+    fitter works on the transposed box.
+
+    Long selections are sampled down to `max_lines` scan lines. The profile
+    is read as a fraction of the box either way, so the result is the same
+    shape at a fraction of the work.
+    """
+    if w <= 0 or h <= 0 or not data:
+        return []
+    try:
+        data = bytes(data)
+    except Exception:                               # noqa: BLE001
+        return []
+    if len(data) < w * h:
+        return []
+    table = _thresh_table(thresh)
+    n = w if transpose else h
+    step = max(1, int(n // max_lines) if max_lines else 1)
+    out = []
+    for i in range(0, n, step):
+        if transpose:
+            line = data[i:w * h:w]
+        else:
+            line = data[i * w:(i + 1) * w]
+        runs = _RUN_RE.findall(line.translate(table))
+        if not runs:
+            out.append(None)
+            continue
+        best = max(runs, key=len)
+        start = line.translate(table).find(best)
+        out.append((float(start), float(start + len(best))))
+    return out
+
+
+def profile_is_shaped(profile, tol=0.04):
+    """Is this profile worth fitting to, or is it just a rectangle?
+
+    A marquee selection is full width on every row; fitting to it would only
+    take the ellipse away and give nothing back. A real bubble narrows
+    somewhere, and that is the whole point.
+    """
+    spans = [s for s in profile if s]
+    if len(spans) < 3:
+        return False
+    widest = max(s[1] - s[0] for s in spans)
+    if widest <= 0:
+        return False
+    narrowest = min(s[1] - s[0] for s in spans)
+    if (widest - narrowest) / widest > tol:
+        return True
+    # or the shape is offset: a slanted tail keeps its width but moves
+    lefts = [s[0] for s in spans]
+    return (max(lefts) - min(lefts)) / widest > tol
+
+
+def profile_bands(profile, box_len, k, line_h, pad_frac=0.0, ink_frac=0.62):
+    """Where each of k centred lines may put its ink.
+
+    Returns one ``(x0, x1)`` span per line, or None for a line whose band
+    falls outside the selection - which is how the caller learns that this
+    many lines of this height do not fit in this shape.
+
+    The span of a band is the intersection of the scan lines it covers (the
+    rightmost left edge, the leftmost right edge), because a line of text is
+    a rectangle and has to fit the narrowest part it crosses.
+    """
+    rows = len(profile or [])
+    if rows == 0 or k <= 0 or box_len <= 0:
+        return []
+    mid = (k - 1) / 2.0
+    out = []
+    for i in range(k):
+        centre = box_len / 2.0 + (i - mid) * line_h
+        # only the part of the line box that carries ink is measured: the
+        # leading above and below the letters is empty, and intersecting the
+        # shape across it would be stricter than the ellipse it replaces -
+        # the text would shrink on exactly the round bubbles this is for.
+        half = line_h * max(0.05, min(1.0, ink_frac)) / 2.0
+        top = centre - half
+        bottom = centre + half
+        if bottom <= 0 or top >= box_len:
+            out.append(None)
+            continue
+        r0 = int(max(0, min(rows - 1, top / box_len * rows)))
+        r1 = int(max(0, min(rows - 1, (bottom / box_len * rows) - 1e-9)))
+        spans = [profile[r] for r in range(r0, r1 + 1) if profile[r]]
+        if len(spans) <= (r1 - r0):                 # a gap inside the band
+            out.append(None)
+            continue
+        x0 = max(s[0] for s in spans)
+        x1 = min(s[1] for s in spans)
+        # the margin is a share of the room this line actually has, not of
+        # the box around the bubble: the box already counted the empty
+        # corners once, and charging for them twice is why a shaped fit
+        # would come out smaller than the oval it replaces
+        inset = (x1 - x0) * max(0.0, pad_frac) / 2.0
+        x0 += inset
+        x1 -= inset
+        out.append((x0, x1) if x1 - x0 > 1.0 else None)
+    return out
+
+
+def wrap_outline(words, width_of, space_w, profile, box_len, line_h,
+                 hyph=None, pad_frac=0.0):
+    """Wrap words so every line fits the shape at its own height.
+
+    The same fixed-point iteration as `wrap_ellipse`: the allowed widths
+    depend on how many lines there are, and the line count depends on the
+    widths. Only a self-consistent answer is returned; otherwise None, and
+    the caller tries a smaller font.
+    """
+    if not words:
+        return []
+    bands = profile_bands(profile, box_len, 1, line_h, pad_frac)
+    first = bands[0] if bands else None
+    init = wrap_greedy(words, width_of, space_w,
+                       (first[1] - first[0]) if first else 1.0, hyph)
+    k = max(1, len(init))
+    for _ in range(12):
+        bands = profile_bands(profile, box_len, k, line_h, pad_frac)
+        if not bands or any(b is None for b in bands):
+            return None
+        widths = [b[1] - b[0] for b in bands]
+        res = _wrap_schedule(words, width_of, space_w, widths, hyph)
+        if res is None:
+            return None
+        if len(res) == k:
+            return res
+        k = len(res)
+        if k > 200:
+            return None
+    return None
+
+
 def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
-             shape="rect", mask=None, hyphenate=False, lang="en"):
+             shape="rect", mask=None, hyphenate=False, lang="en",
+             profile=None):
     """Find the largest font size at which the wrapped text fits.
 
     shape='rect'    : rectangular box, evenly balanced lines. Embedded line
@@ -761,6 +922,11 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     shape='ellipse' : inscribed ellipse (round speech bubble); lines at the
                       top/bottom become narrower. Hard breaks become spaces here
                       (the ellipse shape drives the wrapping).
+    shape='outline' : the real shape the user selected, read from `profile`
+                      (see `mask_profile`). Like 'ellipse', but each line is
+                      limited by the narrowest part of the bubble it crosses
+                      instead of by an oval drawn around it. Without a
+                      profile this falls back to 'ellipse'.
 
     mask: optional list of bool with the same length as text - marks bold
     characters (for partially bold text). None -> nothing bold.
@@ -774,6 +940,8 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     """
     if mask is None:
         mask = [False] * len(text)
+    if shape == "outline" and not profile:
+        shape = "ellipse"           # nothing to follow; the oval is the guess
 
     # word -> valid break indices (None disables hyphenation entirely)
     hyph_fn = None
@@ -784,7 +952,7 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
     usable_w = box_w * (1.0 - pad_frac)
     usable_h = box_h * (1.0 - pad_frac)
 
-    if shape == "ellipse":
+    if shape in ("ellipse", "outline"):
         # \n counts as a space here
         flat = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
         fmask = list(mask)
@@ -797,7 +965,12 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
 
         def fits(px):
             width_of, space_w, line_h, _asc, _desc = measurer(px)
-            res = wrap_ellipse(words, width_of, space_w, a, b, line_h, hyph_fn)
+            if shape == "outline":
+                res = wrap_outline(words, width_of, space_w, profile, box_h,
+                                   line_h, hyph_fn, pad_frac)
+            else:
+                res = wrap_ellipse(words, width_of, space_w, a, b, line_h,
+                                   hyph_fn)
             if res is None:
                 return None
             if len(res) * line_h > usable_h:
@@ -846,9 +1019,14 @@ def fit_text(text, measurer, box_w, box_h, max_px, min_px, pad_frac,
         fitted = True
 
     width_of, space_w, line_h, ascent, descent = measurer(best)
-    if shape == "ellipse":
-        res = wrap_ellipse(words, width_of, space_w,
-                           usable_w / 2.0, usable_h / 2.0, line_h, hyph_fn)
+    if shape in ("ellipse", "outline"):
+        res = None
+        if shape == "outline":
+            res = wrap_outline(words, width_of, space_w, profile, box_h,
+                               line_h, hyph_fn, pad_frac)
+        if res is None:
+            res = wrap_ellipse(words, width_of, space_w,
+                               usable_w / 2.0, usable_h / 2.0, line_h, hyph_fn)
         if res is None:
             res = wrap_greedy(words, width_of, space_w, usable_w, hyph_fn)
         line_lists = res
@@ -1689,6 +1867,34 @@ def vertical_start(valign, box_y, box_h, pad_frac, k, line_h, ascent, descent,
         return cy - ((k - 1) * line_h - c) / 2.0
     # no cap height known: centre the em box (ascent + descent)
     return cy - ((k - 1) * line_h + descent - ascent) / 2.0
+
+
+def line_x_positions_bands(line_widths, align, origin, bands):
+    """Absolute LEFT x per line, each line placed in its own band.
+
+    The flat version centres every line on one x, which is right for a box
+    and wrong for a shape: in a bubble with a tail, or a lopsided cloud, the
+    middle of the box is not the middle of the row the line sits in. Ink
+    centred in the outline is the whole point of fitting to the outline.
+
+    A line whose band is missing falls back to the box, so a bad profile
+    misplaces nothing.
+    """
+    out = []
+    for i, w in enumerate(line_widths):
+        band = bands[i] if i < len(bands) else None
+        if not band:
+            out.append(float(origin))
+            continue
+        left = float(origin) + band[0]
+        right = float(origin) + band[1]
+        if align == "left":
+            out.append(left)
+        elif align == "right":
+            out.append(right - w)
+        else:
+            out.append((left + right) / 2.0 - w / 2.0)
+    return out
 
 
 def line_x_positions(line_widths, align, left, center, right):

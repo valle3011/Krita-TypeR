@@ -13,6 +13,95 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.21", {
+        "en": [
+            "The script is something you write now, not only something "
+            "you load. \u201c+ New\u201d starts an empty one, a line can be "
+            "edited where it is read \u2014 in the table with F2 or the "
+            "right click, or in the field above the preview \u2014 and "
+            "lines can be inserted, deleted and moved. A page break can be "
+            "set by hand where the script forgot one; the automatic "
+            "\u201cPage 12\u201d detection is untouched and still does the "
+            "work. A corrected line now goes back into the script text as "
+            "well, so Analyze no longer quietly undoes it.",
+            "The Batch tab holds the script itself. Every line is there, "
+            "ticked and already paired with a bubble \u2014 untick what "
+            "should not be placed instead of filling in what should. You "
+            "can type straight into a line, and Enter writes the next one; "
+            "page bars show where a page begins; a picker switches between "
+            "the open scripts without leaving the tab.",
+            "Text now fits the real outline of the bubble. \u201cRound\u201d "
+            "used to inscribe an ellipse in the box around your selection, "
+            "which spills out of anything that is not an oval \u2014 a "
+            "cloud, a shout, a bubble with a tail. The selection mask is "
+            "the shape, so each line is limited by the narrowest part it "
+            "crosses and centred where it actually sits. A rectangular "
+            "marquee has no shape to follow and keeps the old behaviour.",
+            "Ctrl+Space anywhere in Krita opens a font search: type a few "
+            "letters and the font is on the text, favourites first, each "
+            "row drawn in its own font. The preview can be switched off.",
+            "Setup lists every hotkey, TypeR\u2019s own and the preset keys "
+            "you bound yourself, with the character, the preset and the "
+            "manga each belongs to \u2014 and TypeR\u2019s own keys can be "
+            "rebound there. A combination a preset already owns is refused "
+            "rather than quietly taken.",
+            "Setup has a Credits section: for every feature, whose idea it "
+            "was and who wrote it. A good part of this plugin rebuilds "
+            "somebody else\u2019s idea, and now it says so.",
+            "The font properties window finds the other versions of a "
+            "font. Windows lists \u201cAnime Ace\u201d, \u201cAnime Ace 2.0 "
+            "BB\u201d and \u201cAnime Ace 3 BB\u201d as three unrelated "
+            "families; they are shown together now, under their own "
+            "heading, with the cuts of the open one above them.",
+        ],
+        "de": [
+            "Das Skript ist jetzt etwas, das du schreibst, nicht nur etwas, "
+            "das du l\u00e4dst. \u201e+ Neu\u201c f\u00e4ngt ein leeres an, eine "
+            "Zeile l\u00e4sst sich dort \u00e4ndern, wo man sie liest \u2014 in "
+            "der Tabelle mit F2 oder Rechtsklick, oder im Feld \u00fcber der "
+            "Vorschau \u2014 und Zeilen lassen sich einf\u00fcgen, l\u00f6schen "
+            "und verschieben. Einen Seitenwechsel kannst du von Hand "
+            "setzen, wo das Skript keinen hat; die automatische "
+            "\u201ePage 12\u201c-Erkennung bleibt unangetastet und macht "
+            "weiter die Arbeit. Eine korrigierte Zeile geht jetzt auch in "
+            "den Skripttext zur\u00fcck \u2014 Analysieren macht sie nicht "
+            "mehr still r\u00fcckg\u00e4ngig.",
+            "Der Stapel-Reiter hat das Skript selbst drin. Jede Zeile steht "
+            "da, angehakt und schon einer Blase zugeordnet \u2014 du hakst "
+            "ab, was nicht gesetzt werden soll, statt einzutragen, was "
+            "gesetzt werden soll. Du kannst direkt in eine Zeile tippen, "
+            "und Enter legt die n\u00e4chste an; Seitenbalken zeigen, wo "
+            "eine Seite beginnt; eine Auswahl wechselt das Skript, ohne "
+            "den Reiter zu verlassen.",
+            "Text passt sich jetzt der echten Blasenkontur an. \u201eRund\u201c "
+            "hat bisher eine Ellipse in den Kasten um deine Auswahl "
+            "gelegt, und die steht bei allem \u00fcber, was kein Oval ist "
+            "\u2014 Wolke, Schrei, Blase mit Tail. Die Auswahlmaske ist die "
+            "Form: jede Zeile wird von der schmalsten Stelle begrenzt, die "
+            "sie durchquert, und sitzt dort zentriert, wo sie wirklich "
+            "liegt. Eine rechteckige Auswahl hat keine Form zum Folgen und "
+            "beh\u00e4lt das bisherige Verhalten.",
+            "Strg+Leertaste \u00f6ffnet \u00fcberall in Krita eine "
+            "Schriftsuche: ein paar Buchstaben tippen und die Schrift "
+            "sitzt, Favoriten zuerst, jede Zeile in ihrer eigenen Schrift "
+            "gezeichnet. Die Vorschau l\u00e4sst sich abschalten.",
+            "Die Einstellungen listen jedes Tastenk\u00fcrzel auf \u2014 die "
+            "von TypeR und die Preset-Tasten, die du selbst belegt hast, "
+            "mit Charakter, Preset und Manga. Die TypeR-eigenen Tasten "
+            "lassen sich dort umbelegen. Eine Kombination, die schon einem "
+            "Preset geh\u00f6rt, wird abgelehnt statt still \u00fcbernommen.",
+            "Die Einstellungen haben einen Credits-Abschnitt: zu jeder "
+            "Funktion, von wem die Idee kam und wer sie geschrieben hat. "
+            "Ein guter Teil dieses Plugins baut die Idee von jemand "
+            "anderem nach, und jetzt steht es da.",
+            "Das Schrift-Eigenschaftenfenster findet die anderen Versionen "
+            "einer Schrift. Windows f\u00fchrt \u201eAnime Ace\u201c, "
+            "\u201eAnime Ace 2.0 BB\u201c und \u201eAnime Ace 3 BB\u201c als "
+            "drei Familien ohne Zusammenhang; sie stehen jetzt zusammen, "
+            "unter eigener \u00dcberschrift, mit den Schnitten der offenen "
+            "dar\u00fcber.",
+        ],
+    }),
     ("1.20", {
         "en": [
             "A font in the Fonts tab now has a properties window: "

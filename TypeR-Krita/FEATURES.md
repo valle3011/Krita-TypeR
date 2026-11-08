@@ -823,6 +823,101 @@ reason the deferred check hangs off a `QTimer` owned by the docker rather
 than a bare `QTimer.singleShot`, which would still fire after the docker was
 gone and reach a deleted C++ object.
 
+### Fitting to the bubble's outline
+
+"Round" used to inscribe an ellipse in the bounding box of the selection. The
+selection *is* the shape, so the fit follows it: each line is limited by the
+narrowest part of the bubble it crosses, and centred where that part actually
+sits. A rectangular marquee has no shape to follow and keeps the ellipse.
+
+- `layout.py` → `mask_profile` (longest run of selection per scan line),
+  `profile_is_shaped`, `profile_bands`, `wrap_outline`,
+  `line_x_positions_bands`; `fit_text(shape="outline", profile=...)`
+- `typer_kr.py` → the profile is read in `insert_text_layer` and the shape is
+  upgraded from "ellipse" to "outline" there
+
+Three things it has to get right. **The longest run, not the outer extent**:
+a bubble with a tail, or two lobes, must not count the gap between them as
+room. **The margin is a share of the line's own room**, not of the box — the
+box already counted the empty corners once, and charging twice made a shaped
+fit come out smaller than the ellipse it replaces. And **only the inked part
+of the line box is measured** (62 % of the line height, about cap height plus
+descenders): intersecting the shape across the leading as well is stricter
+than the ellipse, and the text would shrink on exactly the round bubbles this
+is for.
+
+### Writing and editing the script in the program
+
+The script no longer has to come from a document. "+ New" starts an empty one;
+a line is edited where it is read (F2 or the right click in the table, the
+field above the preview, or the row itself in the Batch tab); lines can be
+inserted, deleted and moved, and a page break set by hand.
+
+- `langpair.py` → `delete_unit`, `insert_unit`, `move_unit`, `shift_marks`,
+  `set_page_break`, `clear_page_break`, `next_page_label`, `rebuild_pages`
+- `typer_kr.py` → `_on_table_edit`, `_table_menu`, `_after_script_edit`,
+  `_line_changed`, `_sync_editor_text`, `on_new_script`
+
+Two things. **Everything that points at a line has to move with it** — the
+green done-marks are a set of indices and the current line is an index, so an
+edit that forgets one of them moves somebody's progress onto a different line;
+that bookkeeping is in `langpair` where it can be tested. And **a corrected
+line is written back into the script text**, whenever its old wording occurs
+there exactly once — otherwise the text and the units part, Analyze would
+undo the work, and the label says so instead of pretending.
+
+### The script in the Batch tab
+
+The batch used to be one row per bubble with a drop-down to find the line in.
+Now the script is in the tab: every line, ticked, already paired, and the work
+is to untick what should not be placed. Rows are editable, Enter writes the
+next line, page bars mark where a page begins, and a picker switches scripts.
+
+- `bubbles.py` → `assign_chosen` (the chosen lines onto the boxes, in order)
+- `typer_kr.py` → `_bp_lines_refresh`, `_bp_lines_apply`, `_bp_lines_changed`,
+  `_bp_line_add`, `_bp_script_refresh`, `ScriptLineDelegate`
+
+The row shows `"3  text   → 2"` and is edited as the line alone: a
+QListWidgetItem keeps the display and the edit value in the same slot, so the
+line lives in a role of the delegate's own. Enter is taken from Qt before its
+own handling, which is "commit and close", and turned into "commit and start
+the next line".
+
+### Find a font (Ctrl+Space)
+
+A search box over every installed family, favourites first, each row drawn in
+its own font; the preview can be switched off. The key is rebindable.
+
+- `typer_kr.py` → `BUILTIN_KEYS`, `_builtin_key`, `open_font_search`
+- `fontfav_ui.py` → `FontSearchDialog` (`preview`, `on_preview`, `stars`)
+
+Registered with the plugin's own key watcher, not as a QShortcut, for the
+reason recorded above that watcher: Krita's canvas takes key events before
+Qt's shortcut map is consulted.
+
+### Every hotkey, in one list
+
+Setup shows what TypeR listens for: its own keys and the preset keys the user
+bound, with the character, the preset and the manga each belongs to. TypeR's
+own keys can be rebound there, in the same `KeyChordEdit` the preset keys use.
+
+- `typer_kr.py` → `all_hotkeys`, `_refresh_keys_table`,
+  `builtin_key_owner`, `_on_builtin_key_recorded`, `reset_builtin_keys`
+
+A combination a preset already owns is **refused**, across every manga and not
+just the open one: TypeR's own keys are matched first, so taking it would stop
+that preset working everywhere without saying so.
+
+### Credits
+
+For every feature: whose idea it was, and who wrote it.
+
+- `credits.py` (plain data, Qt-free), shown by `_refresh_credits_table`
+
+Separate columns because they are separate things. A good part of this plugin
+rebuilds somebody else's idea, and the table is where that is said rather than
+implied.
+
 ### Font properties
 
 Right-click a favourite → **Properties** (or Alt+Enter): a window with a
@@ -840,6 +935,15 @@ plus the text types set to it.
   `show_properties` in `fontfav_ui.py`
 - The docker hands the panel `presets_fn` (its `_groups` tree) and
   `type_fonts_fn` (`_tt_font_labels`)
+
+**Other versions of the same face** are listed under their own heading
+below the cuts: Windows reports "Anime Ace", "Anime Ace 2.0 BB" and "Anime Ace
+3 BB" as three unrelated families. `fontinfo.significant` drops the cut, the
+foundry tag and the version from a name, and two faces are related when one's
+significant words are a prefix of the other's - which gathers a face with its
+extensions without dragging in everything that merely starts the same way.
+Measured over the 2898 families installed here: 1446 get nothing, 1147 get one
+to three, and the largest group is a real superfamily of 59.
 
 Three things it has to get right. **A cut is not a family**: Qt lists "Anime
 Ace" and "Anime Ace Bold" as two families, so the relation is rebuilt through

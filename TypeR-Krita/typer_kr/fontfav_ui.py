@@ -127,6 +127,9 @@ _FALLBACK = {
     "fav_apply": "Use font",
     "fav_none": "No favourites yet. Add one with “★ Add current font”.",
     "fav_pick_font": "Add a favourite font",
+    "fav_preview_chk": "Preview",
+    "fav_preview_tip": ("Draw every row in its own font. Switch it off if the list "
+                        "feels slow, or if the names read better plain."),
     "fav_choose_cats": "Categories for this font:",
     "fav_new_cat_ph": "New category…",
     "fav_new_cat_add": "Add",
@@ -924,12 +927,20 @@ class FontFavoritesPanel(QWidget):
 #  Dialogs
 # ---------------------------------------------------------------------------
 class _FontChooserDialog(QDialog):
-    """A searchable list of installed families."""
+    """A searchable list of installed families.
 
-    def __init__(self, parent, tr, families):
+    `stars` marks the favourites so they can be told apart when they are
+    sorted to the top; the search still matches the family name alone, so a
+    star never gets in the way of typing.
+    """
+
+    def __init__(self, parent, tr, families, stars=None,
+                 title_key="fav_pick_font", preview=None, on_preview=None):
         super().__init__(parent)
         self._tr = tr
-        self.setWindowTitle(tr("fav_pick_font"))
+        self._stars = set(stars or ())
+        self._on_preview = on_preview
+        self.setWindowTitle(tr(title_key))
         self.resize(360, 440)
         lay = QVBoxLayout(self)
         self.search = QLineEdit()
@@ -937,13 +948,24 @@ class _FontChooserDialog(QDialog):
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter)
         lay.addWidget(self.search)
+        self.preview_chk = None
+        if preview is not None:
+            self.preview_chk = QCheckBox(tr("fav_preview_chk"))
+            self.preview_chk.setToolTip(tr("fav_preview_tip"))
+            self.preview_chk.setChecked(bool(preview))
+            self.preview_chk.toggled.connect(self._on_preview_toggle)
+            lay.addWidget(self.preview_chk)
         self.list = QListWidget()
         self.list.setUniformItemSizes(True)      # fast with thousands of fonts
         for fam in families:
-            it = QListWidgetItem(fam)
+            it = QListWidgetItem(("★  " + fam)
+                                 if fam.lower() in self._stars else fam)
             it.setData(_ROLE_FAMILY, fam)
+            it.setSizeHint(QSize(0, 24))
             self.list.addItem(it)
         self.list.itemDoubleClicked.connect(lambda *_: self.accept())
+        if preview:
+            self._apply_preview(True)
         lay.addWidget(self.list, 1)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -952,6 +974,25 @@ class _FontChooserDialog(QDialog):
         if self.list.count():
             self.list.setCurrentRow(0)
         self.search.setFocus()
+
+    def _apply_preview(self, on):
+        """Every row in its own face, or all of them in the panel's font."""
+        for i in range(self.list.count()):
+            it = self.list.item(i)
+            if on:
+                f = QFont(it.data(_ROLE_FAMILY))
+                f.setPointSize(11)
+                it.setFont(f)
+            else:
+                it.setData(Qt.ItemDataRole.FontRole, None)
+
+    def _on_preview_toggle(self, on):
+        self._apply_preview(bool(on))
+        if self._on_preview is not None:
+            try:
+                self._on_preview(bool(on))
+            except Exception:                       # noqa: BLE001
+                pass
 
     def _filter(self, text):
         low = (text or "").lower().split()
@@ -1113,3 +1154,7 @@ class _ManageCategoriesDialog(QDialog):
             return
         self._store.remove_category(cur)
         self._reload()
+
+
+#: the same dialog, by a name the docker can import
+FontSearchDialog = _FontChooserDialog

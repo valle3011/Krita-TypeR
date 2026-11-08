@@ -46,6 +46,7 @@ from ._qt import (
     QMessageBox, QSizePolicy, QFrame, QLineEdit, QListWidget, QListWidgetItem,
     QTextBrowser, QFontDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QComboBox,
+    QStyledItemDelegate,
     QInputDialog, QScrollArea, QTabBar, QTabWidget, QToolButton, QMenu,
     QDialog, QButtonGroup, QDialogButtonBox, QApplication,
     QShortcut, QLayout, QStackedWidget, QTextEdit,
@@ -73,6 +74,7 @@ from . import imgfx as IMG
 from . import xlsx as XLSX
 from . import langpair as LP
 from . import texttypes as TT
+from . import credits as CR
 from . import fontmatch as FM
 from . import gauth as GA
 from . import gdocs as GD
@@ -89,7 +91,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.20"
+VERSION = "1.21"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -188,6 +190,15 @@ def key_event_string(ev):
     except AttributeError:                       # Qt 5: modifiers | key
         combo = int(ev.modifiers()) | int(ev.key())
     return QKeySequence(combo).toString()
+
+
+#: TypeR's own keys, beside the preset keybinds the user makes. Each is
+#: (combination, the docker method it calls, the string that names it in the
+#: Setup tab's list). They go through the same application-wide watcher as
+#: the preset keys, for the same reason: a QShortcut never sees them.
+BUILTIN_KEYS = (
+    ("Ctrl+Space", "open_font_search", "key_font_search"),
+)
 
 
 def key_name(key):
@@ -303,6 +314,21 @@ class WhatsNewDialog(QDialog):
         return self.again_chk.isChecked()
 
 
+def native_key_text(combo):
+    """A binding spelled the way this keyboard's owner reads it.
+
+    Matching stays on Qt's portable spelling ("Ctrl+Space") because that is
+    what the watcher builds and what the settings store; only what the list
+    shows is localized, so a German Windows says "Strg+Leertaste".
+    """
+    try:
+        seq = QKeySequence(combo)
+        text = seq.toString(QKeySequence.SequenceFormat.NativeText)
+        return text or combo
+    except Exception:                               # noqa: BLE001
+        return combo
+
+
 class KeyChordEdit(QLineEdit):
     """Records one key combination, the way a "press your shortcut" field does.
 
@@ -343,8 +369,10 @@ class KeyChordEdit(QLineEdit):
         return self._recording
 
     def _render(self):
-        self.setText((self._combo + " \u2026") if self._recording
-                     else self._combo)
+        # Localized for reading only: `combo()` keeps Qt's portable spelling,
+        # which is what is matched and what is stored.
+        shown = native_key_text(self._combo) if self._combo else ""
+        self.setText((shown + " \u2026") if self._recording else shown)
 
     # -- recording -------------------------------------------------------
     def event(self, ev):
@@ -461,6 +489,40 @@ from .nowheel import NoScrollComboBox, NoScrollSpinBox     # noqa: E402,F401
 from .nowheel import NoScrollSlider                        # noqa: E402,F401
 
 
+class ScriptLineDelegate(QStyledItemDelegate):
+    """Editor for a line of the script, with Enter meaning "next line".
+
+    Qt's own handling of Return is to commit and close the editor, which is
+    right for a table of values and wrong for writing: nothing comes of the
+    key and the next line has to be asked for with a button. The key is
+    taken here before the base class sees it, so it commits AND says that a
+    new line is wanted.
+    """
+
+    enterPressed = pyqtSignal()
+
+    #: where the line itself lives. Not the edit role: a list item stores
+    #: that in the same slot as what it displays, and the row displays the
+    #: line number and the bubble as well as the line.
+    TEXT_ROLE = Qt.ItemDataRole.UserRole + 1
+
+    def setEditorData(self, editor, index):
+        editor.setText(index.data(self.TEXT_ROLE) or "")
+
+    def setModelData(self, editor, model, index):
+        model.setData(index, editor.text(), self.TEXT_ROLE)
+
+    def eventFilter(self, editor, ev):
+        if (ev.type() == QEvent.Type.KeyPress
+                and ev.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and not (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier)):
+            self.commitData.emit(editor)
+            self.closeEditor.emit(editor)
+            self.enterPressed.emit()
+            return True
+        return super(ScriptLineDelegate, self).eventFilter(editor, ev)
+
+
 class ScriptTabBar(QTabBar):
     """Tab bar for the loaded scripts. Adds browser-style middle-click-to-close
     on top of the normal close button."""
@@ -491,6 +553,89 @@ LANG = {
         "title": "TypeR for Krita",
         "language": "Language:",
         "load_btn": "Load script (.docx / .odt / .txt / .pdf / .gdoc)",
+        "new_script_btn": "+ New",
+        "new_script_tip": ("Start an empty script and write the translation "
+                           "here, instead of preparing it in a document "
+                           "first. Double-click the tab to name it."),
+        "st_new_script": "Empty script. Type the translation, one line per "
+                         "bubble, then Analyze.",
+        "tbl_edit": "Edit line (F2)",
+        "tbl_insert_above": "Insert line above",
+        "tbl_insert_below": "Insert line below",
+        "tbl_delete": "Delete line",
+        "tbl_up": "Move up",
+        "tbl_down": "Move down",
+        "tbl_page_break": "Page starts here",
+        "tbl_page_clear": "No page break here",
+        "tbl_page_tip": "Page {p}",
+        "st_line_edited": "Line {n} changed.",
+        "st_line_deleted": "Line {n} deleted.",
+        "st_page_break": "Page {p} starts at line {n}.",
+        "st_page_cleared": "Page break at line {n} removed.",
+        "hand_edited": "edited here \u2014 Analyze re-reads the text above "
+                       "and drops these changes",
+        "analyze_lose_q": ("The lines were edited here. Analyzing re-reads "
+                           "the text above and drops those changes. "
+                           "Continue?"),
+        "panel_keys": "Hotkeys",
+        "panel_credits": "Credits",
+        "keys_rebind_tip": ("Click and press the combination you want. Esc "
+                            "puts the old one back."),
+        "keys_reset": "TypeR\u2019s own keys are back to how they ship.",
+        "keys_reset_btn": "Default keys",
+        "keys_bound": "{key} is bound.",
+        "keys_taken": "{key} already belongs to \u201c{what}\u201d ({where}).",
+        "keys_col_key": "Key",
+        "keys_col_what": "What it does",
+        "keys_col_where": "Where",
+        "keys_builtin": "TypeR",
+        "keys_none": "No preset keys bound yet.",
+        "keys_hint": ("Everything TypeR listens for, including the preset "
+                      "keys you bound yourself. Preset keys belong to their "
+                      "manga, so the same key can mean something else in the "
+                      "next series."),
+        "cr_col_feature": "Feature",
+        "cr_col_idea": "Idea",
+        "cr_col_code": "Written by",
+        "cr_note": ("Whose idea it was first, and who wrote it. A good part "
+                    "of this plugin rebuilds somebody else\u2019s idea; the "
+                    "code is written from scratch."),
+        "typer_credit_sakushi": ("TypeR for Photoshop \u2014 the tool several "
+                                 "of these were rebuilt from"),
+        "typer_credit_giongo": "the Giongo lettering tool",
+        "typer_credit_ksr": ("suggested writing the script inside the "
+                             "program"),
+        "cr_textshapr": "TextShapR \u2014 line-break proposals",
+        "cr_outline": "Fitting the text to the bubble\u2019s outline",
+        "cr_batch": "Batch tab \u2014 a whole page in one run",
+        "cr_giongo": "Giongo \u2014 drawn SFX lettering",
+        "cr_script_edit": "Writing and editing the script in the program",
+        "cr_fonts": ("Fonts tab \u2014 favourites, previews, bundles, "
+                     "properties"),
+        "cr_font_search": "Ctrl+Space font search",
+        "cr_keys_list": "This list of hotkeys",
+        "cr_credits": "These credits",
+        "cr_sfx": "SFX \u2014 strategies, rule search, SFX tab",
+        "cr_presets": "Presets per manga and character, with keys",
+        "cr_scripts": "Scripts from PDF, Google Docs and Word",
+        "cr_colour": "Colouring single words and whole lines",
+        "cr_patterns": "Patterns from a crop",
+        "cr_bubblr": "BubblR \u2014 finding the bubbles",
+        "cr_swap": "Swap \u2014 the typesetting onto the cleans",
+        "cr_vertical": "Vertical text (tategaki)",
+        "cr_balloons": "Balloon shapes and balloon tools",
+        "cr_texttypes": "Text types and main characters",
+        "cr_lab": "TypeR Lab \u2014 the layout experiment",
+        "fav_preview_chk": "Preview",
+        "fav_preview_tip": ("Draw every row in its own font. Switch it off "
+                            "if the list feels slow, or if the names read "
+                            "better plain."),
+        "key_font_search": "Find a font",
+        "key_font_search_tip": ("Ctrl+Space anywhere in Krita: type a few "
+                                "letters and the font is on the text. "
+                                "Favourites first."),
+        "st_font_picked": "Font: {name}",
+        "st_no_fonts": "No fonts found.",
         "script_label": "Script (load a file or paste directly):",
         "editor_ph": "Paste the script here, or load a file above …",
         "skip_empty": "Skip empty lines",
@@ -1051,6 +1196,31 @@ LANG = {
                            "heuristic or the learned model in the BubblR "
                            "'ai' folder (run ai\\setup.ps1 once)."),
         "bp_detect": "Detect bubbles",
+        "panel_batch_lines": "Script: which lines",
+        "bp_lines_hint": "Ticked lines are placed, in this order.",
+        "bp_script": "Script:",
+        "bp_script_tip": ("Which of the open scripts the lines come from. "
+                          "The same scripts as the tabs in the Type tab - "
+                          "switching here switches there too."),
+        "bp_line_lbl": "Line:",
+        "bp_line_ph": "Pick a line to change it, or write a new one with "
+                      "+ Line.",
+        "bp_line_add": "+ Line",
+        "bp_line_add_tip": ("Write a line that is not in the script: it goes "
+                            "in after the selected one, on its page, and is "
+                            "ticked straight away."),
+        "bp_lines_all": "All",
+        "bp_lines_all_tip": "Place every line of this page.",
+        "bp_lines_none_tip": "Place none of them — then tick the few you want.",
+        "bp_lines_none": "None",
+        "bp_lines_open": "Only unplaced",
+        "bp_lines_open_tip": ("Untick the lines already marked done, so a "
+                              "second run over the page only fills what is "
+                              "still empty."),
+        "bp_lines_count": "{n} of {total} lines \u2192 {boxes} bubbles",
+        "bp_lines_left": "{n} chosen line(s) found no bubble.",
+        "bp_lines_to": "\u2192 {n}",
+        "bp_lines_done": "\u2713",
         "panel_bubblr_batch": "Batch: line per bubble",
         "tab_batch": "Batch",
         "panel_batch_mark": "Mark bubbles",
@@ -1443,6 +1613,90 @@ LANG = {
         "title": "TypeR für Krita",
         "language": "Sprache:",
         "load_btn": "Skript laden (.docx / .odt / .txt / .pdf / .gdoc)",
+        "new_script_btn": "+ Neu",
+        "new_script_tip": ("Ein leeres Skript anfangen und die \u00dcbersetzung "
+                           "hier schreiben, statt sie erst in einem Dokument "
+                           "vorzubereiten. Doppelklick auf den Reiter gibt "
+                           "ihm einen Namen."),
+        "st_new_script": "Leeres Skript. Schreib die \u00dcbersetzung, eine "
+                         "Zeile pro Blase, dann Analysieren.",
+        "tbl_edit": "Zeile bearbeiten (F2)",
+        "tbl_insert_above": "Zeile dar\u00fcber einf\u00fcgen",
+        "tbl_insert_below": "Zeile darunter einf\u00fcgen",
+        "tbl_delete": "Zeile l\u00f6schen",
+        "tbl_up": "Nach oben",
+        "tbl_down": "Nach unten",
+        "tbl_page_break": "Hier beginnt eine Seite",
+        "tbl_page_clear": "Hier kein Seitenwechsel",
+        "tbl_page_tip": "Seite {p}",
+        "st_line_edited": "Zeile {n} ge\u00e4ndert.",
+        "st_line_deleted": "Zeile {n} gel\u00f6scht.",
+        "st_page_break": "Seite {p} beginnt bei Zeile {n}.",
+        "st_page_cleared": "Seitenwechsel bei Zeile {n} entfernt.",
+        "hand_edited": "hier bearbeitet \u2014 Analysieren liest den Text "
+                       "oben neu und verwirft das",
+        "analyze_lose_q": ("Die Zeilen wurden hier bearbeitet. Analysieren "
+                           "liest den Text oben neu und verwirft diese "
+                           "\u00c4nderungen. Weitermachen?"),
+        "panel_keys": "Tastenk\u00fcrzel",
+        "panel_credits": "Credits",
+        "keys_rebind_tip": ("Anklicken und die gew\u00fcnschte Kombination "
+                            "dr\u00fccken. Esc stellt die alte wieder her."),
+        "keys_reset": "Die TypeR-eigenen Tasten sind wieder wie ausgeliefert.",
+        "keys_reset_btn": "Standardtasten",
+        "keys_bound": "{key} ist belegt.",
+        "keys_taken": "{key} geh\u00f6rt schon zu \u201e{what}\u201c ({where}).",
+        "keys_col_key": "Taste",
+        "keys_col_what": "Was sie macht",
+        "keys_col_where": "Wo",
+        "keys_builtin": "TypeR",
+        "keys_none": "Noch keine Preset-Tasten belegt.",
+        "keys_hint": ("Alles, worauf TypeR h\u00f6rt, auch die Preset-Tasten, "
+                      "die du selbst belegt hast. Preset-Tasten geh\u00f6ren "
+                      "zu ihrem Manga \u2014 dieselbe Taste kann in der "
+                      "n\u00e4chsten Serie etwas anderes hei\u00dfen."),
+        "cr_col_feature": "Funktion",
+        "cr_col_idea": "Idee",
+        "cr_col_code": "Programmiert von",
+        "cr_note": ("Von wem die Idee zuerst kam, und wer es geschrieben hat. "
+                    "Ein guter Teil dieses Plugins baut die Idee von jemand "
+                    "anderem nach; der Code ist neu geschrieben."),
+        "typer_credit_sakushi": ("TypeR f\u00fcr Photoshop \u2014 das Werkzeug, "
+                                 "aus dem mehreres hiervon nachgebaut ist"),
+        "typer_credit_giongo": "das Giongo-Letteringwerkzeug",
+        "typer_credit_ksr": ("hat vorgeschlagen, das Skript im Programm "
+                             "selbst zu schreiben"),
+        "cr_textshapr": "TextShapR \u2014 Umbruchvorschl\u00e4ge",
+        "cr_outline": "Text in die Blasenkontur einpassen",
+        "cr_batch": "Stapel-Tab \u2014 eine ganze Seite in einem Durchgang",
+        "cr_giongo": "Giongo \u2014 gezeichnete SFX-Schrift",
+        "cr_script_edit": "Das Skript im Programm schreiben und bearbeiten",
+        "cr_fonts": ("Fonts-Tab \u2014 Favoriten, Vorschau, Pakete, "
+                     "Eigenschaften"),
+        "cr_font_search": "Schriftsuche mit Strg+Leertaste",
+        "cr_keys_list": "Diese Tastenk\u00fcrzel-\u00dcbersicht",
+        "cr_credits": "Diese Credits",
+        "cr_sfx": "SFX \u2014 Strategien, Regelsuche, SFX-Tab",
+        "cr_presets": "Presets pro Manga und Charakter, mit Tasten",
+        "cr_scripts": "Skripte aus PDF, Google Docs und Word",
+        "cr_colour": "Einzelne W\u00f6rter und ganze Zeilen einf\u00e4rben",
+        "cr_patterns": "Muster aus einem Ausschnitt",
+        "cr_bubblr": "BubblR \u2014 die Blasen finden",
+        "cr_swap": "Swap \u2014 das Typesetting auf die Cleans",
+        "cr_vertical": "Vertikaler Text (Tategaki)",
+        "cr_balloons": "Blasenformen und Blasen-Werkzeuge",
+        "cr_texttypes": "Textarten und Hauptcharaktere",
+        "cr_lab": "TypeR Lab \u2014 das Layout-Experiment",
+        "fav_preview_chk": "Vorschau",
+        "fav_preview_tip": ("Jede Zeile in ihrer eigenen Schrift zeichnen. "
+                            "Ausschalten, wenn die Liste tr\u00e4ge wird "
+                            "oder die Namen sich schlicht besser lesen."),
+        "key_font_search": "Schrift suchen",
+        "key_font_search_tip": ("Strg+Leertaste \u00fcberall in Krita: ein paar "
+                                "Buchstaben tippen und die Schrift sitzt. "
+                                "Favoriten zuerst."),
+        "st_font_picked": "Schrift: {name}",
+        "st_no_fonts": "Keine Schriften gefunden.",
         "script_label": "Skript (Datei laden oder direkt einfügen):",
         "editor_ph": "Hier das Skript einfügen oder oben eine Datei laden …",
         "skip_empty": "Leere Zeilen überspringen",
@@ -1986,6 +2240,9 @@ LANG = {
         "fp_no_files": "keine Datei zu dieser Familie gefunden",
         "fp_preview": "Vorschau:",
         "fp_preview_text": "Handgloves 123",
+        "fp_family_rel": "Andere Versionen und Schreibweisen dieser "
+                         "Schrift:",
+        "fp_family_rel_n": " \u2014 {n} verwandt",
         "fp_family_one": "Von „{base}“ ist nur dieser eine Schnitt "
                          "installiert.",
         "fp_family_many": "Von „{base}“ sind {n} Schnitte installiert. "
@@ -2138,6 +2395,34 @@ LANG = {
                            "BubblR-'ai'-Ordner (einmalig ai\\setup.ps1 "
                            "ausführen)."),
         "bp_detect": "Bubbles erkennen",
+        "panel_batch_lines": "Skript: welche Zeilen",
+        "bp_lines_hint": "Angehakte Zeilen werden gesetzt, in dieser "
+                         "Reihenfolge.",
+        "bp_script": "Skript:",
+        "bp_script_tip": ("Aus welchem der offenen Skripte die Zeilen "
+                          "kommen. Dieselben Skripte wie die Reiter im "
+                          "Setzen-Tab \u2014 hier umschalten schaltet dort "
+                          "mit um."),
+        "bp_line_lbl": "Zeile:",
+        "bp_line_ph": "Zeile anklicken zum \u00c4ndern, oder mit + Zeile eine "
+                      "neue schreiben.",
+        "bp_line_add": "+ Zeile",
+        "bp_line_add_tip": ("Eine Zeile schreiben, die nicht im Skript steht: "
+                            "Sie kommt hinter die ausgew\u00e4hlte, auf deren "
+                            "Seite, und ist gleich angehakt."),
+        "bp_lines_all": "Alle",
+        "bp_lines_all_tip": "Jede Zeile dieser Seite setzen.",
+        "bp_lines_none_tip": "Keine setzen — dann die paar anhaken, die du willst.",
+        "bp_lines_none": "Keine",
+        "bp_lines_open": "Nur offene",
+        "bp_lines_open_tip": ("Nimmt die als erledigt markierten Zeilen raus, "
+                              "damit ein zweiter Durchgang \u00fcber die Seite "
+                              "nur noch f\u00fcllt, was leer ist."),
+        "bp_lines_count": "{n} von {total} Zeilen \u2192 {boxes} Blasen",
+        "bp_lines_left": "{n} gew\u00e4hlte Zeile(n) haben keine Blase "
+                         "gefunden.",
+        "bp_lines_to": "\u2192 {n}",
+        "bp_lines_done": "\u2713",
         "panel_bubblr_batch": "Stapel: Zeile pro Bubble",
         "tab_batch": "Stapel",
         "panel_batch_mark": "Bubbles markieren",
@@ -3898,6 +4183,25 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     cx = box_x + box_w / 2.0
     cy = box_y + box_h / 2.0
 
+    # The real outline of the bubble, when there is one. "Round" asks for a
+    # shape; the selection mask IS the shape, and the ellipse was only ever
+    # a stand-in for it. A rectangular marquee has no shape to follow, so it
+    # keeps the ellipse - and so does anything that fails to read.
+    profile = None
+    if auto_fit and shape == "ellipse":
+        try:
+            _sel = doc.selection()
+            if _sel is not None:
+                _raw = _sel.pixelData(int(box_x), int(box_y),
+                                      int(box_w), int(box_h))
+                _prof = L.mask_profile(_raw, int(box_w), int(box_h),
+                                       transpose=bool(vertical))
+                if L.profile_is_shaped(_prof):
+                    profile = _prof
+                    shape = "outline"
+        except Exception:                           # noqa: BLE001
+            profile = None
+
     if vertical:
         measurer = L.vertical_measurer(line_spacing)
     else:
@@ -3912,7 +4216,8 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
     if auto_fit:
         result = L.fit_text(clean, measurer, fit_w, fit_h, max_px, 6,
                             padding_frac, shape, mask,
-                            hyphenate=hyphenate, lang=hyph_lang)
+                            hyphenate=hyphenate, lang=hyph_lang,
+                            profile=profile)
         if result is None:
             return False, "st_empty_line", {}
         font_px, text_lines, line_h, ascent, descent, fitted = result
@@ -3939,8 +4244,17 @@ def insert_text_layer(line, font_family, font_px, color, auto_fit,
                                          len(text_lines), line_h)
     else:
         pad_x = box_w * padding_frac / 2.0
-        line_pos = L.line_x_positions(
-            line_widths, align, box_x + pad_x, cx, box_x + box_w - pad_x)
+        if shape == "outline" and profile:
+            # each line centred in its own part of the bubble: the middle of
+            # the box is not the middle of the row a line sits in once the
+            # shape is lopsided (a tail, a cloud, a shout)
+            _bands = L.profile_bands(profile, fit_h, len(text_lines), line_h,
+                                     padding_frac)
+            line_pos = L.line_x_positions_bands(line_widths, align, box_x,
+                                                _bands)
+        else:
+            line_pos = L.line_x_positions(
+                line_widths, align, box_x + pad_x, cx, box_x + box_w - pad_x)
         # optical vertical centring: use the cap height (not the em ascent, which
         # carries empty ascender space) so all-caps lettering sits on the centre
         cap = None
@@ -6374,6 +6688,7 @@ class TyperDocker(DockWidget):
         # key press on the canvas. Read live by the key hook below, which is
         # installed once the docker's state is complete.
         self._keybinds = self._load_keybinds()
+        self._builtin_keys = self._load_builtin_keys()
         self._key_hook = None
         # the keys held down right now, in the order they were pressed (the
         # order is part of the binding), and the preset a smaller combination
@@ -6388,6 +6703,9 @@ class TyperDocker(DockWidget):
         # self._pairs/_index/_done/… always mirror the ACTIVE session and are
         # snapshotted back into it on every tab switch/close.
         self._sessions = []
+        #: True once the parsed lines were changed here rather than
+        #: read out of the text above; kept per script
+        self._hand_edited = False
         self._active_sid = None
         self._next_sid = 1
 
@@ -6556,6 +6874,66 @@ class TyperDocker(DockWidget):
         # Lets the user resize or hide the big parts of the docker (preview,
         # script box, JP/EN table, font list) and remembers it across restarts.
         # --- fonts per text type ---
+        # --- every hotkey, TypeR's own and the ones the user bound -----
+        _ky_pb = self._new_panel("keys_overview", "setup")
+        self.keys_toggle, _kyl = _collapsible(_ky_pb.body_layout(),
+                                              "setupKeysOpen")
+        self.keys_hint = QLabel()
+        self.keys_hint.setStyleSheet("color: gray;")
+        self.keys_hint.setWordWrap(True)
+        _kyl.addWidget(self.keys_hint)
+        self.keys_table = QTableWidget(0, 3)
+        self.keys_table.verticalHeader().setVisible(False)
+        self.keys_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.keys_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection)
+        self.keys_table.setAlternatingRowColors(True)
+        _h = self.keys_table.horizontalHeader()
+        _h.setStretchLastSection(False)
+        _h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        _h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.keys_table.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        _kyl.addWidget(self.keys_table)
+        self.keys_reset_btn = QPushButton()
+        self.keys_reset_btn.clicked.connect(self.reset_builtin_keys)
+        _kyl.addWidget(self.keys_reset_btn)
+        lay_setup.addWidget(_ky_pb)
+
+        # --- credits ----------------------------------------------------
+        _cr_pb = self._new_panel("credits", "setup")
+        self.credits_toggle, _crl = _collapsible(_cr_pb.body_layout(),
+                                                 "setupCreditsOpen",
+                                                 default_open=False)
+        self.credits_note = QLabel()
+        self.credits_note.setStyleSheet("color: gray;")
+        self.credits_note.setWordWrap(True)
+        _crl.addWidget(self.credits_note)
+        self.credits_table = QTableWidget(0, 3)
+        self.credits_table.verticalHeader().setVisible(False)
+        self.credits_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.credits_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection)
+        self.credits_table.setAlternatingRowColors(True)
+        _h = self.credits_table.horizontalHeader()
+        _h.setStretchLastSection(False)
+        # the feature takes the slack; two names need what they need, and
+        # three columns all sized to their contents do not fit a docker
+        _h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        _h.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        _h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.credits_table.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        _crl.addWidget(self.credits_table)
+        self.credits_people = QLabel()
+        self.credits_people.setStyleSheet("color: gray;")
+        self.credits_people.setWordWrap(True)
+        _crl.addWidget(self.credits_people)
+        lay_setup.addWidget(_cr_pb)
+
         _ttf_pb = self._new_panel("tt_fonts", "setup")
         self.setup_fonts_toggle, _ttfl = _collapsible(
             _ttf_pb.body_layout(), "setupFontsOpen")
@@ -6895,7 +7273,12 @@ class TyperDocker(DockWidget):
         # remember the tab ORDER when the user drags tabs around
         self.script_tabs.tabMoved.connect(
             lambda *_a: self._schedule_session_save())
-        _slay.addWidget(self.script_tabs)
+        tabs_row = QHBoxLayout()
+        tabs_row.addWidget(self.script_tabs, 1)
+        self.new_script_btn = QToolButton()
+        self.new_script_btn.clicked.connect(self.on_new_script)
+        tabs_row.addWidget(self.new_script_btn)
+        _slay.addLayout(tabs_row)
         self.editor = QPlainTextEdit()
         self.editor.setMinimumHeight(170)
         self.editor.setMaximumHeight(320)
@@ -6933,7 +7316,15 @@ class TyperDocker(DockWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        # F2 and the context menu, not a click or a keystroke: the Type tab
+        # answers letter keys with preset keybinds, and a table that started
+        # editing on any key would swallow them.
+        self.table.setEditTriggers(
+            QAbstractItemView.EditTrigger.EditKeyPressed)
+        self.table.itemChanged.connect(self._on_table_edit)
+        self.table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._table_menu)
         self.table.setWordWrap(True)
         hdr = self.table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -7005,6 +7396,7 @@ class TyperDocker(DockWidget):
         self.active_edit.setMinimumHeight(42)
         self.active_edit.setMaximumHeight(70)
         self.active_edit.textChanged.connect(self._update_text_preview)
+        self.active_edit.textChanged.connect(self._write_back_active)
         _actl.addWidget(self.active_edit)
         bold_row = QHBoxLayout()
         self.bold_sel_btn = QPushButton()
@@ -8287,6 +8679,9 @@ class TyperDocker(DockWidget):
         self._retranslate_tabs()
         self.lang_label.setText(t("language"))
         self.setup_general_toggle.setText("⚙ " + t("setup_h_general"))
+        self.keys_toggle.setText("⌨ " + t("panel_keys"))
+        self.keys_reset_btn.setText(t("keys_reset_btn"))
+        self.credits_toggle.setText("❤ " + t("panel_credits"))
         self.setup_fonts_toggle.setText("🅰 " + t("setup_h_fonts"))
         self.setup_google_toggle.setText("🔑 " + t("setup_h_google"))
         self.view_toggle.setText(t("view_toggle"))
@@ -8300,6 +8695,9 @@ class TyperDocker(DockWidget):
         self.view_reset_btn.setText(t("view_reset"))
         self.load_btn.setText(t("load_btn"))
         self.lbl_script.setText(t("script_label"))
+        self.new_script_btn.setText(t("new_script_btn"))
+        self.new_script_btn.setToolTip(t("new_script_tip"))
+        self._refresh_hand_note()
         self.editor.setPlaceholderText(t("editor_ph"))
         self.skip_empty.setText(t("skip_empty"))
         self.analyze_btn.setText(t("analyze_btn"))
@@ -8576,11 +8974,22 @@ class TyperDocker(DockWidget):
                           ("bp_batch_start_btn", "bp_batch_start"),
                           ("bp_batch_stop_btn", "bp_batch_stop"),
                           ("bp_batch_review_chk", "bp_batch_review"),
-                          ("bp_batch_undo_btn", "bp_batch_undo")):
+                          ("bp_batch_undo_btn", "bp_batch_undo"),
+                          ("bp_lines_all_btn", "bp_lines_all"),
+                          ("bp_lines_none_btn", "bp_lines_none"),
+                          ("bp_lines_open_btn", "bp_lines_open"),
+                          ("bp_line_add_btn", "bp_line_add")):
             w = getattr(self, name, None)
             if w is not None:
                 w.setText(t(key))
                 w.setToolTip(t(key + "_tip"))
+        self._refresh_keys_table()
+        self._refresh_credits_table()
+        self.bp_lines_hint.setText(t("bp_lines_hint"))
+        self.bp_script_lbl.setText(t("bp_script"))
+        self.bp_script_combo.setToolTip(t("bp_script_tip"))
+        self.bp_line_lbl.setText(t("bp_line_lbl"))
+        self.bp_line_edit.setPlaceholderText(t("bp_line_ph"))
         self.bp_batch_search.setPlaceholderText(t("bp_batch_search_ph"))
         self.bp_batch_table.setHorizontalHeaderLabels(
             [t("bp_batch_col_bubble"), t("bp_batch_col_line"),
@@ -9440,6 +9849,9 @@ class TyperDocker(DockWidget):
                      "style_shadow": "panel_style_shadow",
                      "hyphenation": "panel_hyphenation",
                      "bubblr_detect": "panel_bubblr_detect",
+                     "keys_overview": "panel_keys",
+                     "credits": "panel_credits",
+                     "batch_lines": "panel_batch_lines",
                      "bubblr_batch": "panel_bubblr_batch",
                      "batch_mark": "panel_batch_mark",
                      "batch_overlay": "panel_batch_overlay",
@@ -11073,6 +11485,8 @@ class TyperDocker(DockWidget):
             return {}
 
     def _save_keybinds(self):
+        # the Setup tab lists them, so it has to hear about a change
+        self._refresh_keys_table()
         try:
             Krita.instance().writeSetting("typer_kr", "presetKeys",
                                           json.dumps(self._keybinds))
@@ -11136,6 +11550,238 @@ class TyperDocker(DockWidget):
         self._key_hook = PresetKeyHook(self)
         app.installEventFilter(self._key_hook)
 
+    # --- the Setup tab's two lists -----------------------------------------
+    def all_hotkeys(self):
+        """[(key, what it does, where it applies)] - every key TypeR takes.
+
+        TypeR's own first, then the preset bindings grouped by manga. A
+        preset key belongs to its manga, so the same key really can mean
+        two things and the third column is the one that says which.
+        """
+        rows = []
+        for _combo, method, label in BUILTIN_KEYS:
+            rows.append((self._builtin_keys.get(method, _combo),
+                         self._tr(label), self._tr("keys_builtin"), method))
+        for manga in sorted(self._keybinds or {}, key=lambda s: s.lower()):
+            per = self._keybinds.get(manga) or {}
+            for combo in sorted(per, key=lambda s: s.lower()):
+                ref = per[combo]
+                if not isinstance(ref, (list, tuple)) or len(ref) < 2:
+                    continue
+                char, preset = ref[0], ref[1]
+                what = ("%s \u00b7 %s" % (char, preset)) if char else preset
+                rows.append((combo, what, manga, None))
+        return rows
+
+    @staticmethod
+    def _fit_table_height(table, cap=260):
+        """As tall as its rows, and no taller than `cap`.
+
+        A list of five hotkeys should not leave 150 px of empty grid in a
+        docker where every pixel is somebody's canvas.
+        """
+        head = table.horizontalHeader().height()
+        rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+        table.setFixedHeight(min(cap, head + rows + 4))
+
+    def _refresh_keys_table(self):
+        """Rebuild the hotkey list. Cheap, so it runs whenever it might
+        have changed rather than trying to work out whether it did."""
+        table = getattr(self, "keys_table", None)
+        if table is None:
+            return
+        rows = self.all_hotkeys()
+        table.setHorizontalHeaderLabels([self._tr("keys_col_key"),
+                                         self._tr("keys_col_what"),
+                                         self._tr("keys_col_where")])
+        table.setRowCount(len(rows))
+        for r, (key, what, where, method) in enumerate(rows):
+            for c, text in enumerate((native_key_text(key), what, where)):
+                if c == 0 and method:
+                    # TypeR's own keys are editable in place, with the same
+                    # field the preset keys use
+                    field = KeyChordEdit()
+                    field.set_combo(key)
+                    field.setToolTip(self._tr("keys_rebind_tip"))
+                    field.chordRecorded.connect(
+                        lambda _m=method, _f=field:
+                        self._on_builtin_key_recorded(_m, _f))
+                    table.setCellWidget(r, c, field)
+                    continue
+                it = QTableWidgetItem(text)
+                if c == 0:
+                    f = QFont(it.font())
+                    f.setBold(True)
+                    it.setFont(f)
+                table.setItem(r, c, it)
+        self._fit_table_height(table)
+        only_builtin = len(rows) <= len(BUILTIN_KEYS)
+        self.keys_hint.setText(
+            self._tr("keys_hint")
+            + ("  " + self._tr("keys_none") if only_builtin else ""))
+
+    def _refresh_credits_table(self):
+        """Fill the credits from `credits.py` - no decisions here."""
+        table = getattr(self, "credits_table", None)
+        if table is None:
+            return
+        rows = CR.rows(self._tr)
+        table.setHorizontalHeaderLabels([self._tr("cr_col_feature"),
+                                         self._tr("cr_col_idea"),
+                                         self._tr("cr_col_code")])
+        table.setRowCount(len(rows))
+        for r, (feature, idea, code) in enumerate(rows):
+            for c, text in enumerate((feature, idea, code)):
+                table.setItem(r, c, QTableWidgetItem(text))
+        table.resizeRowsToContents()
+        self._fit_table_height(table, cap=320)
+        self.credits_note.setText(self._tr("cr_note"))
+        self.credits_people.setText("\n".join(
+            "%s \u2014 %s" % (name, what) for (name, what)
+            in CR.people(self._tr)))
+
+    # --- TypeR's own keys, as the user bound them --------------------------
+    def _load_builtin_keys(self):
+        """{method: combination} - the defaults, with the user's on top."""
+        out = dict((m, c) for (c, m, _k) in BUILTIN_KEYS)
+        try:
+            raw = Krita.instance().readSetting("typer_kr", "builtinKeys", "")
+            saved = json.loads(raw) if raw else {}
+            if isinstance(saved, dict):
+                for method, combo in saved.items():
+                    if method in out and isinstance(combo, str) and combo:
+                        out[method] = combo
+        except Exception:                           # noqa: BLE001
+            pass
+        return out
+
+    def _save_builtin_keys(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "builtinKeys", json.dumps(self._builtin_keys))
+        except Exception:                           # noqa: BLE001
+            pass
+        self._refresh_keys_table()
+
+    def builtin_key_owner(self, combo, skip_method=None):
+        """Who already has this combination: ('typer'|manga, what), or None.
+
+        Checked across every manga, not just the open one: TypeR's own keys
+        are matched before the preset keys and in every series, so a clash
+        anywhere is a preset that would stop working.
+        """
+        combo = (combo or "").strip()
+        if not combo:
+            return None
+        for method, bound in (self._builtin_keys or {}).items():
+            if bound == combo and method != skip_method:
+                label = next((k for (_c, m, k) in BUILTIN_KEYS
+                              if m == method), method)
+                return ("typer", self._tr(label))
+        for manga, per in (self._keybinds or {}).items():
+            ref = (per or {}).get(combo)
+            if isinstance(ref, (list, tuple)) and len(ref) >= 2:
+                what = ("%s \u00b7 %s" % (ref[0], ref[1])) if ref[0] else ref[1]
+                return (manga, what)
+        return None
+
+    def _on_builtin_key_recorded(self, method, field):
+        """A new combination was pressed into one of TypeR's own fields."""
+        combo = (field.combo() or "").strip()
+        if not combo or combo == self._builtin_keys.get(method):
+            self._refresh_keys_table()
+            return
+        owner = self.builtin_key_owner(combo, skip_method=method)
+        if owner is not None:
+            where, what = owner
+            self._set_status(self._tr("keys_taken").format(
+                key=native_key_text(combo), what=what,
+                where=self._tr("keys_builtin") if where == "typer" else where),
+                error=True)
+            self._refresh_keys_table()      # puts the old one back on screen
+            return
+        self._builtin_keys[method] = combo
+        self._save_builtin_keys()
+        self._set_status(self._tr("keys_bound").format(
+            key=native_key_text(combo)))
+
+    def reset_builtin_keys(self):
+        """Back to the keys the plugin ships with."""
+        self._builtin_keys = dict((m, c) for (c, m, _k) in BUILTIN_KEYS)
+        self._save_builtin_keys()
+        self._set_status(self._tr("keys_reset"))
+
+    # --- TypeR's own keys --------------------------------------------------
+    def _builtin_key(self, ev):
+        """The method this key event calls, or None.
+
+        Guarded the same way the preset keys are: nothing fires while the
+        docker is gone, and nothing fires into a field that is recording a
+        binding. A typing field is not guarded against here - these keys all
+        carry a modifier, which is what tells a shortcut from typing.
+        """
+        win = self.window()
+        if win is None or not win.isVisible():
+            return None
+        if in_key_recorder(QApplication.focusWidget()):
+            return None
+        combo = combo_string(ev, [ev.key()])
+        for method, bound in (self._builtin_keys or {}).items():
+            if bound == combo:
+                return getattr(self, method, None)
+        return None
+
+    def _load_search_preview(self):
+        """Is the font search drawing each row in its own font?"""
+        try:
+            return Krita.instance().readSetting(
+                "typer_kr", "fontSearchPreview", "true") == "true"
+        except Exception:                           # noqa: BLE001
+            return True
+
+    def _save_search_preview(self, on):
+        try:
+            Krita.instance().writeSetting("typer_kr", "fontSearchPreview",
+                                          "true" if on else "false")
+        except Exception:                           # noqa: BLE001
+            pass
+
+    def open_font_search(self):
+        """Type a few letters, press Enter, the font is on the text.
+
+        Favourites come first: the Fonts tab is where the fonts worth having
+        already are, and a list of three thousand families is a worse answer
+        to "which font" than the twenty you starred.
+        """
+        try:
+            fams = sorted(font_families())
+        except Exception:                           # noqa: BLE001
+            fams = []
+        favs = []
+        panel = getattr(self, "fonts_panel", None)
+        if panel is not None:
+            try:
+                favs = list(panel._store.fonts())
+            except Exception:                       # noqa: BLE001
+                favs = []
+        low = set(f.lower() for f in favs)
+        ordered = favs + [f for f in fams if f.lower() not in low]
+        if not ordered:
+            self._set_status(self._tr("st_no_fonts"), error=True)
+            return
+        # imported here, like the panel itself: a failure to build the
+        # Fonts tab must not take the rest of the docker with it
+        from .fontfav_ui import FontSearchDialog
+        dlg = FontSearchDialog(self.widget(), self._tr, ordered, stars=low,
+                               title_key="key_font_search",
+                               preview=self._load_search_preview(),
+                               on_preview=self._save_search_preview)
+        family, ok = dlg.run()
+        if not ok or not family:
+            return
+        self._apply_favorite_font(family)
+        self._set_status(self._tr("st_font_picked").format(name=family))
+
     def handle_preset_key(self, ev, et):
         """One key event seen anywhere in Krita. True = swallowed by TypeR.
 
@@ -11159,6 +11805,15 @@ class TyperDocker(DockWidget):
             return False
         if ev.isAutoRepeat():
             return False
+        # TypeR's own keys first: they work with no preset bound at all, so
+        # they cannot sit behind the early exit below
+        fixed = self._builtin_key(ev)
+        if fixed is not None:
+            if et == QEvent.Type.ShortcutOverride:
+                ev.accept()         # take it off Krita before the press
+                return True
+            fixed()
+            return True
         binds = self._keybinds.get(self._group) or {}
         if not binds:
             return False
@@ -11554,6 +12209,7 @@ class TyperDocker(DockWidget):
         s["pages"] = self._pages
         s["index"] = self._index
         s["done"] = self._done
+        s["edited"] = self._hand_edited
         s["path"] = self._script_path
         s["comments"] = self._script_comments
 
@@ -11571,6 +12227,8 @@ class TyperDocker(DockWidget):
         self._pages = s["pages"]
         self._index = s["index"]
         self._done = s["done"]
+        self._hand_edited = bool(s.get("edited"))
+        self._refresh_hand_note()
         self.editor.blockSignals(True)
         self.editor.setPlainText(s["text"])
         self.editor.blockSignals(False)
@@ -11587,8 +12245,10 @@ class TyperDocker(DockWidget):
         self._sessions.append({
             "id": sid, "name": name, "path": path, "text": text,
             "pairs": [], "pair_pages": [], "pages": [], "index": 0, "done": set(),
-            "comments": [],
+            "edited": False, "comments": [],
         })
+        self._hand_edited = False
+        self._refresh_hand_note()
         self._active_sid = sid
         self._script_path = path
         self.editor.blockSignals(True)
@@ -11610,6 +12270,10 @@ class TyperDocker(DockWidget):
         self.script_tabs.setTabToolTip(idx, path or name)
         self.script_tabs.setCurrentIndex(idx)
         self.script_tabs.blockSignals(False)
+        # the tab bar's signals are blocked above, so the Batch tab would
+        # keep showing the script that was open before this one
+        self._bp_batch_refresh()
+        self._bp_script_refresh()
         self._schedule_session_save()
 
     def _new_untitled(self):
@@ -11664,6 +12328,7 @@ class TyperDocker(DockWidget):
                     "pages": list(s.get("pages", [])),
                     "index": int(s.get("index", 0)),
                     "done": sorted(int(x) for x in s.get("done", set())),
+                    "edited": bool(s.get("edited")),
                 })
             blob = json.dumps(out)
             if len(blob) > 4_000_000:              # keep kritarc sane
@@ -11700,6 +12365,7 @@ class TyperDocker(DockWidget):
                 "pages": list(sd.get("pages", [])),
                 "index": int(sd.get("index", 0)),
                 "done": set(int(x) for x in sd.get("done", [])),
+                "edited": bool(sd.get("edited")),
                 "comments": [],
             }
             self._sessions.append(sess)
@@ -11724,6 +12390,8 @@ class TyperDocker(DockWidget):
             return
         self._snapshot_active()
         self._restore_by_sid(sid)
+        self._bp_batch_refresh()
+        self._bp_script_refresh()
         self._schedule_session_save()
 
     def _close_tab(self, tab_i):
@@ -12093,6 +12761,16 @@ class TyperDocker(DockWidget):
         self._set_status(self._tr("st_img_loaded").format(c=n_placed))
 
     def analyze(self):
+        # Re-reading the text throws away whatever was edited in the table or
+        # in the active field, because those live in the parsed units and not
+        # in the text. Losing an hour of corrections to a stray click on
+        # Analyze is not something to find out about afterwards.
+        if getattr(self, "_hand_edited", False):
+            if QMessageBox.question(
+                    self.widget(), self._tr("analyze_btn"),
+                    self._tr("analyze_lose_q")) != \
+                    QMessageBox.StandardButton.Yes:
+                return
         lines = split_lines(self.editor.toPlainText(), self.skip_empty.isChecked())
         # pair_lines_paged also pulls out the "Page N" markers and tells us which
         # page every unit belongs to (so we can show it and jump between pages).
@@ -12106,17 +12784,241 @@ class TyperDocker(DockWidget):
             CM.anchor_to_units(self._script_comments,
                                [LP.unit_text(p) + " " + (p[0] or "")
                                 for p in self._pairs])
+        self._hand_edited = False
+        self._refresh_hand_note()
         self._populate_table()
         self._refresh_pages_combo()
         self._refresh_view()
+        self._bp_batch_refresh()
         self._schedule_session_save()
+
+    # --- writing the script inside the program -----------------------------
+    def on_new_script(self):
+        """An empty script to type a translation into."""
+        self._new_untitled()
+        self.editor.setFocus()
+        self._set_status(self._tr("st_new_script"))
+
+    def _mark_hand_edited(self):
+        """The parsed lines no longer come from the text above."""
+        self._hand_edited = True
+        self._refresh_hand_note()
+        self._schedule_session_save()
+
+    def _refresh_hand_note(self):
+        """Say it next to the script label, rather than let Analyze quietly
+        throw the edits away."""
+        lbl = getattr(self, "lbl_script", None)
+        if lbl is None:
+            return
+        base = self._tr("script_label")
+        if getattr(self, "_hand_edited", False):
+            lbl.setText("%s  (%s)" % (base, self._tr("hand_edited")))
+        else:
+            lbl.setText(base)
+
+    def _write_back_active(self):
+        """Keep what was typed in the active field in the script itself.
+
+        Without this the field is a scratch pad: the correction goes onto the
+        one bubble being placed and a batch run, which reads the units, puts
+        the old wording on the page.
+
+        Skipped when the field is not showing the line verbatim - a speaker
+        prefix stripped by auto-character is not the user editing anything,
+        and writing it back would quietly delete the name from the script.
+        """
+        if not getattr(self, "_field_verbatim", False):
+            return
+        if not (0 <= self._index < len(self._pairs)):
+            return
+        ja, en = self._pairs[self._index]
+        new = self.active_edit.toPlainText()
+        if new == en:
+            return
+        self._pairs[self._index] = (ja, new)
+        self._set_table_cell(self._index, 1, new)
+        self._bp_lines_relabel(self._index, new)
+        if self._sync_editor_text(en, new):
+            self._schedule_session_save()
+        else:
+            self._mark_hand_edited()
+
+    def _sync_editor_text(self, old, new):
+        """Put a corrected line back into the script text. True if it could.
+
+        Only an unambiguous replacement is made: the units are a reading of
+        that text, not an index into it, so the only safe patch is one whose
+        old wording appears exactly once.
+        """
+        old = (old or "").strip()
+        new = new or ""
+        if not old:
+            return False
+        text = self.editor.toPlainText()
+        if text.count(old) != 1:
+            return False
+        self.editor.blockSignals(True)
+        cur = self.editor.textCursor()
+        at = cur.position()
+        self.editor.setPlainText(text.replace(old, new, 1))
+        cur = self.editor.textCursor()
+        cur.setPosition(min(at, len(self.editor.toPlainText())))
+        self.editor.setTextCursor(cur)
+        self.editor.blockSignals(False)
+        return True
+
+    def _line_changed(self, unit, old, new):
+        """One line was rewritten: carry it to every view of the script."""
+        self._set_table_cell(unit, 1, new)
+        self._bp_lines_relabel(unit, new)
+        if unit == self._index:
+            self._show_current()
+        if self._sync_editor_text(old, new):
+            self._schedule_session_save()      # text and units still agree
+        else:
+            self._mark_hand_edited()
+
+    def _set_table_cell(self, row, col, text):
+        """Write a cell without the write-back firing on our own change."""
+        if not (0 <= row < self.table.rowCount()):
+            return
+        self.table.blockSignals(True)
+        it = self.table.item(row, col)
+        if it is None:
+            self.table.setItem(row, col, QTableWidgetItem(text))
+        else:
+            it.setText(text)
+        self.table.blockSignals(False)
+
+    def _on_table_edit(self, item):
+        """A line edited in the table goes into the script, not just the view."""
+        row, col = item.row(), item.column()
+        if not (0 <= row < len(self._pairs)) or col not in (0, 1):
+            return
+        ja, en = self._pairs[row]
+        text = item.text()
+        self._pairs[row] = (text, en) if col == 0 else (ja, text)
+        if col == 0:
+            if row == self._index:
+                self._show_current()
+            if not self._sync_editor_text(ja, text):
+                self._mark_hand_edited()
+            else:
+                self._schedule_session_save()
+        else:
+            self._line_changed(row, en, text)
+        self._set_status(self._tr("st_line_edited").format(n=row + 1))
+
+    def _table_menu(self, pos):
+        """Right-click a line: edit it, move it, delete it, break the page."""
+        row = self.table.rowAt(pos.y())
+        if row < 0 or not self._pairs:
+            return
+        self.table.selectRow(row)
+        m = QMenu(self.table)
+        a_edit = m.addAction(self._tr("tbl_edit"))
+        m.addSeparator()
+        a_above = m.addAction(self._tr("tbl_insert_above"))
+        a_below = m.addAction(self._tr("tbl_insert_below"))
+        a_del = m.addAction(self._tr("tbl_delete"))
+        m.addSeparator()
+        a_up = m.addAction(self._tr("tbl_up"))
+        a_up.setEnabled(row > 0)
+        a_down = m.addAction(self._tr("tbl_down"))
+        a_down.setEnabled(row < len(self._pairs) - 1)
+        m.addSeparator()
+        starts = row > 0 and (self._pair_pages[row]
+                              != self._pair_pages[row - 1])
+        a_page = m.addAction(self._tr("tbl_page_clear") if starts
+                             else self._tr("tbl_page_break"))
+        a_page.setEnabled(row > 0)
+        chosen = m.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen is a_edit:
+            self.table.editItem(self.table.item(row, 1))
+        elif chosen is a_above:
+            self._insert_line_at(row)
+        elif chosen is a_below:
+            self._insert_line_at(row + 1)
+        elif chosen is a_del:
+            self._delete_line_at(row)
+        elif chosen is a_up:
+            self._move_line(row, -1)
+        elif chosen is a_down:
+            self._move_line(row, +1)
+        elif chosen is a_page:
+            self._toggle_page_break(row, not starts)
+
+    def _after_script_edit(self, select=None):
+        """Everything that points at a line, brought up to date at once.
+
+        `select` is only passed when the edit means to put the cursor
+        somewhere - on a line just written, say. Otherwise the current line
+        is whatever the edit made of it: it followed its own line through
+        the change, which is the whole point of doing the bookkeeping in
+        `langpair` rather than guessing a row here.
+        """
+        self._pages = LP.rebuild_pages(self._pair_pages)
+        self._populate_table()
+        self._refresh_pages_combo()
+        want = self._index if select is None else select
+        self._index = max(0, min(want, max(0, len(self._pairs) - 1)))
+        self._refresh_view()
+        # the batch tab is reading the same lines; its list keeps its ticks
+        # because the same units are still on offer, only their text moved
+        self._bp_lines_refresh(keep=True)
+        self._mark_hand_edited()
+
+    def _insert_line_at(self, row):
+        (self._pairs, self._pair_pages, self._done,
+         self._index) = LP.insert_unit(self._pairs, self._pair_pages,
+                                       self._done, self._index, row, ("", ""))
+        self._after_script_edit(row)
+        self.table.editItem(self.table.item(row, 1))
+
+    def _delete_line_at(self, row):
+        (self._pairs, self._pair_pages, self._done,
+         self._index) = LP.delete_unit(self._pairs, self._pair_pages,
+                                       self._done, self._index, row)
+        self._after_script_edit()
+        self._set_status(self._tr("st_line_deleted").format(n=row + 1))
+
+    def _move_line(self, row, delta):
+        (self._pairs, self._pair_pages, self._done,
+         self._index) = LP.move_unit(self._pairs, self._pair_pages,
+                                     self._done, self._index, row, delta)
+        self._after_script_edit()
+
+    def _toggle_page_break(self, row, on):
+        if on:
+            label = LP.next_page_label(self._pair_pages, row)
+            self._pair_pages = LP.set_page_break(self._pair_pages, row, label)
+            self._set_status(
+                self._tr("st_page_break").format(p=label, n=row + 1))
+        else:
+            self._pair_pages = LP.clear_page_break(self._pair_pages, row)
+            self._set_status(
+                self._tr("st_page_cleared").format(n=row + 1))
+        self._after_script_edit()
 
     def _populate_table(self):
         self.table.blockSignals(True)
         self.table.setRowCount(len(self._pairs))
+        # where a page begins, so the script reads as pages and not as one
+        # long column - the same information the page jump works from
+        starts = {}
+        for label, first in LP.rebuild_pages(getattr(self, "_pair_pages", [])):
+            starts[first] = label
+        tint = QColor(self.table.palette().highlight().color())
+        tint.setAlpha(38)
         for r, (ja, en) in enumerate(self._pairs):
-            self.table.setItem(r, 0, QTableWidgetItem(ja))
-            self.table.setItem(r, 1, QTableWidgetItem(en))
+            for c, text in ((0, ja), (1, en)):
+                it = QTableWidgetItem(text)
+                if r in starts and r > 0:
+                    it.setBackground(QBrush(tint))
+                    it.setToolTip(self._tr("tbl_page_tip").format(
+                        p=starts[r] or "?"))
+                self.table.setItem(r, c, it)
         self.table.blockSignals(False)
         self.table.resizeRowsToContents()
 
@@ -12849,6 +13751,9 @@ class TyperDocker(DockWidget):
         main_txt = en if en.strip() else ja
         # optional: pick the character from a "Name:" speaker prefix and strip it
         main_txt = self._maybe_auto_character(main_txt)
+        # whether what the field shows IS the line, which decides if an edit
+        # in it may be written back (see _write_back_active)
+        self._field_verbatim = (main_txt == en)
         self.active_edit.blockSignals(True)
         self.active_edit.setPlainText(main_txt)
         self.active_edit.blockSignals(False)
@@ -12969,6 +13874,69 @@ class TyperDocker(DockWidget):
         _ov_pb.body_layout().addWidget(self.batch_overlay, 2)
         lay.addWidget(_ov_pb, 2)
 
+        # the script's own side of the pairing: the lines of this page,
+        # ticked, in the order they will be placed
+        _bl_pb = self._new_panel("batch_lines", "batch")
+        bl = _bl_pb.body_layout()
+        srow = QHBoxLayout()
+        self.bp_script_lbl = QLabel()
+        srow.addWidget(self.bp_script_lbl)
+        self.bp_script_combo = NoScrollComboBox()
+        self.bp_script_combo.currentIndexChanged.connect(
+            self._bp_script_pick)
+        srow.addWidget(self.bp_script_combo, 1)
+        bl.addLayout(srow)
+        self.bp_lines_hint = QLabel()
+        self.bp_lines_hint.setStyleSheet("color: gray;")
+        self.bp_lines_hint.setWordWrap(True)
+        bl.addWidget(self.bp_lines_hint)
+        self.bp_lines_list = QListWidget()
+        self.bp_lines_list.setAlternatingRowColors(True)
+        self.bp_lines_list.setMinimumHeight(120)
+        # a click on the selected row opens it for typing, the way a list of
+        # lines in a script tool does; F2 does too
+        self.bp_lines_list.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.SelectedClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed)
+        self._bp_line_delegate = ScriptLineDelegate(self.bp_lines_list)
+        self._bp_line_delegate.enterPressed.connect(self._bp_line_enter)
+        self.bp_lines_list.setItemDelegate(self._bp_line_delegate)
+        self.bp_lines_list.itemChanged.connect(self._bp_lines_changed)
+        self.bp_lines_list.currentRowChanged.connect(self._bp_lines_row)
+        self.bp_lines_list.currentRowChanged.connect(
+            self._bp_lines_row_edit)
+        bl.addWidget(self.bp_lines_list, 1)
+        row = FlowLayout()
+        self.bp_lines_all_btn = QPushButton()
+        self.bp_lines_all_btn.clicked.connect(
+            lambda *_a: self._bp_lines_set_all(True))
+        row.addWidget(self.bp_lines_all_btn)
+        self.bp_lines_none_btn = QPushButton()
+        self.bp_lines_none_btn.clicked.connect(
+            lambda *_a: self._bp_lines_set_all(False))
+        row.addWidget(self.bp_lines_none_btn)
+        self.bp_lines_open_btn = QPushButton()
+        self.bp_lines_open_btn.clicked.connect(self._bp_lines_only_open)
+        row.addWidget(self.bp_lines_open_btn)
+        bl.addLayout(row)
+        erow = QHBoxLayout()
+        self.bp_line_lbl = QLabel()
+        erow.addWidget(self.bp_line_lbl)
+        self.bp_line_add_btn = QPushButton()
+        self.bp_line_add_btn.clicked.connect(self._bp_line_add)
+        erow.addWidget(self.bp_line_add_btn)
+        bl.addLayout(erow)
+        self.bp_line_edit = QPlainTextEdit()
+        self.bp_line_edit.setMaximumHeight(62)
+        self.bp_line_edit.textChanged.connect(self._bp_line_typed)
+        bl.addWidget(self.bp_line_edit)
+        self.bp_lines_count = QLabel("")
+
+        self.bp_lines_count.setStyleSheet("color: gray;")
+        bl.addWidget(self.bp_lines_count)
+        lay.addWidget(_bl_pb, 1)
+
         # batch: which line goes into which bubble, then fill them all
         _bt_pb = self._new_panel("bubblr_batch", "batch")
         bt = _bt_pb.body_layout()
@@ -12991,7 +13959,7 @@ class TyperDocker(DockWidget):
         self.bp_batch_page_chk = QCheckBox()
         self.bp_batch_page_chk.setChecked(True)
         self.bp_batch_page_chk.toggled.connect(
-            lambda *_a: self.on_bp_batch_assign())
+            lambda *_a: self._bp_lines_refresh(keep=False))
         row.addWidget(self.bp_batch_page_chk)
         # per-line style is off by default: the extra columns would only be in
         # the way on a page where every bubble is ordinary dialogue
@@ -13658,6 +14626,19 @@ class TyperDocker(DockWidget):
         table = getattr(self, "bp_batch_table", None)
         if table is None:
             return
+        # the lines on offer changed (another page, another script, lines
+        # edited): rebuild the list first, which pairs them and comes back
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is not None and not getattr(self, "_bp_lines_busy", False):
+            have = [u for u in (lst.item(i).data(Qt.ItemDataRole.UserRole)
+                                for i in range(lst.count()))
+                    if isinstance(u, int)]
+            if have != self._bp_lines_units():
+                # a different set of lines is on offer, so the ticks from the
+                # old one mean nothing: another page starts with all of its
+                # lines wanted, which is the ordinary case
+                self._bp_lines_refresh(keep=False)
+                return
         n = len(self._bp_boxes)
         if len(self._bp_assign) != n:
             self._bp_assign = (self._bp_assign + [-1] * n)[:n]
@@ -13694,7 +14675,296 @@ class TyperDocker(DockWidget):
             table.setCurrentCell(cur, 0)
         table.blockSignals(False)
         table.resizeColumnToContents(0)
+        self._bp_lines_sync()
         self._bp_batch_update_buttons()
+
+    # --- the script's side of a batch pairing ------------------------------
+    def _bp_script_refresh(self):
+        """The open scripts, as a picker, without losing the current one."""
+        combo = getattr(self, "bp_script_combo", None)
+        if combo is None:
+            return
+        combo.blockSignals(True)
+        combo.clear()
+        for i in range(self.script_tabs.count()):
+            sid = self.script_tabs.tabData(i)
+            combo.addItem(self.script_tabs.tabText(i), sid)
+        idx = combo.findData(self._active_sid)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
+
+    def _bp_script_pick(self, _i=None):
+        """Switching the script here switches the tab over there: one script
+        is open at a time, and two places disagreeing about which would be
+        worse than the walk to the other tab."""
+        sid = self.bp_script_combo.currentData()
+        if sid is None or sid == self._active_sid:
+            return
+        for i in range(self.script_tabs.count()):
+            if self.script_tabs.tabData(i) == sid:
+                self.script_tabs.setCurrentIndex(i)
+                break
+
+    def _bp_line_unit(self):
+        """The unit the line field is showing, or -1."""
+        lst = getattr(self, "bp_lines_list", None)
+        it = lst.currentItem() if lst is not None else None
+        if it is None:
+            return -1
+        u = it.data(Qt.ItemDataRole.UserRole)
+        return u if isinstance(u, int) and 0 <= u < len(self._pairs) else -1
+
+    def _bp_line_show(self):
+        """Put the selected line into the field, without that counting as
+        typing it."""
+        field = getattr(self, "bp_line_edit", None)
+        if field is None:
+            return
+        u = self._bp_line_unit()
+        field.blockSignals(True)
+        field.setPlainText(self._pairs[u][1] if u >= 0 else "")
+        field.setEnabled(u >= 0)
+        field.blockSignals(False)
+
+    def _bp_line_typed(self):
+        """What is typed goes into the script, so the run places it."""
+        u = self._bp_line_unit()
+        if u < 0:
+            return
+        ja, en = self._pairs[u]
+        new = self.bp_line_edit.toPlainText()
+        if new == en:
+            return
+        self._pairs[u] = (ja, new)
+        self._line_changed(u, en, new)
+
+    def _bp_lines_relabel(self, unit, text):
+        """Keep the list row in step with the line, without rebuilding the
+        list under the cursor while somebody is typing in it."""
+        it = self._bp_lines_item(unit)
+        if it is None:
+            return
+        self._bp_lines_busy = True
+        self._bp_line_label(it, unit, text)
+        self._bp_lines_busy = False
+
+    def _bp_lines_item(self, unit):
+        """The row holding this unit, or None - a page bar holds no unit."""
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None:
+            return None
+        for i in range(lst.count()):
+            it = lst.item(i)
+            if it.data(Qt.ItemDataRole.UserRole) == unit:
+                return it
+        return None
+
+    def _bp_line_add(self):
+        """A line the script does not have, written where it is missed."""
+        if not self._pairs:
+            row = 0
+        else:
+            u = self._bp_line_unit()
+            row = (u + 1) if u >= 0 else len(self._pairs)
+        (self._pairs, self._pair_pages, self._done,
+         self._index) = LP.insert_unit(self._pairs, self._pair_pages,
+                                       self._done, self._index, row, ("", ""))
+        self._pages = LP.rebuild_pages(self._pair_pages)
+        self._populate_table()
+        self._refresh_pages_combo()
+        self._bp_lines_refresh(keep=True)
+        lst = self.bp_lines_list
+        for i in range(lst.count()):
+            if lst.item(i).data(Qt.ItemDataRole.UserRole) == row:
+                lst.setCurrentRow(i)
+                break
+        self.bp_line_edit.setFocus()
+        self._mark_hand_edited()
+
+    def _bp_page_row(self, label):
+        """The bar that says a page begins here. It holds no line: it is not
+        selectable, not tickable and not typed into."""
+        it = QListWidgetItem(self._tr("tbl_page_tip").format(p=label))
+        it.setData(Qt.ItemDataRole.UserRole, None)
+        it.setFlags(Qt.ItemFlag.NoItemFlags)
+        tint = QColor(self.bp_lines_list.palette().highlight().color())
+        tint.setAlpha(46)
+        it.setBackground(QBrush(tint))
+        f = QFont(it.font())
+        f.setBold(True)
+        it.setFont(f)
+        return it
+
+    def _bp_line_label(self, item, unit, text=None):
+        """Write the row: the number and the bubble in what is shown, the
+        line itself in what is edited."""
+        if text is None:
+            text = self._pairs[unit][1] if unit < len(self._pairs) else ""
+        flat = " ".join((text or "").split())
+        where = ""
+        for box, u in enumerate(self._bp_assign or []):
+            if u == unit:
+                where = "   " + self._tr("bp_lines_to").format(n=box + 1)
+                break
+        item.setData(ScriptLineDelegate.TEXT_ROLE, text or "")
+        item.setData(Qt.ItemDataRole.DisplayRole,
+                     "%d  %s%s" % (unit + 1, flat, where))
+
+    def _bp_line_enter(self):
+        """Enter in a line: write the next one under it."""
+        self._bp_line_add()
+
+    def _bp_lines_units(self):
+        """The unit indices on offer - this page, or the whole script."""
+        first, last = self._bp_batch_range()
+        return list(range(max(0, first), min(last, len(self._pairs))))
+
+    def _bp_lines_refresh(self, keep=True):
+        """Rebuild the line list for the current range.
+
+        `keep` carries the ticks over when the same lines are still on offer;
+        a different page starts with everything ticked, because the ordinary
+        case is "this page's lines go onto this page".
+        """
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None:
+            return
+        units = self._bp_lines_units()
+        before = self._bp_lines_checked() if keep else None
+        starts = dict((first, label) for (label, first)
+                      in LP.rebuild_pages(self._pair_pages))
+        self._bp_lines_busy = True
+        lst.clear()
+        for u in units:
+            if u in starts and starts[u] not in ("", None):
+                lst.addItem(self._bp_page_row(starts[u]))
+            text = self._pairs[u][1] if u < len(self._pairs) else ""
+            if not (text or "").strip() and u < len(self._pairs):
+                text = self._pairs[u][0]
+            it = QListWidgetItem()
+            it.setData(Qt.ItemDataRole.UserRole, u)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable
+                        | Qt.ItemFlag.ItemIsEditable)
+            on = (u in before) if before is not None else True
+            it.setCheckState(Qt.CheckState.Checked if on
+                             else Qt.CheckState.Unchecked)
+            if u in self._done:
+                it.setToolTip(self._tr("bp_lines_done"))
+            self._bp_line_label(it, u, text)
+            lst.addItem(it)
+        self._bp_lines_busy = False
+        self._bp_script_refresh()
+        self._bp_line_show()
+        self._bp_lines_apply()
+
+    def _bp_lines_checked(self):
+        """The ticked unit indices, in list order - the order they go in."""
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None:
+            return []
+        out = []
+        for i in range(lst.count()):
+            it = lst.item(i)
+            u = it.data(Qt.ItemDataRole.UserRole)
+            if isinstance(u, int) and it.checkState() == Qt.CheckState.Checked:
+                out.append(u)
+        return out
+
+    def _bp_lines_apply(self):
+        """Pair the ticked lines with the bubbles and show the result."""
+        if getattr(self, "_bp_lines_busy", False):
+            return
+        chosen = self._bp_lines_checked()
+        self._bp_assign, left = BB.assign_chosen(self._bp_boxes, chosen)
+        if left:
+            self._bp_batch_note("bp_lines_left", n=left)
+        self._bp_batch_refresh()
+
+    def _bp_lines_changed(self, item=None):
+        """A row changed: either it was ticked, or it was typed into."""
+        if item is not None and not getattr(self, "_bp_lines_busy", False):
+            unit = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(unit, int) and 0 <= unit < len(self._pairs):
+                typed = item.data(ScriptLineDelegate.TEXT_ROLE)
+                if typed is not None and typed != self._pairs[unit][1]:
+                    ja, _en = self._pairs[unit]
+                    self._pairs[unit] = (ja, typed)
+                    self._bp_lines_busy = True
+                    self._bp_line_label(item, unit, typed)
+                    self._bp_lines_busy = False
+                    self._line_changed(unit, _en, typed)
+                    self._bp_line_show()
+        self._bp_lines_apply()
+
+    def _bp_lines_row_edit(self, _row=None):
+        self._bp_line_show()
+
+    def _bp_lines_row(self, row):
+        """Clicking a line arms the bubble it is going into, so the page
+        view shows where this line will land."""
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None or row < 0 or getattr(self, "_bp_lines_busy", False):
+            return
+        unit = lst.item(row).data(Qt.ItemDataRole.UserRole)
+        if not isinstance(unit, int):
+            return
+        for box, u in enumerate(self._bp_assign or []):
+            if u == unit:
+                self.bp_batch_table.selectRow(box)
+                break
+
+    def _bp_lines_set_all(self, on):
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None:
+            return
+        self._bp_lines_busy = True
+        state = Qt.CheckState.Checked if on else Qt.CheckState.Unchecked
+        for i in range(lst.count()):
+            if isinstance(lst.item(i).data(Qt.ItemDataRole.UserRole), int):
+                lst.item(i).setCheckState(state)
+        self._bp_lines_busy = False
+        self._bp_lines_apply()
+
+    def _bp_lines_only_open(self):
+        """Tick what is not marked done yet."""
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None:
+            return
+        self._bp_lines_busy = True
+        for i in range(lst.count()):
+            it = lst.item(i)
+            u = it.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(u, int):
+                continue
+            it.setCheckState(Qt.CheckState.Unchecked if u in self._done
+                             else Qt.CheckState.Checked)
+        self._bp_lines_busy = False
+        self._bp_lines_apply()
+
+    def _bp_lines_sync(self):
+        """Show which bubble each line is going into, without re-pairing."""
+        lst = getattr(self, "bp_lines_list", None)
+        if lst is None:
+            return
+        where = {}
+        for box, u in enumerate(self._bp_assign or []):
+            if u is not None and u >= 0:
+                where[u] = box + 1
+        self._bp_lines_busy = True
+        for i in range(lst.count()):
+            it = lst.item(i)
+            u = it.data(Qt.ItemDataRole.UserRole)
+            if isinstance(u, int):
+                self._bp_line_label(it, u)
+        self._bp_lines_busy = False
+        # the page bars are rows too, and counting them as lines would
+        # claim the script has more than it has
+        total = sum(1 for i in range(lst.count())
+                    if isinstance(lst.item(i).data(Qt.ItemDataRole.UserRole),
+                                  int))
+        self.bp_lines_count.setText(self._tr("bp_lines_count").format(
+            n=len(where), total=total, boxes=len(self._bp_boxes)))
 
     def _bp_batch_update_buttons(self):
         """Start is only meaningful with something to place."""

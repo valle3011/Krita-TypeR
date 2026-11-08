@@ -879,6 +879,33 @@ def assign_units(boxes, unit_count, first_unit=0, skip_kinds=("sfx",)):
     return assign, wanted != available
 
 
+def assign_chosen(boxes, units, skip_kinds=("sfx",)):
+    """Put the chosen `units` into the boxes, in order.
+
+    `units` is the list of unit indices the user wants placed, already in
+    the order they are to be placed in. Returns ``(assign, leftover)``:
+    `assign` as in :func:`assign_units`, and `leftover` the number of chosen
+    units that found no box - which is what the status line warns about,
+    because it means lines would be silently dropped.
+
+    Boxes that take no line (an SFX, or one marked skip) are passed over
+    without using up a line, exactly as in :func:`assign_units`.
+    """
+    chosen = [u for u in (units or []) if u is not None and u >= 0]
+    assign = []
+    at = 0
+    for b in (boxes or []):
+        if (b.get("kind") in skip_kinds) or b.get("skip"):
+            assign.append(-1)
+            continue
+        if at < len(chosen):
+            assign.append(chosen[at])
+            at += 1
+        else:
+            assign.append(-1)
+    return assign, len(chosen) - at
+
+
 def batch_pairs(assign, unit_count, skip_units=()):
     """The work list for a batch run: ``(box_index, unit_index)`` for every box
     that has a real unit, in box order.

@@ -865,6 +865,160 @@ def keybinds_of(binds, manga):
 # BubblR tab helpers (pure, Qt-free)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Editing a parsed script
+#
+# The script is held as three parallel things - the units, the page label of
+# each unit, and a set of indices that are done - plus the index of the line
+# being worked on. Every edit below keeps all four in step, because each of
+# them is an index into the same list and an edit that forgets one of them
+# moves somebody's progress onto a different line.
+# ---------------------------------------------------------------------------
+
+
+def rebuild_pages(pair_pages):
+    """[(label, first unit index)] from the per-unit page labels.
+
+    The same shape `pair_lines_paged` returns, so the page jump and the
+    batch's "this page only" work off an edited script exactly as off a
+    freshly parsed one.
+    """
+    out = []
+    last = _NO_LABEL
+    for i, label in enumerate(pair_pages or []):
+        if label != last:
+            out.append((label, i))
+            last = label
+    return out
+
+
+_NO_LABEL = object()
+
+
+def shift_marks(done, index, row, delta):
+    """Move the done-marks and the current line after a unit was added or
+    removed at `row`. `delta` is +1 for an insert, -1 for a delete."""
+    out = set()
+    for d in (done or ()):
+        if d == row and delta < 0:
+            continue                      # the deleted line's own mark goes
+        out.add(d + delta if d > row else d)
+    if index > row:
+        index += delta
+    return out, max(0, index)
+
+
+def delete_unit(pairs, pair_pages, done, index, row):
+    """Drop unit `row`. Returns (pairs, pair_pages, done, index)."""
+    if not (0 <= row < len(pairs)):
+        return pairs, pair_pages, set(done or ()), index
+    pairs = list(pairs[:row]) + list(pairs[row + 1:])
+    pair_pages = list(pair_pages[:row]) + list(pair_pages[row + 1:])
+    done, index = shift_marks(done, index, row, -1)
+    return pairs, pair_pages, done, min(index, max(0, len(pairs) - 1))
+
+
+def insert_unit(pairs, pair_pages, done, index, row, unit):
+    """Put `unit` (a (ja, en) tuple) in at `row`, on the page of the unit
+    that was there - a line written into a page belongs to that page."""
+    row = max(0, min(int(row), len(pairs)))
+    label = ""
+    if pair_pages:
+        label = pair_pages[row] if row < len(pair_pages) else pair_pages[-1]
+    pairs = list(pairs[:row]) + [tuple(unit)] + list(pairs[row:])
+    pair_pages = list(pair_pages[:row]) + [label] + list(pair_pages[row:])
+    done, index = shift_marks(done, index, row - 1, 1)
+    return pairs, pair_pages, done, index
+
+
+def move_unit(pairs, pair_pages, done, index, row, delta):
+    """Move unit `row` one place up (-1) or down (+1).
+
+    The unit takes its done-mark with it and stays on its own page: moving a
+    line is reordering a page's dialogue, not moving it to the next page.
+    """
+    other = row + (1 if delta > 0 else -1)
+    if not (0 <= row < len(pairs)) or not (0 <= other < len(pairs)):
+        return pairs, pair_pages, set(done or ()), index
+    pairs = list(pairs)
+    pair_pages = list(pair_pages)
+    pairs[row], pairs[other] = pairs[other], pairs[row]
+    done = set(done or ())
+    here, there = row in done, other in done
+    done.discard(row)
+    done.discard(other)
+    if here:
+        done.add(other)
+    if there:
+        done.add(row)
+    if index == row:
+        index = other
+    elif index == other:
+        index = row
+    return pairs, pair_pages, done, index
+
+
+def next_page_label(pair_pages, row):
+    """The label a page break made by hand at `row` should carry.
+
+    One past the page before it, when that reads as a number - which is what
+    somebody inserting a missing break means. If that number is already used
+    further down (the script had the break, just not here), a letter is added
+    rather than renumbering pages the script itself named: "3" -> "3a".
+    """
+    before = ""
+    for i in range(min(row, len(pair_pages)) - 1, -1, -1):
+        if pair_pages[i] not in ("", None):
+            before = str(pair_pages[i])
+            break
+    used = set(str(p) for p in (pair_pages or []) if p not in ("", None))
+    head = before.split("-")[-1].strip()
+    if head.isdigit():
+        guess = str(int(head) + 1)
+        if guess not in used:
+            return guess
+    if not before:
+        return "1" if "1" not in used else "1a"
+    for suffix in "abcdefghijklmnopqrstuvwxyz":
+        if before + suffix not in used:
+            return before + suffix
+    return before
+
+
+def set_page_break(pair_pages, row, label=None):
+    """Start a new page at `row`: it and everything up to the next break get
+    `label`. Returns the new per-unit label list."""
+    pair_pages = list(pair_pages or [])
+    if not (0 < row < len(pair_pages)):
+        return pair_pages                 # no page starts before the first unit
+    if label is None:
+        label = next_page_label(pair_pages, row)
+    old = pair_pages[row]
+    for i in range(row, len(pair_pages)):
+        if pair_pages[i] != old:
+            break
+        pair_pages[i] = label
+    return pair_pages
+
+
+def clear_page_break(pair_pages, row):
+    """Undo a break at `row`: the page is folded into the one before it."""
+    pair_pages = list(pair_pages or [])
+    if not (0 < row < len(pair_pages)) or pair_pages[row] == pair_pages[row - 1]:
+        return pair_pages
+    old, before = pair_pages[row], pair_pages[row - 1]
+    for i in range(row, len(pair_pages)):
+        if pair_pages[i] != old:
+            break
+        pair_pages[i] = before
+    return pair_pages
+
+
+def page_starts(pair_pages):
+    """The unit indices a page begins at - what the UI marks in the list."""
+    return [i for (_label, i) in rebuild_pages(pair_pages)]
+
+
 def rows_for_page(pair_pages, label):
     """Absolute script-table row indices of the units on page `label`.
 

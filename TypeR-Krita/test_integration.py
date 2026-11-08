@@ -250,7 +250,11 @@ sys.modules["krita"] = _krita
 
 sys.path.insert(0, _HERE)
 try:
+    from typer_kr._qt import (QAbstractItemView, Qt, QLineEdit, QKeyEvent,
+                              QEvent)
     import typer_kr.typer_kr as TK
+    import typer_kr.langpair as LP
+    import typer_kr.credits as CR_MOD
     imported = True
 except Exception as e:                          # pragma: no cover
     imported = False
@@ -531,6 +535,127 @@ check("no saved sessions -> restore returns False",
       _FakeDocker()._restore_sessions() is False)
 
 
+# --- the font search: favourites first, each row in its own font -----------
+try:
+    from typer_kr.fontfav_ui import FontSearchDialog as _FSD
+    _fams = ["Arial", "CC Wild Words", "Courier New", "Impact"]
+    _dlg = _FSD(None, lambda k: k, _fams, stars=set(["cc wild words"]),
+                preview=True)
+    check("the search lists every font it was given",
+          _dlg.list.count() == len(_fams))
+    check("a favourite is marked, and still searchable by its plain name",
+          "\u2605" in _dlg.list.item(1).text()
+          and _dlg.list.item(1).data(Qt.ItemDataRole.UserRole)
+          == "CC Wild Words")
+    check("with the preview on, a row is drawn in its own font",
+          _dlg.list.item(0).font().family() == "Arial"
+          and _dlg.list.item(3).font().family() == "Impact")
+    check("...and every row keeps one height, so the list does not jump",
+          len(set(_dlg.list.item(i).sizeHint().height()
+                  for i in range(_dlg.list.count()))) == 1)
+
+    _seen = []
+    _dlg2 = _FSD(None, lambda k: k, _fams, preview=False,
+                 on_preview=_seen.append)
+    check("switched off, the rows are left in the panel's own font",
+          _dlg2.list.item(0).font().family() != "Arial")
+    _dlg2.preview_chk.setChecked(True)
+    check("turning it on draws them",
+          _dlg2.list.item(0).font().family() == "Arial")
+    check("...and the choice is handed back to be remembered",
+          _seen == [True])
+    _dlg2.preview_chk.setChecked(False)
+    check("turning it off takes it back",
+          _dlg2.list.item(0).font().family() != "Arial" and _seen == [True,
+                                                                      False])
+    _dlg3 = _FSD(None, lambda k: k, _fams)
+    check("without the switch there is no checkbox and no preview",
+          _dlg3.preview_chk is None
+          and _dlg3.list.item(0).font().family() != "Arial")
+    _dlg.close()
+    _dlg2.close()
+    _dlg3.close()
+except Exception:                                   # pragma: no cover
+    check("font-search preview test ran", False)
+    import traceback
+    traceback.print_exc()
+
+# --- the fit follows the selection's outline -------------------------------
+class _ShapedSelection:
+    """A selection that is actually a shape, not a full rectangle."""
+
+    def __init__(self, x, y, w, h, disc=True):
+        self._x, self._y, self._w, self._h, self._disc = x, y, w, h, disc
+
+    def x(self):
+        return self._x
+
+    def y(self):
+        return self._y
+
+    def width(self):
+        return self._w
+
+    def height(self):
+        return self._h
+
+    def pixelData(self, x, y, w, h):
+        if not self._disc:
+            return bytes([255]) * (w * h)
+        # an oval with its lower left bitten off: lopsided on purpose, so
+        # the lines below the middle have to move right. A symmetric disc
+        # would place its lines exactly where the ellipse does - correctly,
+        # and without telling us whether the shape was read at all.
+        d = bytearray(w * h)
+        for yy in range(h):
+            for xx in range(w):
+                dx = (xx - (w - 1) / 2.0) / (w / 2.0)
+                dy = (yy - (h - 1) / 2.0) / (h / 2.0)
+                if dx * dx + dy * dy > 1.0:
+                    continue
+                if yy > h * 0.55 and xx < w * 0.45:
+                    continue
+                d[yy * w + xx] = 255
+        return bytes(d)
+
+
+def _insert_with_sel(disc, **kw):
+    doc = _FakeDoc(800, 600)
+    doc.sel = _ShapedSelection(100, 100, 320, 320, disc)
+    _KR_APP._doc = doc
+    base = dict(line="THANK GOODNESS, SOMEONE I KNOW IN THIS TOWN",
+                font_family="Arial", font_px=72, color=QColor(0, 0, 0),
+                auto_fit=True, max_px=72, padding_frac=0.1, line_spacing=1.0,
+                align="center", valign="middle", layer_index=1,
+                box=(100, 100, 320, 320), shape="ellipse")
+    base.update(kw)
+    ok, key, fmt = TK.insert_text_layer(
+        base.pop("line"), base.pop("font_family"), base.pop("font_px"),
+        base.pop("color"), base.pop("auto_fit"), base.pop("max_px"),
+        base.pop("padding_frac"), base.pop("line_spacing"), **base)
+    return ok, (doc.last.svg if doc.last else None)
+
+
+def _xs(svg):
+    import re as _re
+    return [float(v) for v in _re.findall(r'\sx="([-0-9.]+)"', svg or "")]
+
+
+_ok_rect, _svg_rect = _insert_with_sel(False)
+_ok_disc, _svg_disc = _insert_with_sel(True)
+check("both inserts go through", _ok_rect and _ok_disc)
+check("a shaped selection lays the line out differently than a marquee",
+      _svg_rect != _svg_disc)
+_xr, _xd = _xs(_svg_rect), _xs(_svg_disc)
+check("...and a line in the narrow part is pushed off the box centre",
+      len(set(_xd)) > 1)
+check("every line still starts inside the box",
+      _xd and all(100 <= x <= 420 for x in _xd))
+_ok_round, _svg_round = _insert_with_sel(True, shape="rect")
+check("a square box is left alone: no shape is read for it",
+      _xs(_svg_round) and len(set(_xs(_svg_round))) >= 1
+      and _svg_round != _svg_disc)
+
 # --- Font-favourites panel (Qt widget, headless) ---------------------------
 try:
     from typer_kr.fontfav_ui import FontFavoritesPanel
@@ -632,6 +757,7 @@ except Exception as _ff_e:                          # pragma: no cover
 # --- Font properties window (Qt widget, headless) --------------------------
 try:
     from typer_kr import fontprops_ui as _FPU
+    from typer_kr._qt import Qt as _FPQt
     from typer_kr.fontfav_ui import _FALLBACK as _FF_STR
     _fp_groups = {
         "Chainsaw Man": {"Denji": {"normal": {"font": "CC Wild Words"},
@@ -712,6 +838,45 @@ try:
           _w3 is not _w1 and len(_host._font_prop_windows) == 1)
     _w3.close()
 
+    _ace_fams = ["Anime Ace", "Anime Ace 2.0 BB", "Anime Ace 2.0 BB Int Bold",
+                 "Anime Ace 3 BB", "Anime Ace v3", "Arial"]
+    _fp3 = _FPU.FontPropertiesDialog("Anime Ace 2.0 BB", tr=lambda k: k,
+                                     families_fn=lambda: _ace_fams)
+    _rows = [_fp3.family_list.item(i).text()
+             for i in range(_fp3.family_list.count())]
+    check("the family tab shows the other versions under their own heading",
+          _FPU.FALLBACK["fp_family_rel"] in _rows
+          and sum(1 for r in _rows if "Anime Ace" in r) == 5)
+    _head = _rows.index(_FPU.FALLBACK["fp_family_rel"])
+    check("...below the family's own cuts, and not selectable",
+          _head == 1
+          and not _fp3.family_list.item(_head).flags()
+          & _FPQt.ItemFlag.ItemIsSelectable)
+    check("the general tab counts them too",
+          "4" in _fp3.v_family.text())
+    _fp3.set_family("Arial")
+    check("a font with no other version shows no heading",
+          _FPU.FALLBACK["fp_family_rel"] not in
+          [_fp3.family_list.item(i).text()
+           for i in range(_fp3.family_list.count())])
+    _fp3.close()
+
+    # a German string that was never written falls back to English in
+    # silence, so nothing in the window itself would ever show it missing
+    import re as _re
+    _de = TK.LANG["de"]
+
+    def _holes(text):
+        return sorted(_re.findall(r"\{(\w+)\}", text))
+
+    _untranslated = sorted(k for k in _FPU.FALLBACK if k not in _de)
+    check("every string of the properties window is translated into German",
+          not _untranslated)
+    _mismatch = sorted(k for k in _FPU.FALLBACK if k in _de
+                       and _holes(_FPU.FALLBACK[k]) != _holes(_de[k]))
+    check("...with the same placeholders, so neither language breaks",
+          not _mismatch)
+
     check("the favourites list offers Properties on the right click",
           "fav_ctx_props" in _FF_STR
           and hasattr(_ff_panel, "show_properties"))
@@ -719,6 +884,221 @@ except Exception as _fp_e:                          # pragma: no cover
     check("font-properties window smoke test ran", False)
     import traceback
     traceback.print_exc()
+
+# --- Writing and editing a script in the program ---------------------------
+if imported:
+    try:
+        _ed = TK.TyperDocker()
+        _ed.editor.setPlainText("Page 1\none\ntwo\nPage 2\nthree\nfour")
+        _ed.analyze()
+        check("a pasted script parses into its lines and pages",
+              [p[1] for p in _ed._pairs] == ["one", "two", "three", "four"]
+              and _ed._pair_pages == ["1", "1", "2", "2"])
+
+        check("an empty script is one button away",
+              hasattr(_ed, "new_script_btn"))
+        _tabs_before = _ed.script_tabs.count()
+        _ed.on_new_script()
+        check("...and it opens an empty tab to type into",
+              _ed.script_tabs.count() == _tabs_before + 1
+              and _ed.editor.toPlainText() == "" and _ed._pairs == [])
+        _ed.script_tabs.setCurrentIndex(0)
+        check("switching back brings the parsed script with it",
+              [p[1] for p in _ed._pairs] == ["one", "two", "three", "four"])
+
+        # editing a line in the table
+        check("the table can be edited now, but not by a stray keystroke",
+              _ed.table.editTriggers()
+              == QAbstractItemView.EditTrigger.EditKeyPressed)
+        _ed.table.item(1, 1).setText("TWO!")
+        check("a line edited in the table goes into the script itself",
+              _ed._pairs[1][1] == "TWO!" and _ed._hand_edited)
+        check("...and into what a batch run would place",
+              _ed._unit_text(1) == "TWO!")
+
+        # editing it in the field above the preview
+        _ed._index = 0
+        _ed._show_current()
+        _ed.active_edit.setPlainText("ONE!")
+        check("a correction in the active field reaches the script too",
+              _ed._pairs[0][1] == "ONE!" and _ed._unit_text(0) == "ONE!")
+        check("...and the table shows it", _ed.table.item(0, 1).text() == "ONE!")
+
+        # ...but not when the field is showing something else than the line
+        _ed._pairs[3] = ("", "Denji: four")
+        _ed._index = 3
+        _ed._field_verbatim = False          # as auto-character would leave it
+        _ed.active_edit.setPlainText("four")
+        check("a speaker prefix stripped for the preview is not an edit",
+              _ed._pairs[3][1] == "Denji: four")
+
+        # deleting, moving, page breaks
+        _ed._done = {0, 3}
+        _ed._index = 3
+        _ed._delete_line_at(1)
+        check("deleting a line moves the marks and the cursor with it",
+              [p[1] for p in _ed._pairs] == ["ONE!", "three", "Denji: four"]
+              and _ed._done == {0, 2} and _ed._index == 2)
+        check("...and the table is rebuilt from the shortened script",
+              _ed.table.rowCount() == 3)
+        _ed._move_line(0, +1)
+        check("moving a line takes its done-mark along",
+              _ed._pairs[1][1] == "ONE!" and 1 in _ed._done)
+
+        _ed._toggle_page_break(2, True)
+        check("a page break set by hand opens a page there",
+              _ed._pair_pages[2] != _ed._pair_pages[1]
+              and _ed._pages == LP.rebuild_pages(_ed._pair_pages))
+        _ed._toggle_page_break(2, False)
+        check("...and taking it away folds the page back",
+              _ed._pair_pages[2] == _ed._pair_pages[1])
+
+        # --- one script, three views of it ----------------------------
+        # the block above edited lines, so Analyze would ask first - and
+        # a modal question in a headless run is a hang, not a failure
+        _ed._hand_edited = False
+        _ed.editor.setPlainText("Page 1\none\ntwo\nPage 2\nthree\nfour")
+        _ed.analyze()
+        _ed._bp_batch_refresh()
+        _b_lst = _ed.bp_lines_list
+
+        def _brow(unit):
+            for _i in range(_b_lst.count()):
+                if _b_lst.item(_i).data(Qt.ItemDataRole.UserRole) == unit:
+                    return _b_lst.item(_i)
+            return None
+
+        _ed.table.item(0, 1).setText("ONE, corrected")
+        check("an edit in the Type tab reaches the Batch tab's list",
+              "ONE, corrected" in _brow(0).text()
+              and _brow(0).data(TK.ScriptLineDelegate.TEXT_ROLE)
+              == "ONE, corrected")
+        check("...and the script text above, so it is not two scripts",
+              "ONE, corrected" in _ed.editor.toPlainText()
+              and "\none\n" not in _ed.editor.toPlainText())
+        check("...so Analyze has nothing to undo",
+              not _ed._hand_edited)
+        _ed.analyze()
+        check("...which it proves by re-reading the same wording",
+              _ed._pairs[0][1] == "ONE, corrected")
+
+        _brow(1).setData(TK.ScriptLineDelegate.TEXT_ROLE, "TWO, corrected")
+        check("an edit in the Batch tab reaches the Type tab's table",
+              _ed.table.item(1, 1).text() == "TWO, corrected")
+        check("...and the script text",
+              "TWO, corrected" in _ed.editor.toPlainText())
+
+        # a wording that is in the text twice cannot be patched blind
+        _ed.editor.setPlainText("Page 1\nsame\nsame\n")
+        _ed.analyze()
+        _ed._bp_batch_refresh()
+        _ed.table.item(0, 1).setText("changed")
+        check("a line whose old wording occurs twice is not guessed at",
+              _ed.editor.toPlainText().count("same") == 2
+              and _ed._pairs[0][1] == "changed")
+        check("...and the label says the text and the lines have parted",
+              _ed._hand_edited
+              and _ed._tr("hand_edited") in _ed.lbl_script.text())
+
+        check("the label says the lines were edited here",
+              _ed._tr("hand_edited") in _ed.lbl_script.text())
+        _ed.deleteLater()
+    except Exception as _se_e:                      # pragma: no cover
+        check("script-editing smoke test ran", False)
+        import traceback
+        traceback.print_exc()
+
+# --- the font key, the hotkey list and the credits panel -------------------
+if imported:
+    try:
+        _th = TK.TyperDocker()
+        check("Ctrl+Space is one of TypeR's own keys",
+              any(c == "Ctrl+Space" and m == "open_font_search"
+                  for (c, m, _k) in TK.BUILTIN_KEYS))
+        check("...and it names a method the docker really has",
+              all(callable(getattr(_th, m, None))
+                  for (_c, m, _k) in TK.BUILTIN_KEYS))
+        check("...with a string for the list, in both languages",
+              all(TK.LANG["en"].get(k) and TK.LANG["de"].get(k)
+                  for (_c, _m, k) in TK.BUILTIN_KEYS))
+
+        # the hotkey list: TypeR's own plus the user's, with their manga
+        _th._keybinds = {"Chainsaw Man": {"A": ["Denji", "Normal"],
+                                          "Ctrl+B": ["Makima", "Schrei"]},
+                         "Berserk": {"G": ["Guts", "Normal"]}}
+        _rows = _th.all_hotkeys()
+        check("the list holds TypeR's own keys and the bound ones",
+              len(_rows) == len(TK.BUILTIN_KEYS) + 3)
+        check("...a preset key says which character and preset it is",
+              ("A", "Denji \u00b7 Normal", "Chainsaw Man", None) in _rows)
+        check("...and which manga it belongs to, since another may reuse it",
+              ("G", "Guts \u00b7 Normal", "Berserk", None) in _rows)
+        check("rubbish in the stored bindings is stepped over",
+              _th.all_hotkeys.__self__ is _th
+              and len(TK.TyperDocker.all_hotkeys(_th)) == len(_rows))
+        _th._refresh_keys_table()
+        check("the table shows every row",
+              _th.keys_table.rowCount() == len(_rows))
+        check("...and TypeR's own key sits in a field you can press into",
+              isinstance(_th.keys_table.cellWidget(0, 0), TK.KeyChordEdit)
+              and _th.keys_table.cellWidget(0, 0).combo()
+              == _th._builtin_keys["open_font_search"])
+        check("...while a preset key is only shown, not rebound here",
+              _th.keys_table.cellWidget(len(TK.BUILTIN_KEYS), 0) is None)
+        check("matching still uses Qt's portable spelling",
+              "Ctrl+Space" in dict((c, m) for (c, m, _k) in TK.BUILTIN_KEYS))
+
+        # rebinding
+        class _Field:
+            def __init__(self, c):
+                self._c = c
+
+            def combo(self):
+                return self._c
+
+        _th._on_builtin_key_recorded("open_font_search", _Field("Ctrl+M"))
+        check("a new combination is taken and kept",
+              _th._builtin_keys["open_font_search"] == "Ctrl+M")
+        check("...and the list shows it",
+              _th.keys_table.cellWidget(0, 0).combo() == "Ctrl+M")
+        _th._on_builtin_key_recorded("open_font_search", _Field("A"))
+        check("a combination a preset already owns is refused",
+              _th._builtin_keys["open_font_search"] == "Ctrl+M")
+        check("...and the refusal says who has it",
+              "Denji" in _th.status.text() or "Denji"
+              in _th._tr("keys_taken").format(key="A", what="Denji",
+                                              where="x"))
+        _th._on_builtin_key_recorded("open_font_search", _Field(""))
+        check("an empty recording changes nothing",
+              _th._builtin_keys["open_font_search"] == "Ctrl+M")
+        _th.reset_builtin_keys()
+        check("the default keys come back",
+              _th._builtin_keys["open_font_search"] == "Ctrl+Space")
+        check("what is stored survives a reload",
+              _th._load_builtin_keys()["open_font_search"] == "Ctrl+Space")
+
+        # a new binding reaches the list without anyone refreshing it
+        _th._keybinds["Berserk"]["H"] = ["Guts", "Schrei"]
+        _th._save_keybinds()
+        check("binding a key updates the list by itself",
+              _th.keys_table.rowCount() == len(_rows) + 1)
+
+        _th._refresh_credits_table()
+        check("the credits panel lists every feature",
+              _th.credits_table.rowCount() == len(CR_MOD.CREDITS))
+        check("...with the idea and the writer beside it",
+              _th.credits_table.item(0, 1).text()
+              and _th.credits_table.item(0, 2).text() == "Claude")
+        check("...translated, not as a key",
+              "cr_" not in _th.credits_table.item(0, 0).text())
+        check("the people behind the names are explained once",
+              "Sakushi" in _th.credits_people.text()
+              and "KSR" in _th.credits_people.text())
+        _th.deleteLater()
+    except Exception:                               # pragma: no cover
+        check("hotkeys + credits smoke test ran", False)
+        import traceback
+        traceback.print_exc()
 
 # --- Main-tab order/label integrity (regression) ---------------------------
 # A custom, persisted tab order must reorder the *pages* together with the tab
@@ -1738,6 +2118,143 @@ if imported:
         check("switched off, it draws from the whole script",
               _bd._bp_assign == [0, 1])
 
+        # --- the script's own side of the pairing ---------------------
+        _bd.bp_batch_page_chk.setChecked(False)      # the whole script
+        _lst = _bd.bp_lines_list
+
+        def _u_row(unit):
+            """The row holding this unit - the page bars have no unit."""
+            for _i in range(_lst.count()):
+                if _lst.item(_i).data(Qt.ItemDataRole.UserRole) == unit:
+                    return _i
+            return -1
+
+        def _line_rows():
+            return [_i for _i in range(_lst.count())
+                    if isinstance(_lst.item(_i).data(Qt.ItemDataRole.UserRole),
+                                  int)]
+
+        check("the batch tab shows the script, not an empty table",
+              len(_line_rows()) == len(_bd._pairs))
+        check("...with every line ticked and already paired, unasked",
+              all(_lst.item(i).checkState() == Qt.CheckState.Checked
+                  for i in _line_rows())
+              and _bd._bp_assign == [0, 1])
+        check("...and each line says which bubble it goes into",
+              _bd._tr("bp_lines_to").format(n=1)
+              in _lst.item(_u_row(0)).text())
+        check("the count counts lines, not the page bars between them",
+              _bd.bp_lines_count.text()
+              == _bd._tr("bp_lines_count").format(
+                  n=2, total=len(_bd._pairs), boxes=len(_bd._bp_boxes)))
+        check("...and a page bar sits where the page begins",
+              any(not isinstance(_lst.item(i).data(Qt.ItemDataRole.UserRole),
+                                 int) for i in range(_lst.count())))
+
+        _lst.item(_u_row(0)).setCheckState(Qt.CheckState.Unchecked)
+        check("unticking a line takes it out and moves the rest up",
+              _bd._bp_assign == [1, 2])   # the 3rd line moves into bubble 2
+        _lst.item(_u_row(0)).setCheckState(Qt.CheckState.Checked)
+        check("ticking it again puts it back where it was",
+              _bd._bp_assign == [0, 1])
+
+        _bd._bp_lines_set_all(False)
+        check("None leaves nothing to place", _bd._bp_assign == [-1, -1])
+        _bd._bp_lines_set_all(True)
+        check("All brings every line back", _bd._bp_assign == [0, 1])
+
+        _bd._done = {0}
+        _bd._bp_lines_only_open()
+        check("'only unplaced' skips what is already marked done",
+              _lst.item(_u_row(0)).checkState() == Qt.CheckState.Unchecked
+              and _bd._bp_assign[0] == 1)
+        _bd._done = set()
+        _bd._bp_lines_set_all(True)
+
+        _bd._bp_lines_row(_u_row(1))
+        check("clicking a line arms the bubble it is going into",
+              _bd.bp_batch_table.currentRow() == 1)
+
+        # --- writing in the Batch tab ----------------------------------
+        _bd._index = 0
+        _bd.bp_batch_page_chk.setChecked(False)
+        _bd._bp_lines_set_all(True)
+        _lst.setCurrentRow(_u_row(0))
+        check("picking a line shows it in the field under the list",
+              _bd.bp_line_edit.toPlainText() == _bd._pairs[0][1])
+        _bd.bp_line_edit.setPlainText("Written in the Batch tab")
+        check("typing there changes the script itself",
+              _bd._pairs[0][1] == "Written in the Batch tab")
+        check("...and what the run would place",
+              _bd._unit_text(0) == "Written in the Batch tab")
+        check("...and the row says so without being rebuilt underneath",
+              "Written in the Batch tab" in _lst.item(_u_row(0)).text()
+              and _lst.item(_u_row(0)).data(
+                  TK.ScriptLineDelegate.TEXT_ROLE)
+              == "Written in the Batch tab"
+              and _lst.item(_u_row(0)).checkState()
+              == Qt.CheckState.Checked)
+        check("...and the Type tab's table agrees",
+              _bd.table.item(0, 1).text() == "Written in the Batch tab")
+
+        # typing in the row itself, and Enter for the next line
+        _row = _u_row(0)
+        _lst.setCurrentRow(_row)
+        _lst.editItem(_lst.item(_row))
+        _edit = _lst.findChild(QLineEdit)
+        check("a row opens an editor on the line, without its number",
+              _edit is not None and _edit.text() == _bd._pairs[0][1])
+        _edit.setText("Typed into the row")
+        _n_before = len(_bd._pairs)
+        _bd._bp_line_delegate.eventFilter(
+            _edit, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return,
+                             Qt.KeyboardModifier.NoModifier))
+        check("Enter keeps what was typed",
+              _bd._pairs[0][1] == "Typed into the row")
+        check("...and opens a new line under it",
+              len(_bd._pairs) == _n_before + 1 and _bd._pairs[1] == ("", ""))
+        check("...which is the one the editor is now on",
+              _lst.currentItem().data(Qt.ItemDataRole.UserRole) == 1)
+        _bd._delete_line_at(1)
+        _bd._bp_lines_set_all(True)
+        _lst.setCurrentRow(_u_row(0))          # back where the next check starts
+
+        _before = len(_bd._pairs)
+        _bd._bp_line_add()
+        check("+ Line writes one in after the selected line",
+              len(_bd._pairs) == _before + 1 and _bd._pairs[1] == ("", ""))
+        check("...on the page the line before it is on",
+              _bd._pair_pages[1] == _bd._pair_pages[0])
+        check("...ticked, so it is placed without another click",
+              _u_row(1) >= 0
+              and _lst.item(_u_row(1)).checkState() == Qt.CheckState.Checked)
+        _bd.bp_line_edit.setPlainText("A line the translator forgot")
+        check("...and writing into it fills that line",
+              _bd._pairs[1][1] == "A line the translator forgot")
+        _bd._delete_line_at(1)
+
+        # the picker: the open scripts, switchable without leaving the tab
+        _tabs = _bd.script_tabs.count()
+        _bd.on_new_script()
+        check("the picker lists every open script",
+              _bd.bp_script_combo.count() == _tabs + 1)
+        check("...and follows the script that is open",
+              _bd.bp_script_combo.currentData() == _bd._active_sid)
+        _bd.bp_script_combo.setCurrentIndex(0)
+        check("picking one here opens it, in both tabs",
+              _bd.script_tabs.currentIndex() == 0
+              and _bd._active_sid == _bd.script_tabs.tabData(0)
+              and len(_bd._pairs) == _before)
+        _bd._bp_lines_set_all(True)
+
+        _bd._index = 2                                # a line on page 2
+        _bd.bp_batch_page_chk.setChecked(True)
+        check("switching to this page offers that page's lines, all ticked",
+              [_lst.item(i).data(Qt.ItemDataRole.UserRole)
+               for i in _line_rows()] == [2]
+              and _bd._bp_assign == [2, -1])
+
+
         # undo removes exactly the layers of the last run
         _bd._bp_last_units = [0, 1]
         _bd._done = {0, 1}
@@ -2730,7 +3247,11 @@ if imported:
         # sample is far longer than "Arial", so the pixmap has to grow
         _fp.sample_edit.setText("DON'T MOVE, KEI-CHAN")
         _fp._apply_sample()
-        _app.processEvents()
+        # The prewarm timer refills exactly what the two checks below are
+        # about. Letting events run here made them pass or fail by timing
+        # (about one run in three): stop it, look at what the sample change
+        # left behind, and let the rendering happen afterwards.
+        _fp._face_timer.stop()
         check("typing a sample is picked up",
               _fp.sample_text() == "DON'T MOVE, KEI-CHAN")
         _wide = _fp._make_face("Arial")
@@ -2742,6 +3263,7 @@ if imported:
         check("and every face is queued to re-render",
               "Arial" in _fp._face_pending and "Courier New" in _fp._face_pending)
 
+        _app.processEvents()
         check("the sample is remembered for the next session",
               _fp._store.ui_get("sample_text", "") == "DON'T MOVE, KEI-CHAN")
 
