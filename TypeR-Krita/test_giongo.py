@@ -47,7 +47,9 @@ from typer_kr import giongo_dict as GD
 from typer_kr import giongo_warp as WP
 from typer_kr import giongo_nodes as ND
 from typer_kr import userfonts as UF
-from typer_kr import giongo_trace as TR      # noqa: E402
+from typer_kr import giongo_trace as TR
+from typer_kr import report as RP
+from typer_kr import report_ui as RU      # noqa: E402
 
 print("== rules ==")
 check("voiced + ン + ！ is an impact", G.omakase("ドーーン！")[0] == "impact")
@@ -382,13 +384,18 @@ def _radii(pts):
     return [_math.hypot(x, y) for x, y in pts]
 
 
-_pushed = WP.warp_points([(0.0, 0.0), (350.0, 0.0), (450.0, 0.0)],
-                         [WP.dab("push", 0, 0, 400, 50, 0, 0.3)])
+_one_dab = [WP.dab("push", 0, 0, 400, 50, 0, 0.3)]
 check("push moves the middle by the whole distance",
-      abs(_pushed[0][0] - 50.0) < 0.01)
+      abs(WP.displace(0.0, 0.0, _one_dab)[0] - 50.0) < 0.01)
 check("...less at the edge of the brush",
-      0 < _pushed[1][0] - 350.0 < 50.0)
-check("...and nothing at all outside it", _pushed[2] == (450.0, 0.0))
+      0 < WP.displace(350.0, 0.0, _one_dab)[0] < 50.0)
+check("...and nothing at all outside it",
+      WP.displace(450.0, 0.0, _one_dab) == (0.0, 0.0))
+_pushed = WP.warp_points([(0.0, 0.0), (350.0, 0.0), (450.0, 0.0)], _one_dab)
+check("a contour is evened out, so its peak is a little under that",
+      0 < _pushed[0][0] < 50.0)
+check("...but a point the brush never reached is left exactly alone",
+      _pushed[2] == (450.0, 0.0))
 
 _inf = WP.warp_points(_ring, [WP.dab("inflate", 0, 0, 400, 0.10, 0, 0.3)])
 _pin = WP.warp_points(_ring, [WP.dab("pinch", 0, 0, 400, 0.10, 0, 0.3)])
@@ -748,6 +755,12 @@ panel = GiongoPanel(lang_fn=lambda: lang[0],
                     set_setting=lambda k, v: store.__setitem__(k, v),
                     families_fn=lambda: ["IPAGothic", "DejaVu Sans"])
 panel.resize(360, 900)
+# the tab shows only the heading and the button now, so the panel is
+# tested where it is used: in its window. The window itself is opened
+# further down; here it is enough that the groups are shown.
+panel._popped = True
+panel._apply_docked_view()
+panel._popped = False
 panel._rng = random.Random(11)
 panel.text_edit.setPlainText("ゴゴゴゴ")
 panel.on_auto()
@@ -799,6 +812,8 @@ panel2 = GiongoPanel(lang_fn=lambda: "en",
 check("a new panel starts where the last one stopped",
       panel2.params() == G.from_json(store["giongoParams"]) and
       panel2.text() == "ゴゴゴゴ")
+panel2._popped = True       # a docked panel shows only its heading
+panel2._apply_docked_view()
 check("missing type fonts are pointed out",
       panel2.font_hint.isVisibleTo(panel2) and
       "Mochiy Pop One" in panel2.font_hint.text())
@@ -884,8 +899,13 @@ check("the width decides the columns, not where the panel lives",
       and panel._columns_for(1300) == 3)
 check("the settings are grouped into blocks the grid can arrange",
       len(panel._blocks) >= 5)
-check("the first block is the one with the text and the preview",
-      panel.preview in panel._blocks[0].findChildren(type(panel.preview)))
+check("the canvas has a block of its own, for a column of its own",
+      panel._canvas_block is not None
+      and panel.preview in
+      panel._canvas_block.findChildren(type(panel.preview))
+      and panel._canvas_block is not panel._blocks[0])
+check("...and the first block is the heading, which is all the tab shows",
+      panel.intro in panel._blocks[0].findChildren(type(panel.intro)))
 
 from typer_kr._qt import QWidget as _QW, QVBoxLayout as _QVL
 _host = _QW()
@@ -1607,13 +1627,34 @@ def _halves(img, step=2):
     return t, b, le, ri
 
 
-_n, _timg = _ink("ドカーン", fill_mode="tone", tone_dot=8)
+_n, _timg = _ink("\u30c9\u30ab\u30fc\u30f3", fill_mode="tone_grad",
+                 tone_dot=8)
 _t, _b, _le, _ri = _halves(_timg)
-check("a halftone shades down the word: light at the top, solid below",
+check("a halftone gradient shades down the word: light above, solid below",
       _b > _t * 1.5)
 check("...and the same from end to end, not solid at one end and blank "
       "at the other",
       min(_le, _ri) > max(_le, _ri) * 0.5)
+
+# the flat one is the tone a tone is: every dot the same
+_n2, _fimg = _ink("\u30c9\u30ab\u30fc\u30f3", fill_mode="tone",
+                  tone_dot=8)
+_ft, _fb, _fle, _fri = _halves(_fimg)
+# against the gradient rather than against a number: how even the ink
+# is depends on the letters too, and the font is not the same everywhere
+check("a plain halftone does not shade: far more even than the gradient",
+      min(_ft, _fb) / float(max(1, max(_ft, _fb)))
+      > min(_t, _b) / float(max(1, max(_t, _b))) * 1.8
+      if _HAVE_GLYPHS else True)
+check("...which is what the SVG has been writing all along",
+      "giongoTone" in R.to_svg(R.build_scene("\u30c9", G.sanitize(
+          dict(G.DEFAULTS, fill_mode="tone")))))
+check("both tones are offered, and both go in as pixels",
+      "tone" in G.FILL_MODES and "tone_grad" in G.FILL_MODES
+      and R.build_scene("\u30c9", G.sanitize(
+          dict(G.DEFAULTS, fill_mode="tone_grad"))).needs_raster()
+      and R.build_scene("\u30c9", G.sanitize(
+          dict(G.DEFAULTS, fill_mode="tone"))).needs_raster())
 
 panel._params = G.sanitize(dict(G.DEFAULTS, fill_mode="line"))
 panel._load_into_widgets()
@@ -2109,9 +2150,15 @@ _cs4 = panel.point_contours(_pkey)
 _p0 = _cs4[0][0]
 _at0 = _tr.map(_QPointF(_p0[0], _p0[1]))
 _was_smooth = bool(_p0[6])
-panel.point_press((_at0.x(), _at0.y()), 8, panel.preview._k, shift=True)
-check("Shift makes a corner a curve and back",
+panel.point_double((_at0.x(), _at0.y()), 8, panel.preview._k)
+check("a double-click makes a corner a curve and back",
       bool(panel.point_contours(_pkey)[0][0][6]) != _was_smooth)
+panel.set_point_selection([])
+panel.point_press((_at0.x(), _at0.y()), 8, panel.preview._k, shift=True)
+check("Shift gathers points up instead",
+      panel.point_selection() == [(0, 0)])
+panel.point_press((_at0.x(), _at0.y()), 8, panel.preview._k, shift=True)
+check("...and takes one out again", panel.point_selection() == [])
 _n_before = ND.count(panel.point_contours(_pkey))
 # the longest piece of outline: a click in the middle of a short one is
 # nearer to its points than to the line between them, and should take
@@ -2126,15 +2173,53 @@ _long = max(((ci, ni) for ci, _r in enumerate(_cs5)
                 - ND.point_on(_cs5, p[0], p[1], 0.0)[1]))
 _mid = ND.point_on(_cs5, _long[0], _long[1], 0.5)
 _at_mid = _tr.map(_QPointF(_mid[0], _mid[1]))
-panel.point_press((_at_mid.x(), _at_mid.y()), 8, panel.preview._k)
-check("a click on the outline between two points adds one",
+panel.point_double((_at_mid.x(), _at_mid.y()), 8, panel.preview._k)
+check("a double-click on the outline between two points adds one",
       ND.count(panel.point_contours(_pkey)) == _n_before + 1)
+check("...and the new point is the one that is chosen",
+      panel.point_selection() == [(_long[0], _long[1] + 1)])
 _added = panel.point_contours(_pkey)[_long[0]][_long[1] + 1]
 _at_added = _tr.map(_QPointF(_added[0], _added[1]))
 panel.point_press((_at_added.x(), _at_added.y()), 8, panel.preview._k,
                   alt=True)
 check("Alt takes one away",
       ND.count(panel.point_contours(_pkey)) == _n_before)
+
+# several at once
+_cs6 = panel.point_contours(_pkey)
+_box = ND.bounds(_cs6)
+_c0 = _tr.map(_QPointF(_box[0] - 10, _box[1] - 10))
+_c1 = _tr.map(_QPointF((_box[0] + _box[2]) / 2.0, _box[3] + 10))
+panel.point_band(_c0.x(), _c0.y(), _c1.x(), _c1.y())
+_chosen = panel.point_selection()
+check("a rectangle gathers the points inside it",
+      1 < len(_chosen) < ND.count(_cs6))
+check("...and the preview is told which ones they are",
+      sum(1 for it in panel.point_overlay() if it["chosen"]) == len(_chosen))
+_before_pts = [tuple(panel.point_contours(_pkey)[c][n][:2])
+               for c, n in _chosen]
+panel._drag_open = False
+panel._history = []
+_g = panel.point_gizmo()
+check("the chosen points get a gizmo of their own", _g is not None)
+panel.point_gizmo_drag("pmovex", (_g[0][0] + 30, _g[0][1] + 30), _g[0])
+_after_pts = [tuple(panel.point_contours(_pkey)[c][n][:2])
+              for c, n in _chosen]
+check("the sideways arrow moves every chosen point, and only sideways",
+      all(abs(a[1] - b[1]) < 0.01 and a[0] > b[0] + 1.0
+          for a, b in zip(_after_pts, _before_pts)))
+check("...as one step in the history", len(panel._history) == 1)
+panel.point_gizmo_drag("protate", (_g[0][0], _g[0][1] + 40),
+                       (_g[0][0] + 40, _g[0][1]))
+check("the ring turns them about their middle",
+      [tuple(panel.point_contours(_pkey)[c][n][:2]) for c, n in _chosen]
+      != _after_pts)
+panel.preview_drag_done()
+panel.on_back()
+check("one undo takes the whole thing back",
+      [tuple(panel.point_contours(_pkey)[c][n][:2]) for c, n in _chosen]
+      == _before_pts)
+panel.set_point_selection([])
 
 panel.on_reset_points()
 check("reset gives every letter the font's outline back",
@@ -2374,8 +2459,44 @@ _shutil.rmtree(_let_dir, ignore_errors=True)
 
 
 
+# --- the mouse and the drawing agree, macros and all ---------------------
+panel._params = G.sanitize(dict(G.DEFAULTS, power=60, rough=20,
+                                momentum=70, letter_px=160))
+panel.text_edit.setPlainText("EGG")
+panel._load_into_widgets()
+panel._refresh_preview()
+_eff_places = G.layout("EGG", G.effective(panel.params()),
+                       advance_fn=panel._advance_fn())
+check("the preview lays the letters out the way the renderer does",
+      [(round(p["x"], 2), round(p["y"], 2), round(p["size"], 2))
+       for p in panel._places]
+      == [(round(p["x"], 2), round(p["y"], 2), round(p["size"], 2))
+          for p in _eff_places])
+panel.preview.select((panel._places[1]["group"], panel._places[1]["index"]))
+_sel_path = panel.selection_outline()
+_drawn = [l for l in panel.scene().layers if l.kind == "fill"]
+if _sel_path is not None and _drawn and _HAVE_GLYPHS:
+    _best = max(_drawn, key=lambda l: l.path.intersected(_sel_path)
+                .boundingRect().width())
+    _ov = _best.path.intersected(_sel_path).boundingRect()
+    _own = _sel_path.boundingRect()
+    check("...so the selection sits on the letter it is drawing, not "
+          "beside it",
+          _ov.width() * _ov.height() > _own.width() * _own.height() * 0.9)
+else:
+    check("...so the selection sits on the letter it is drawing, not "
+          "beside it", True)
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel.text_edit.setPlainText("\u30c9\u30f3")
+panel._load_into_widgets()
+panel._refresh_preview()
+
+
 # --- the tools over the canvas -------------------------------------------
 print("== tools ==")
+if not panel._popped:
+    panel.pop_out()                 # the work happens in the window now
+    _app.processEvents()
 panel._params = G.sanitize(dict(G.DEFAULTS))
 panel.text_edit.setPlainText("\u30c9\u30f3")
 panel._load_into_widgets()
@@ -2471,6 +2592,154 @@ panel._params = G.sanitize(dict(G.DEFAULTS))
 panel._load_into_widgets()
 panel._history = []
 panel._future = []
+
+
+# --- the actions under the canvas ----------------------------------------
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel.text_edit.setPlainText("\u30c9\u30f3")
+panel._load_into_widgets()
+panel._refresh_preview()
+panel._history = []
+panel.set_tool("move")
+check("moving letters offers what belongs to moving letters",
+      [k for k, b in panel.act_btns.items() if b.isVisibleTo(panel)]
+      == ["reset_moves"])
+panel.set_tool("liquify")
+check("the brush offers taking the warping back",
+      [k for k, b in panel.act_btns.items() if b.isVisibleTo(panel)]
+      == ["reset_warp"])
+panel.set_tool("points")
+check("points offer delete, corner, and the two resets",
+      sorted(k for k, b in panel.act_btns.items() if b.isVisibleTo(panel))
+      == ["del", "reset_letter", "reset_pts", "smooth"])
+check("...and the two that need a point are off until there is one",
+      not panel.act_btns["del"].isEnabled()
+      and not panel.act_btns["smooth"].isEnabled())
+
+_apl = panel._places[0]
+_akey = (_apl["group"], _apl["index"])
+panel.preview.select(_akey)
+_acs = panel.open_points(_akey)
+panel._refresh_action_bar()         # the preview refreshes it in the app
+check("the count says how many letters have edited points",
+      "1" in panel.act_count.text())
+# out of the biggest ring: two points out of a ring of four would
+# take the whole ring with them, which is the rule for one too small
+# to be an outline
+_abig = max(range(len(_acs)), key=lambda i: len(_acs[i]))
+panel.set_point_selection([(_abig, 0), (_abig, 1)])
+check("...and the buttons wake up with a selection",
+      panel.act_btns["del"].isEnabled()
+      and panel.act_btns["smooth"].isEnabled())
+_was = bool(panel.point_contours(_akey)[_abig][0][6])
+panel.points_smooth_chosen()
+check("corner <-> curve works on everything chosen",
+      bool(panel.point_contours(_akey)[_abig][0][6]) != _was
+      and bool(panel.point_contours(_akey)[_abig][1][6]) != _was)
+_n_before = ND.count(panel.point_contours(_akey))
+panel.points_delete_chosen()
+# at least the two: a ring that is left too small to be an outline
+# goes with them, which is the rule everywhere else too
+check("delete takes the chosen points away",
+      ND.count(panel.point_contours(_akey)) <= _n_before - 2
+      and panel.point_selection() == [])
+panel.reset_points_letter()
+check("this letter can be put back on its own",
+      not ND.has_nodes(panel.params(), _akey[0], _akey[1])
+      and not panel.act_count.text())
+panel.on_back()
+panel.on_back()
+panel.set_tool("move")
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel._load_into_widgets()
+panel._history = []
+panel._future = []
+
+
+# --- the tool in hand, and a drag that touches nothing --------------------
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel.text_edit.setPlainText("\u30c9\u30f3")
+panel._load_into_widgets()
+panel._refresh_preview()
+panel.set_tool("liquify")
+check("the tool in hand is marked, not just checked",
+      "border" in panel.tool_btns["liquify"].styleSheet()
+      and "border" not in panel.tool_btns["move"].styleSheet())
+panel.set_tool("move")
+check("...and the mark moves with it",
+      "border" in panel.tool_btns["move"].styleSheet()
+      and "border" not in panel.tool_btns["liquify"].styleSheet())
+
+panel.set_tool("liquify")
+_tpl = panel._places[0]
+_far = (_tpl["x"] + _tpl["size"] * 4.0, _tpl["y"] + _tpl["size"] * 4.0)
+panel.liquify_step(_far, _far)
+check("a brush over nothing leaves no mark on the letter",
+      not WP.has_warp(panel.params()))
+check("...and says so instead of doing nothing in silence",
+      panel.status_lbl.text() == panel._t("gi_nothing_there"))
+_on = (_tpl["x"], _tpl["y"])
+panel.liquify_step((_on[0] + 4, _on[1]), _on)
+check("...while a brush on the letter still works",
+      WP.has_warp(panel.params()) if _HAVE_GLYPHS else True)
+panel.preview_drag_done()
+panel.set_tool("move")
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel._load_into_widgets()
+panel._history = []
+panel._future = []
+
+
+# --- reporting a problem -------------------------------------------------
+print("== report ==")
+RP.clear()
+check("a fresh report has nothing to tell yet", RP.events() == [])
+try:
+    raise ValueError("the letters went sideways")
+except ValueError as _exc:
+    RP.record("preview", _exc)
+check("what went wrong is noted, with where",
+      len(RP.events()) == 1 and RP.events()[0][1] == "preview"
+      and "sideways" in RP.events()[0][2])
+for _i in range(RP.MAX_EVENTS + 5):
+    RP.record("x", None, "note %d" % _i)
+check("...and only the last few are kept",
+      len(RP.events()) == RP.MAX_EVENTS)
+RP.clear()
+
+_rep = RP.build({"TypeR": "1.22.1", "Krita": "5.2.2", "Qt": "PyQt5"},
+                {"fill_mode": "tone"}, "the fill went white")
+check("the report says what was done and which versions",
+      "the fill went white" in _rep and "1.22.1" in _rep
+      and "5.2.2" in _rep and "PyQt5" in _rep)
+check("...and carries the settings that were in play",
+      "tone" in _rep and "Python" in _rep and "System" in _rep)
+check("an empty report still asks for the one thing only the user knows",
+      "say what you did" in RP.build({}, None, ""))
+
+_url = RP.issue_url(_rep)
+check("the link opens a new issue with the report in it",
+      _url.startswith(RP.ISSUE_URL + "?") and "title=" in _url
+      and "body=" in _url and " " not in _url)
+_long = RP.issue_url("x" * 40000)
+check("...and a report too long for a link is cut, and says so",
+      len(_long) <= RP.MAX_URL + 200 and "clipboard" in
+      _url.replace("%20", " ") + _long.replace("%20", " "))
+
+_rdir = _tempfile.mkdtemp(prefix="typer_rep_")
+_rpath = RP.save(_rep, _rdir)
+check("a report can be written to a file",
+      os.path.isfile(_rpath) and io.open(_rpath, encoding="utf-8").read()
+      == _rep)
+_shutil.rmtree(_rdir, ignore_errors=True)
+
+_dlg = RU.ReportDialog(None, {"TypeR": "1.22.1"}, {"a": 1}, "de")
+check("the window shows the report it is about to send",
+      "1.22.1" in _dlg.body() and _dlg.windowTitle())
+_dlg.what.setText("beim Wischen")
+check("...and typing what happened puts it in",
+      "beim Wischen" in _dlg.body())
+_dlg.close()
 
 
 print("\npassed %d, failed %d" % (_pass, _fail))

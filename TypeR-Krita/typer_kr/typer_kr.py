@@ -91,7 +91,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.22"
+VERSION = "1.22.1"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -550,6 +550,10 @@ class OldDocError(Exception):
 
 LANG = {
     "en": {
+        "report_btn": "Report a problem\u2026",
+        "report_tip": ("Gathers the version, Krita, Qt and the settings in "
+                       "play, shows them, and lets you copy them or open "
+                       "an issue. Nothing is sent on its own."),
         "title": "TypeR for Krita",
         "language": "Language:",
         "load_btn": "Load script (.docx / .odt / .txt / .pdf / .gdoc)",
@@ -1611,6 +1615,11 @@ LANG = {
         "view_bmap": "BubblR table",
     },
     "de": {
+        "report_btn": "Problem melden\u2026",
+        "report_tip": ("Sammelt Version, Krita, Qt und die gerade "
+                       "eingestellten Werte, zeigt sie, und du kannst sie "
+                       "kopieren oder ein Issue \u00f6ffnen. Von allein "
+                       "wird nichts gesendet."),
         "title": "TypeR für Krita",
         "language": "Sprache:",
         "load_btn": "Skript laden (.docx / .odt / .txt / .pdf / .gdoc)",
@@ -8026,11 +8035,20 @@ class TyperDocker(DockWidget):
         # build stamp so you can see at a glance which version Krita loaded
         # the detected Qt binding (auto-chosen at import: PyQt6 on Krita 6,
         # PyQt5 on Krita 5) — shown for transparency / bug reports
+        # the build stamp and the way to report a problem belong together:
+        # a report without the version in it is half a report
+        stamp = QHBoxLayout()
+        stamp.addStretch(1)
         self.build_lbl = QLabel("TypeR v" + VERSION + " · Build " + BUILD
                                 + " · " + binding_info())
         self.build_lbl.setStyleSheet("color: gray; font-size: 10px;")
         self.build_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
-        outer.addWidget(self.build_lbl)
+        stamp.addWidget(self.build_lbl)
+        self.report_btn = QPushButton(self._tr("report_btn"))
+        self.report_btn.setToolTip(self._tr("report_tip"))
+        self.report_btn.clicked.connect(self.on_report)
+        stamp.addWidget(self.report_btn)
+        outer.addLayout(stamp)
         # Only ever shown when there IS a newer version, so an up-to-date
         # install carries no row of furniture telling it so.
         self.update_lbl = QLabel("")
@@ -9719,6 +9737,23 @@ class TyperDocker(DockWidget):
             _apply(dlg.selectedColor())
         else:
             _apply(prev)                  # cancelled -> restore the old colour
+
+    def on_report(self, *_a):
+        """Gather what a bug report needs and show it, to be sent by hand."""
+        from . import report_ui as RU
+        info = {"TypeR": VERSION, "Build": BUILD, "Qt": binding_info()}
+        try:
+            info["Krita"] = Krita.instance().version()
+        except Exception as exc:                    # noqa: BLE001
+            info["Krita"] = "unknown (%s)" % exc
+        settings = None
+        try:
+            panel = getattr(self, "giongo_panel", None)
+            if panel is not None:
+                settings = {"giongo": panel.params(), "text": panel.text()}
+        except Exception:                           # noqa: BLE001
+            settings = None
+        RU.open_for(self, info, settings, self._lang)
 
     def _set_status(self, msg, error=False):
         self.status.setStyleSheet("color: #c0392b;" if error else "color: gray;")

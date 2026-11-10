@@ -444,7 +444,8 @@ class Scene(object):
 
     def needs_raster(self):
         """Fills Krita cannot be handed as vector art and get back whole."""
-        return any(l.paint in ("tone", "pattern") for l in self.layers)
+        return any(l.paint in ("tone", "tone_grad", "pattern")
+                   for l in self.layers)
 
 
 def advance_fn(params, family="", bold=None):
@@ -862,9 +863,14 @@ def _paint_pattern(painter, path, tile):
     painter.restore()
 
 
-def _paint_tone(painter, path, color, rect, spacing):
-    """Halftone: dots on a 45° grid, growing from nothing at the top of the
-    word to solid at the bottom (網点のグラデ)."""
+def _paint_tone(painter, path, color, rect, spacing, grad=False):
+    """Halftone: dots on a 45° grid.
+
+    Flat (網点) by default - every dot the same, which is what a tone is.
+    With `grad` they grow from nothing at the top of the word to solid at
+    the bottom (網点のグラデ), which is a different fill and is offered as
+    one.
+    """
     painter.save()
     painter.setClipPath(path)
     painter.setPen(Qt.PenStyle.NoPen)
@@ -886,9 +892,12 @@ def _paint_tone(painter, path, color, rect, spacing):
         while xx <= diag:
             # position in the unrotated word decides the dot size
             pt = rot.map(QPointF(xx, yy))
-            u = (pt.y() + h / 2.0) / h
-            u = min(max(u, 0.0), 1.0)
-            r = sp * 0.75 * u
+            if grad:
+                u = (pt.y() + h / 2.0) / h
+                u = min(max(u, 0.0), 1.0)
+                r = sp * 0.75 * u
+            else:
+                r = sp * 0.38
             if r > 0.3:
                 painter.drawEllipse(QPointF(xx, yy), r, r)
             xx += sp
@@ -923,11 +932,12 @@ def paint(scene, painter, offset=QPointF(0, 0), scale=1.0):
             g.setColorAt(1.0, QColor(p["fill2"]))
             painter.setBrush(QBrush(g))
             painter.drawPath(l.path)
-        elif l.paint == "tone":
+        elif l.paint in ("tone", "tone_grad"):
             # paper white under the dots, so the tone reads on any art
             painter.setBrush(QBrush(QColor("#ffffff")))
             painter.drawPath(l.path)
-            _paint_tone(painter, l.path, col, frect, p["tone_dot"])
+            _paint_tone(painter, l.path, col, frect, p["tone_dot"],
+                        l.paint == "tone_grad")
         elif l.paint == "pattern":
             tile = pattern_tile(p.get("fill_pattern", ""),
                                 p.get("fill_pattern_scale", 100))
@@ -1108,7 +1118,7 @@ def to_svg(scene, tr=None, width=None, height=None):
             '<stop offset="1" stop-color="%s"/></linearGradient>' % (
                 _num(frect.left()), _num(frect.top()), _num(frect.left()),
                 _num(frect.bottom()), _esc(p["fill"]), _esc(p["fill2"])))
-    if any(l.paint == "tone" for l in scene.layers):
+    if any(l.paint in ("tone", "tone_grad") for l in scene.layers):
         sp = max(2.0, float(p["tone_dot"]))
         defs.append(
             '<pattern id="giongoTone" patternUnits="userSpaceOnUse"'
@@ -1130,7 +1140,10 @@ def to_svg(scene, tr=None, width=None, height=None):
             continue
         if l.paint == "gradient":
             fill = "url(#giongoGrad)"
-        elif l.paint == "tone":
+        elif l.paint in ("tone", "tone_grad"):
+            # the gradient one is written as the flat pattern: an SVG of
+            # dots that each grow is a different file, and the vector
+            # insert takes the raster path for it anyway
             fill = "url(#giongoTone)"
         else:
             fill = _esc(l.color)

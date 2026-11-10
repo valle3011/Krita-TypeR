@@ -13,6 +13,84 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.1", {
+        "en": [
+            "A patch release: what a couple of recordings turned up, "
+            "and a way to tell me about the next one.",
+            "“Halftone” drew a *gradient* - dots growing from nothing "
+            "at the top of the word to solid at the bottom - so the "
+            "upper half of every letter dissolved into its white "
+            "outline and the lettering read as a white blob. There are "
+            "two fills now, as in the tool this rebuilds: “Halftone” is "
+            "flat, “Halftone gradient” is the shaded one. (The SVG "
+            "export had been writing the flat one all along, so the "
+            "preview and the saved file did not even agree.)",
+            "The tool in hand was all but invisible: a checked button "
+            "in a dark theme looks like an unchecked one, so a drag "
+            "with the eraser looked like a drag with the brush doing "
+            "nothing. The tool in hand is marked now, and a drag that "
+            "touches no letter says so instead of doing nothing in "
+            "silence.",
+            "A letter opened for point editing keeps its own outline "
+            "and no longer follows the font - which is the point of "
+            "opening it, but it happened silently. The count of letters "
+            "with their own outline is shown under the canvas whatever "
+            "tool is in hand, and changing the font says it.",
+            "With Power, Roughness or Momentum turned up, everything "
+            "the mouse pointed at sat a little beside the letter it was "
+            "drawn as: the panel laid the letters out from the settings "
+            "as typed, the renderer from the settings with the macros "
+            "applied.",
+            "Closing the popped-out window could take Krita down with "
+            "it (QScrollArea::takeWidget in the close event, twice in "
+            "the crash log). The window never takes the panel out of "
+            "its scroll area now.",
+            "New: “Report a problem…” beside the version in Setup. It "
+            "gathers the version, Krita, Qt, the system and the "
+            "settings in play, shows you the lot, and lets you copy it, "
+            "save it, or open a prefilled issue. Nothing is sent on its "
+            "own, and nothing is collected that you are not shown.",
+        ],
+        "de": [
+            "Ein Patch-Release: was zwei Aufnahmen zutage gebracht "
+            "haben, und ein Weg, mir das nächste Mal Bescheid zu sagen.",
+            "„Raster“ zeichnete einen *Verlauf* - Punkte, die von "
+            "nichts oben bis voll unten wachsen - also löste sich die "
+            "obere Hälfte jedes Buchstabens in seiner weißen Kontur auf "
+            "und das Lettering las sich als weißer Klumpen. Jetzt gibt "
+            "es zwei Füllungen, wie im Vorbild: „Raster“ ist flach, "
+            "„Rasterverlauf“ ist der schattierte. (Der SVG-Export "
+            "schrieb ohnehin schon immer das flache - Vorschau und "
+            "Datei waren also nie gleich.)",
+            "Welches Werkzeug an war, sah man kaum: ein gedrückter "
+            "Knopf im dunklen Thema sieht aus wie ein nicht gedrückter, "
+            "also wirkte ein Zug mit dem Radierer wie ein Pinselzug, "
+            "der nichts tut. Das aktive Werkzeug ist jetzt markiert, "
+            "und ein Zug, der keinen Buchstaben trifft, sagt es, statt "
+            "stumm nichts zu tun.",
+            "Ein für die Punkte geöffneter Buchstabe behält seine "
+            "eigene Kontur und folgt der Schrift nicht mehr - genau "
+            "dafür ist das Öffnen da, aber es geschah stillschweigend. "
+            "Die Zahl der Buchstaben mit eigener Kontur steht jetzt "
+            "unter der Leinwand, bei jedem Werkzeug, und ein "
+            "Schriftwechsel sagt es.",
+            "Mit aufgedrehter Wucht, Rauheit oder Schwung zeigte alles, "
+            "worauf die Maus zielte, ein Stück neben den gezeichneten "
+            "Buchstaben: das Panel setzte die Buchstaben aus den "
+            "getippten Werten, der Renderer aus denen mit den Makros "
+            "darauf.",
+            "Das Schließen des herausgezogenen Fensters konnte Krita "
+            "mitreißen (QScrollArea::takeWidget im Close-Event, zweimal "
+            "im Absturzprotokoll). Das Fenster nimmt das Panel nicht "
+            "mehr aus seinem Scrollbereich.",
+            "Neu: „Problem melden…“ neben der Version im Setup-Tab. "
+            "Sammelt Version, Krita, Qt, System und die gerade "
+            "eingestellten Werte, zeigt dir alles, und du kannst es "
+            "kopieren, speichern oder ein vorausgefülltes Issue öffnen. "
+            "Von allein wird nichts gesendet, und nichts gesammelt, was "
+            "du nicht siehst.",
+        ],
+    }),
     ("1.22", {
         "en": [
             "The Giongo tab (drawn sound effects) grew a lot this time, "

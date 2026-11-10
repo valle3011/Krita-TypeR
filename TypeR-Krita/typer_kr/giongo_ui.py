@@ -72,6 +72,10 @@ _EN = {
     "gi_font_pick_auto": "The type\u2019s own font",
     "gi_window_hint": "This tab has a lot in it \u2014 it works best in its "
                       "own window:",
+    "gi_tab_only": ("Drawn sound effects need room: a canvas and the "
+                    "settings beside it. The tab opens them in a window of "
+                    "their own \u2014 close it and everything comes back "
+                    "here."),
     "gi_font_loaded": "Loaded: {f}",
     "gi_font_load_bad": "Could not read: {f}",
     "gi_set": "Lettering:",
@@ -142,6 +146,7 @@ _EN = {
     "gi_sec_var": "Variation",
     "gi_sec_fill": "Fill & outlines",
     "gi_sec_shadow": "Shadow & motion",
+    "gi_nothing_there": "Nothing under the brush there.",
     "gi_tool_move": "\u2725 Move",
     "gi_tool_liquify": "\u25d0 Liquify",
     "gi_tool_points": "\u25c7 Points",
@@ -152,20 +157,34 @@ _EN = {
                          "aims the whole effect, the middle bends it."),
     "gi_tool_erase_tip": ("Wipe parts of a letter away. The brush size is "
                           "the one under Liquify."),
-    "gi_legend_move": ("\u25cf letter: drag = move \u00b7 ring = turn \u00b7 "
-                       "square = size \u00b7 double-click = back  \u2502  "
-                       "\u25c6 path: end = aim \u00b7 middle = bend"),
+    "gi_legend_move": ("click a letter, then: \u2192 sideways \u00b7 "
+                       "\u2191 up/down \u00b7 \u25a1 free \u00b7 "
+                       "\u25cb turn \u00b7 \u25a0 size \u00b7 "
+                       "double-click = back  \u2502  path: \u25cf end = "
+                       "aim \u00b7 \u25c7 middle = bend"),
     "gi_legend_liquify": ("drag over a letter to push it about \u00b7 Alt "
                           "turns the tool round \u00b7 size, force and "
                           "hardness are under Liquify"),
-    "gi_legend_points": ("drag a point or its handle \u00b7 click the "
-                         "outline between two points to add one \u00b7 "
-                         "Alt+click deletes \u00b7 Shift+click corner "
-                         "\u21c4 curve"),
+    "gi_legend_points": ("drag a point or its handle \u00b7 Shift+click "
+                         "gathers several, or drag a rectangle over them "
+                         "\u00b7 the gizmo moves, turns and resizes what "
+                         "is gathered \u00b7 double-click the outline = a "
+                         "new point, a point = corner \u21c4 curve \u00b7 "
+                         "Alt+click deletes"),
     "gi_legend_erase": ("drag to wipe parts of a letter away \u00b7 the "
                         "letter keeps everything else, and undo takes the "
                         "whole stroke back"),
     "gi_erased": "Wiped away. Undo takes it back.",
+    "gi_frozen_font": ("{n} letter(s) have an outline of their own and "
+                       "keep it \u2014 \u201cReset all points\u201d under "
+                       "the canvas gives them back to the font."),
+    "gi_act_del": "Delete point",
+    "gi_act_smooth": "Corner \u21c4 curve",
+    "gi_act_reset_letter": "Reset this letter",
+    "gi_act_reset_pts": "Reset all points",
+    "gi_act_reset_warp": "Undo all warping",
+    "gi_act_reset_moves": "Reset letter edits",
+    "gi_act_count": "letters with edited points: {n}",
     "gi_sec_points": "Points",
     "gi_pts_on": "Edit points (drag in the preview)",
     "gi_pts_on_tip": ("Take hold of the outline itself. Click a letter to "
@@ -224,6 +243,7 @@ _EN = {
     "gi_fill_solid": "Solid",
     "gi_fill_gradient": "Gradient",
     "gi_fill_tone": "Halftone",
+    "gi_fill_tone_grad": "Halftone gradient",
     "gi_fill2": "to",
     "gi_caption": "Caption:",
     "gi_caption_ph": "e.g. BOOM",
@@ -368,6 +388,10 @@ _DE = {
     "gi_font_pick_auto": "Die Schrift der Art",
     "gi_window_hint": "In diesem Tab steckt viel \u2014 am besten im "
                       "eigenen Fenster:",
+    "gi_tab_only": ("Gezeichnete Soundeffekte brauchen Platz: eine "
+                    "Leinwand und die Einstellungen daneben. Der Tab "
+                    "\u00f6ffnet sie in einem eigenen Fenster \u2014 "
+                    "schlie\u00dfen, und alles ist wieder hier."),
     "gi_font_loaded": "Geladen: {f}",
     "gi_font_load_bad": "Nicht lesbar: {f}",
     "gi_font_missing": ("Keine der vorgeschlagenen Schriften dieser Art ist "
@@ -426,6 +450,7 @@ _DE = {
     "gi_sec_var": "Streuung",
     "gi_sec_fill": "Füllung & Konturen",
     "gi_sec_shadow": "Schatten & Bewegung",
+    "gi_nothing_there": "Dort ist nichts unter dem Pinsel.",
     "gi_tool_move": "\u2725 Bewegen",
     "gi_tool_liquify": "\u25d0 Verfl\u00fcssigen",
     "gi_tool_points": "\u25c7 Punkte",
@@ -437,22 +462,37 @@ _DE = {
     "gi_tool_erase_tip": ("Teile eines Buchstabens wegwischen. Die "
                           "Pinselgr\u00f6\u00dfe ist die unter "
                           "Verfl\u00fcssigen."),
-    "gi_legend_move": ("\u25cf Buchstabe: ziehen = versetzen \u00b7 Ring = "
-                       "drehen \u00b7 Quadrat = Gr\u00f6\u00dfe \u00b7 "
-                       "Doppelklick = zur\u00fcck  \u2502  \u25c6 Pfad: "
-                       "Ende = ausrichten \u00b7 Mitte = beugen"),
+    "gi_legend_move": ("Buchstabe anklicken, dann: \u2192 seitw\u00e4rts "
+                       "\u00b7 \u2191 hoch/runter \u00b7 \u25a1 frei "
+                       "\u00b7 \u25cb drehen \u00b7 \u25a0 "
+                       "Gr\u00f6\u00dfe \u00b7 Doppelklick = zur\u00fcck"
+                       "  \u2502  Pfad: \u25cf Ende = ausrichten \u00b7 "
+                       "\u25c7 Mitte = beugen"),
     "gi_legend_liquify": ("\u00fcber einen Buchstaben ziehen schiebt ihn "
                           "herum \u00b7 Alt kehrt das Werkzeug um \u00b7 "
                           "Gr\u00f6\u00dfe, St\u00e4rke und H\u00e4rte "
                           "stehen unter Verfl\u00fcssigen"),
-    "gi_legend_points": ("Punkt oder Anfasser ziehen \u00b7 Klick auf die "
-                         "Kontur zwischen zwei Punkten setzt einen \u00b7 "
-                         "Alt+Klick l\u00f6scht \u00b7 Umschalt+Klick "
-                         "Ecke \u21c4 Kurve"),
+    "gi_legend_points": ("Punkt oder Anfasser ziehen \u00b7 Umschalt+Klick "
+                         "sammelt mehrere, oder ein Rechteck darum ziehen "
+                         "\u00b7 der Gizmo verschiebt, dreht und skaliert "
+                         "das Gesammelte \u00b7 Doppelklick auf die Kontur "
+                         "= neuer Punkt, auf einen Punkt = Ecke \u21c4 "
+                         "Kurve \u00b7 Alt+Klick l\u00f6scht"),
     "gi_legend_erase": ("ziehen wischt Teile eines Buchstabens weg \u00b7 "
                         "alles andere bleibt, und ein Undo nimmt den "
                         "ganzen Strich zur\u00fcck"),
     "gi_erased": "Weggewischt. Undo holt es zur\u00fcck.",
+    "gi_frozen_font": ("{n} Buchstabe(n) haben eine eigene Kontur und "
+                       "behalten sie \u2014 \u201eAlle Punkte "
+                       "zur\u00fccksetzen\u201c unter der Leinwand gibt "
+                       "sie der Schrift zur\u00fcck."),
+    "gi_act_del": "Punkt l\u00f6schen",
+    "gi_act_smooth": "Ecke \u21c4 Kurve",
+    "gi_act_reset_letter": "Diesen Buchstaben zur\u00fccksetzen",
+    "gi_act_reset_pts": "Alle Punkte zur\u00fccksetzen",
+    "gi_act_reset_warp": "Alles Verformen zur\u00fccknehmen",
+    "gi_act_reset_moves": "Buchstaben-\u00c4nderungen zur\u00fccksetzen",
+    "gi_act_count": "Buchstaben mit bearbeiteten Punkten: {n}",
     "gi_sec_points": "Punkte",
     "gi_pts_on": "Punkte bearbeiten (in der Vorschau ziehen)",
     "gi_pts_on_tip": ("Die Kontur selbst anfassen. Buchstabe anklicken "
@@ -515,6 +555,7 @@ _DE = {
     "gi_fill_solid": "Einfarbig",
     "gi_fill_gradient": "Verlauf",
     "gi_fill_tone": "Raster",
+    "gi_fill_tone_grad": "Rasterverlauf",
     "gi_fill2": "bis",
     "gi_caption": "Beischrift:",
     "gi_caption_ph": "z.\u202fB. BOOM",
@@ -911,6 +952,7 @@ class GiongoPreview(QLabel):
         self._brush_r = 0.0     # liquify brush, in scene units
         self._points = False    # point editing: nodes instead of handles
         self._grabbed = None    # which node or handle is being dragged
+        self._band = None       # the rectangle being drawn, in widget px
         self._cursor = None     # where it is, in widget pixels
         self.setMouseTracking(True)
         self._from = (0.0, 0.0)
@@ -969,6 +1011,97 @@ class GiongoPreview(QLabel):
         return ((pos.x() - px - self._ox) / self._k,
                 (pos.y() - py - self._oy) / self._k)
 
+    def _arrow(self, p, cx, cy, tx, ty):
+        """A line with a head on the end, pointing from the middle out."""
+        import math as _m
+        p.drawLine(QPointF(cx, cy), QPointF(tx, ty))
+        ang = _m.atan2(ty - cy, tx - cx)
+        for side in (2.6, -2.6):
+            p.drawLine(QPointF(tx, ty),
+                       QPointF(tx + _m.cos(ang + side) * 8,
+                               ty + _m.sin(ang + side) * 8))
+
+    def _draw_gizmo(self, p, cx, cy, r):
+        """What a drag on this letter will do, handle by handle."""
+        ring = QColor(225, 120, 110)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(ring, 1.4))
+        p.drawEllipse(QPointF(cx, cy), r + 12, r + 12)      # rotate
+        p.setPen(QPen(QColor(215, 150, 40), 1.6))
+        self._arrow(p, cx, cy, cx, cy - r * 0.78)           # up/down
+        p.setPen(QPen(QColor(60, 150, 220), 1.6))
+        self._arrow(p, cx, cy, cx + r * 0.78, cy)           # sideways
+        p.setPen(QPen(QColor(70, 70, 70), 1.2))
+        p.setBrush(QColor(255, 255, 255))
+        h = self.HANDLE - 1
+        p.drawRect(QRectF(cx - h, cy - h, 2 * h, 2 * h))    # free
+        p.setPen(QPen(ring, 1.2))
+        p.drawEllipse(QPointF(cx, cy - r - 14), self.HANDLE, self.HANDLE)
+        p.setPen(QPen(QColor(70, 70, 70), 1.2))
+        p.drawRect(QRectF(cx + r + 10 - self.HANDLE,
+                          cy + r + 10 - self.HANDLE,
+                          2 * self.HANDLE, 2 * self.HANDLE))
+
+    def _point_gizmo(self):
+        """((cx, cy), r) of the chosen points, in widget pixels, or None."""
+        if not self._points:
+            return None
+        try:
+            got = self._panel.point_gizmo()
+        except Exception:               # noqa: BLE001
+            return None
+        if not got:
+            return None
+        (sx, sy), r = got
+        pt = self._to_widget((sx, sy))
+        rw = max(22.0, r * self._k)
+        if not self._sane(pt, (rw, rw)):
+            return None
+        return pt, rw
+
+    def _point_gizmo_handles(self):
+        got = self._point_gizmo()
+        if got is None:
+            return []
+        (cx, cy), r = got
+        return [("protate", (cx, cy - r - 14)),
+                ("pscale", (cx + r + 10, cy + r + 10)),
+                ("pmovex", (cx + r * 0.78, cy)),
+                ("pmovey", (cx, cy - r * 0.78)),
+                ("pfree", (cx, cy))]
+
+    def _point_gizmo_hit(self, pos):
+        for name, pt in reversed(self._point_gizmo_handles()):
+            if abs(pos.x() - pt[0]) <= self.GRAB \
+                    and abs(pos.y() - pt[1]) <= self.GRAB:
+                return name
+        return None
+
+    def _overlay_transform(self):
+        """Scene units -> this widget, the same mapping `_to_widget` is."""
+        px = (self.width() - self._pix[0]) / 2.0
+        py = (self.height() - self._pix[1]) / 2.0
+        tr = QTransform()
+        tr.translate(px + self._ox, py + self._oy)
+        tr.scale(self._k, self._k)
+        return tr
+
+    def _selection_shape(self):
+        """The selected letter's outline, in widget coordinates."""
+        if not self._sel or self._k <= 0:
+            return None
+        try:
+            path = self._panel.selection_outline(self._sel)
+        except Exception:               # noqa: BLE001
+            return None
+        if path is None or path.isEmpty():
+            return None
+        out = self._overlay_transform().map(path)
+        r = out.boundingRect()
+        if not self._sane((r.x(), r.y()), (r.width(), r.height())):
+            return None
+        return out
+
     def _handles(self):
         """Everything grabbable, as (name, widget point), nearest last."""
         out = []
@@ -981,6 +1114,10 @@ class GiongoPreview(QLabel):
             cx, cy = self._to_widget((pl["x"], pl["y"]))
             out.append(("rotate", (cx, cy - r - 14)))
             out.append(("scale", (cx + r + 10, cy + r + 10)))
+            # what each drag will do, said with a handle for each
+            out.append(("movex", (cx + r * 0.78, cy)))
+            out.append(("movey", (cx, cy - r * 0.78)))
+            out.append(("free", (cx, cy)))
         return out
 
     # -- mouse ------------------------------------------------------------
@@ -1010,11 +1147,22 @@ class GiongoPreview(QLabel):
             scene = self._to_scene(pos)
             if scene is None:
                 return
+            name = self._point_gizmo_hit(pos)
+            if name is not None:
+                self._drag = "pgizmo"
+                self._grabbed = name
+                self._from = scene
+                return
             grabbed = self._panel.point_press(
                 scene, self.GRAB, self._k, self._alt(ev),
                 bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier))
-            self._drag = "point" if grabbed else None
-            self._grabbed = grabbed
+            if grabbed and grabbed[0] == "band":
+                self._drag = "band"
+                self._band = ((pos.x(), pos.y()), (pos.x(), pos.y()))
+                self._grabbed = None
+            else:
+                self._drag = "point" if grabbed else None
+                self._grabbed = grabbed
             self.update()
             return
         for name, pt in reversed(self._handles()):
@@ -1057,6 +1205,15 @@ class GiongoPreview(QLabel):
             self._panel.point_drag(self._grabbed, scene)
             self.update()
             return
+        if self._drag == "pgizmo":
+            self._panel.point_gizmo_drag(self._grabbed, scene, self._from)
+            self._from = scene
+            self.update()
+            return
+        if self._drag == "band":
+            self._band = (self._band[0], (pos.x(), pos.y()))
+            self.update()
+            return
         if self._drag == "erase":
             self._panel.erase_step(scene, self._from)
             self._from = scene
@@ -1065,6 +1222,17 @@ class GiongoPreview(QLabel):
                                  self._start)
 
     def mouseReleaseEvent(self, ev):                    # noqa: N802
+        if self._drag == "band" and self._band is not None:
+            (x0, y0), (x1, y1) = self._band
+            a = self._to_scene(QPointF(x0, y0))
+            b = self._to_scene(QPointF(x1, y1))
+            self._band = None
+            if a is not None and b is not None \
+                    and (abs(x1 - x0) > 3 or abs(y1 - y0) > 3):
+                self._panel.point_band(
+                    a[0], a[1], b[0], b[1],
+                    bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier))
+            self.update()
         if self._drag is not None:
             self._drag = None
             self._panel.preview_drag_done()
@@ -1073,6 +1241,10 @@ class GiongoPreview(QLabel):
         pos = ev.position() if hasattr(ev, "position") else ev.pos()
         scene = self._to_scene(pos)
         if scene is None:
+            return
+        if self._points:
+            self._panel.point_double(scene, self.GRAB, self._k)
+            self.update()
             return
         pl = G.nearest_letter(self._places, scene)
         if pl is not None:
@@ -1111,13 +1283,20 @@ class GiongoPreview(QLabel):
                 p.drawLine(QPointF(*pt), QPointF(*hp))
                 p.setBrush(QColor(255, 255, 255))
                 p.drawEllipse(QPointF(*hp), 3.0, 3.0)
-            p.setPen(QPen(QColor(200, 60, 140), 1))
-            p.setBrush(QColor(255, 255, 255) if it["smooth"]
-                       else QColor(255, 220, 120))
-            if it["smooth"]:
-                p.drawEllipse(QPointF(*pt), 4.0, 4.0)
+            chosen = it.get("chosen")
+            p.setPen(QPen(QColor(0, 150, 200) if chosen
+                          else QColor(200, 60, 140), 1.4 if chosen else 1))
+            if chosen:
+                p.setBrush(QColor(0, 180, 220))
             else:
-                p.drawRect(QRectF(pt[0] - 3.5, pt[1] - 3.5, 7.0, 7.0))
+                p.setBrush(QColor(255, 255, 255) if it["smooth"]
+                           else QColor(255, 220, 120))
+            if it["smooth"]:
+                p.drawEllipse(QPointF(*pt), 4.5 if chosen else 4.0,
+                              4.5 if chosen else 4.0)
+            else:
+                h = 4.5 if chosen else 3.5
+                p.drawRect(QRectF(pt[0] - h, pt[1] - h, 2 * h, 2 * h))
 
     def _draw_brush(self, p):
         """The liquify brush: a ring the size it really works at."""
@@ -1145,6 +1324,17 @@ class GiongoPreview(QLabel):
             self._draw_brush(p)
             if self._points:
                 self._draw_points(p)
+                got = self._point_gizmo()
+                if got is not None:
+                    (gx, gy), gr = got
+                    self._draw_gizmo(p, gx, gy, gr)
+                if self._band is not None:
+                    (x0, y0), (x1, y1) = self._band
+                    p.setBrush(QColor(0, 180, 220, 30))
+                    p.setPen(QPen(QColor(0, 150, 200), 1,
+                                  Qt.PenStyle.DashLine))
+                    p.drawRect(QRectF(min(x0, x1), min(y0, y1),
+                                      abs(x1 - x0), abs(y1 - y0)))
             return
         if not self._path and not self._places:
             return
@@ -1177,15 +1367,17 @@ class GiongoPreview(QLabel):
             r = max(10.0, min(1e5, pl["size"] * 0.5 * self._k))
             cx, cy = self._to_widget((pl["x"], pl["y"]))
         if pl is not None and self._sane((cx, cy), (r, r)):
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(QColor(230, 120, 40), 1, Qt.PenStyle.DashLine))
-            p.drawRect(QRectF(cx - r, cy - r, 2 * r, 2 * r))
-            p.setPen(QPen(QColor(230, 120, 40)))
-            p.setBrush(QColor(255, 255, 255))
-            p.drawEllipse(QPointF(cx, cy - r - 14), self.HANDLE, self.HANDLE)
-            p.drawRect(QRectF(cx + r + 10 - self.HANDLE,
-                              cy + r + 10 - self.HANDLE,
-                              2 * self.HANDLE, 2 * self.HANDLE))
+            shape = self._selection_shape()
+            if shape is not None:
+                # the letter itself is the selection, filled and outlined
+                p.setBrush(QColor(0, 180, 220, 48))
+                p.setPen(QPen(QColor(0, 170, 215), 1.6))
+                p.drawPath(shape)
+            else:
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.setPen(QPen(QColor(0, 170, 215), 1, Qt.PenStyle.DashLine))
+                p.drawRect(QRectF(cx - r, cy - r, 2 * r, 2 * r))
+            self._draw_gizmo(p, cx, cy, r)
         p.end()
 
 
@@ -1199,6 +1391,13 @@ _R_NEG = 4
 _R_LINEW = 5
 _R_THICKEN = 6
 _R_OUTLINES = 7
+
+
+#: the tool in hand, said loudly enough to see at a glance. A checked
+#: QPushButton is nearly invisible in a dark theme.
+_TOOL_ON = ("QPushButton { border: 2px solid #1e90ff; "
+            "background: rgba(30, 144, 255, 60); font-weight: bold; }")
+_TOOL_OFF = "QPushButton { font-weight: normal; }"
 
 
 class GiongoPanel(QWidget):
@@ -1224,12 +1423,14 @@ class GiongoPanel(QWidget):
         self._tab_active = True     # ...kept apart from the window, which is
         self._popped = False        # on screen whatever the tab is doing
         self._dict_win = None       # the sound dictionary
+        self._pt_sel = []           # which points are chosen
         self._font_win = None       # the font list
         self._future = []           # undone steps, waiting to be redone
         self._hist_key = None       # which slider the last step was, and
         self._hist_at = 0.0         # when, so one drag is one step
         self._drag_open = False     # a drag in the preview is one step
         self._blocks = []           # the groups the grid arranges
+        self._canvas_block = None   # the one with the canvas in it
         self._cols = 0              # how many columns they sit in now
         self._home = None           # the layout to go back to
         self._window = None
@@ -1374,6 +1575,13 @@ class GiongoPanel(QWidget):
         self.popout_btn.clicked.connect(self.on_popout)
         row.addWidget(self.popout_btn)
         lay.addLayout(row)
+        self.tab_only = QLabel()
+        self.tab_only.setWordWrap(True)
+        self.tab_only.setStyleSheet("color: gray;")
+        lay.addWidget(self.tab_only)
+        # everything below is the work itself, and the work happens in the
+        # window: in the tab only this first group is shown
+        lay = self._new_block()
 
         self.text_edit = QPlainTextEdit()
         self.text_edit.setFixedHeight(58)
@@ -1479,11 +1687,29 @@ class GiongoPanel(QWidget):
             self.tool_btns[_key] = _b
         self.tool_btns["move"].setChecked(True)
         tbar.addStretch(1)
+        self.bg_lbl = QLabel()
+        tbar.addWidget(self.bg_lbl)
+        self.bg_combo = NoScrollComboBox()
+        for val, _k in _BACKGROUNDS:
+            self.bg_combo.addItem("", val)
+        bg = self._get("giongoBg", "check")
+        self.bg_combo.setCurrentIndex(max(0, self.bg_combo.findData(bg)))
+        self.bg_combo.currentIndexChanged.connect(self._on_bg)
+        tbar.addWidget(self.bg_combo)
+        self.back_btn = QPushButton()
+        self.back_btn.clicked.connect(self.on_back)
+        self.back_btn.setEnabled(False)
+        tbar.addWidget(self.back_btn)
+        self.fwd_btn = QPushButton()
+        self.fwd_btn.clicked.connect(self.on_forward)
+        self.fwd_btn.setEnabled(False)
+        tbar.addWidget(self.fwd_btn)
         self.size_lbl = QLabel()
         self.size_lbl.setStyleSheet("color: gray;")
         tbar.addWidget(self.size_lbl)
         lay.addLayout(tbar)
 
+        self._canvas_block = self._blocks[-1]
         self.preview = GiongoPreview(self)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumHeight(200)
@@ -1497,25 +1723,28 @@ class GiongoPanel(QWidget):
         self.legend_lbl.setStyleSheet("color: gray; font-size: 10px;")
         lay.addWidget(self.legend_lbl)
 
-        row = QHBoxLayout()
-        self.bg_lbl = QLabel()
-        row.addWidget(self.bg_lbl)
-        self.bg_combo = NoScrollComboBox()
-        for val, _k in _BACKGROUNDS:
-            self.bg_combo.addItem("", val)
-        bg = self._get("giongoBg", "check")
-        self.bg_combo.setCurrentIndex(max(0, self.bg_combo.findData(bg)))
-        self.bg_combo.currentIndexChanged.connect(self._on_bg)
-        row.addWidget(self.bg_combo, 1)
-        self.back_btn = QPushButton()
-        self.back_btn.clicked.connect(self.on_back)
-        self.back_btn.setEnabled(False)
-        row.addWidget(self.back_btn)
-        self.fwd_btn = QPushButton()
-        self.fwd_btn.clicked.connect(self.on_forward)
-        self.fwd_btn.setEnabled(False)
-        row.addWidget(self.fwd_btn)
-        lay.addLayout(row)
+        arow = QHBoxLayout()
+        self.act_btns = {}
+        for _key, _slot in (("del", self.points_delete_chosen),
+                            ("smooth", self.points_smooth_chosen),
+                            ("reset_letter", self.reset_points_letter),
+                            ("reset_pts", self.on_reset_points),
+                            ("reset_warp", self.on_reset_warps),
+                            ("reset_moves", self.reset_letters)):
+            _b = QPushButton()
+            _b.clicked.connect(lambda _c=False, s=_slot: s())
+            arow.addWidget(_b)
+            self.act_btns[_key] = _b
+        self.act_count = QLabel()
+        self.act_count.setStyleSheet("color: gray;")
+        arow.addWidget(self.act_count)
+        arow.addStretch(1)
+        lay.addLayout(arow)
+
+        # the gacha and the macros are their own group: the canvas column
+        # is as tall as the window, and anything put after the canvas can
+        # only be reached by scrolling past it
+        lay = self._new_block()
 
         row = QHBoxLayout()
         self.reroll_btn = QPushButton()
@@ -1907,6 +2136,8 @@ class GiongoPanel(QWidget):
                          (self.sec_points, "gi_sec_points")):
             sec.btn.setText(t(key).replace("&", "&&"))
         self.deco_lbl.setText(t("gi_deco"))
+        for _k, _b in self.act_btns.items():
+            _b.setText(t("gi_act_" + _k))
         for _k, _b in self.tool_btns.items():
             _b.setText(t("gi_tool_" + _k))
         self.tool_btns["move"].setToolTip(t("gi_tool_move_tip"))
@@ -1914,6 +2145,7 @@ class GiongoPanel(QWidget):
         self.tool_btns["points"].setToolTip(t("gi_pts_on_tip"))
         self.tool_btns["erase"].setToolTip(t("gi_tool_erase_tip"))
         self._refresh_legend()
+        self._refresh_action_bar()
         self.pts_chk.setText(t("gi_pts_on"))
         self.pts_chk.setToolTip(t("gi_pts_on_tip"))
         self.pts_hint.setText(t("gi_pts_on_tip"))
@@ -1979,6 +2211,7 @@ class GiongoPanel(QWidget):
                                 else t("gi_popout"))
         self.window_hint.setText("" if self._popped
                                  else t("gi_window_hint"))
+        self.tab_only.setText(t("gi_tab_only"))
         self.popout_btn.setToolTip(t("gi_popout_tip"))
         self._refresh_font_ui()
         self._refresh_option_tips()
@@ -2043,7 +2276,8 @@ class GiongoPanel(QWidget):
         sl = self._sliders.get("tone_dot")
         if sl:
             for w in sl[:3]:
-                w.setEnabled(p["fill_mode"] in ("tone", "line_tone"))
+                w.setEnabled(p["fill_mode"] in ("tone", "tone_grad",
+                                                "line_tone"))
         for key in ("deco_n", "deco_size", "deco_dist"):
             sl = self._sliders.get(key)
             if sl:
@@ -2295,6 +2529,14 @@ class GiongoPanel(QWidget):
         self._params["font"] = family or ""
         self._load_into_widgets()
         self._schedule()
+        self._say_frozen()
+
+    def _say_frozen(self):
+        """Say it when something that draws the letters cannot reach some
+        of them, rather than letting the change look broken."""
+        n = len(self._params.get("nodes") or {})
+        if n:
+            self._status(self._t("gi_frozen_font", n=n))
 
     def on_load_font(self, *_a):
         """Pick font files and use them without installing them."""
@@ -2332,6 +2574,7 @@ class GiongoPanel(QWidget):
             fam = txt if txt in self.families() else ""
         self._params["font"] = fam or ""
         self._refresh_font_ui()
+        self._say_frozen()
         self._schedule()
 
     def _on_bg(self, _i):
@@ -2351,6 +2594,30 @@ class GiongoPanel(QWidget):
 
     # --- liquify -----------------------------------------------------------
 
+    def selection_outline(self, key=None):
+        """The chosen letter's own shape, in scene units, or None.
+
+        Everything it is made of is in it - the font or a traced
+        lettering, a pen, thickening, a warp, edited points - because it
+        comes out of the same cache the drawing does.
+        """
+        key = key or self.preview.selected()
+        pl = self._placement(key) if key else None
+        if pl is None:
+            return None
+        p = G.effective(self._params)
+        pen = p.get("pen", "off")
+        try:
+            _k, thick, _base = R.letter_shapes(
+                pl, G.resolve_font(p, self.families()), p["bold"],
+                p["thicken"], pen, p["seed"], p.get("pen_width", 100),
+                BR.style_from(p, pen),
+                W.warp_of(p, key[0], key[1]), N.nodes_of(p, key[0], key[1]),
+                p.get("letterset", ""))
+        except Exception:               # noqa: BLE001
+            return None
+        return thick.translated(pl["x"], pl["y"])
+
     def liquify_armed(self):
         """Is the brush on? The preview asks before it moves a letter."""
         return bool(self.liq_chk.isChecked())
@@ -2366,16 +2633,38 @@ class GiongoPanel(QWidget):
                                if on else 0.0)
         self._status(self._t("gi_liq_on_tip") if on else "")
 
+    def _touches_ink(self, pl, scene):
+        """Is there any of this letter under the brush, where it is?
+
+        A drag in the gap between two letters moves nothing and wipes
+        nothing, and without this it does so in silence.
+        """
+        try:
+            shape = self.selection_outline((pl["group"], pl["index"]))
+        except Exception:               # noqa: BLE001
+            return True
+        if shape is None:
+            return True
+        r = W.radius_for(self._params["liquify_size"]) \
+            * max(1e-6, pl["size"]) / R._REF
+        here = QRectF(scene[0] - r, scene[1] - r, 2 * r, 2 * r)
+        return shape.intersects(here)
+
     def liquify_step(self, scene, prev, alt=False):
         """One step of a drag with the brush, at a point in scene units."""
         pl = G.nearest_letter(self._places, scene)
         if pl is None:
+            # nothing within reach at all, not even a letter to miss
+            self._status(self._t("gi_nothing_there"))
             return
         tr, ok = R.letter_transform(pl).inverted()
         if not ok:
             return
         here = tr.map(QPointF(scene[0], scene[1]))
         was = tr.map(QPointF(prev[0], prev[1]))
+        if not self._touches_ink(pl, scene):
+            self._status(self._t("gi_nothing_there"))
+            return
         dabs = W.dabs_for(self._params.get("liquify_mode", "push"),
                           was.x(), was.y(), here.x(), here.y(),
                           self._params["liquify_size"],
@@ -2411,12 +2700,71 @@ class GiongoPanel(QWidget):
     def tool(self):
         return getattr(self, "_tool", "move")
 
+    #: which actions belong to which tool, in the order they are offered
+    TOOL_ACTIONS = {
+        "move": ("reset_moves",),
+        "liquify": ("reset_warp",),
+        "points": ("del", "smooth", "reset_letter", "reset_pts"),
+        "erase": ("reset_letter", "reset_pts"),
+    }
+
+    def _refresh_action_bar(self):
+        """Only the actions of the tool in hand, and what is edited."""
+        want = self.TOOL_ACTIONS.get(self.tool(), ())
+        for key, btn in self.act_btns.items():
+            btn.setVisible(key in want)
+        chosen = len(self.point_selection())
+        for key in ("del", "smooth"):
+            if key in self.act_btns:
+                self.act_btns[key].setEnabled(chosen > 0)
+        # said whatever tool is in hand: a letter with its own outline
+        # stops following the font, and that must not be invisible
+        n = len(self._params.get("nodes") or {})
+        self.act_count.setText(self._t("gi_act_count", n=n) if n else "")
+
+    def points_delete_chosen(self):
+        """Take the chosen points away."""
+        key = self.preview.selected()
+        chosen = self.point_selection()
+        if not key or not chosen:
+            return
+        cs = self.point_contours(key)
+        self._push_history()
+        N.set_nodes(self._params, key[0], key[1], N.delete_nodes(cs, chosen))
+        self.set_point_selection([])
+        self._schedule()
+
+    def points_smooth_chosen(self):
+        """Corner or curve, for everything chosen."""
+        key = self.preview.selected()
+        chosen = self.point_selection()
+        if not key or not chosen:
+            return
+        cs = self.point_contours(key)
+        want = not cs[chosen[0][0]][chosen[0][1]][6]
+        self._push_history()
+        N.set_nodes(self._params, key[0], key[1],
+                    N.smooth_nodes(cs, chosen, want))
+        self._schedule()
+
+    def reset_points_letter(self):
+        """This letter back to the outline the font drew."""
+        key = self.preview.selected()
+        if not key or not N.has_nodes(self._params, key[0], key[1]):
+            return
+        self._push_history()
+        N.clear_nodes(self._params, key[0], key[1])
+        W.clear_warp(self._params, key[0], key[1])
+        self.set_point_selection([])
+        self._schedule()
+
     def set_tool(self, key):
         """Pick the tool the preview answers to. One at a time."""
         key = key if key in self.TOOLS else "move"
         self._tool = key
         for k, b in self.tool_btns.items():
             b.setChecked(k == key)
+            b.setStyleSheet(_TOOL_ON if k == key else _TOOL_OFF)
         self.liq_chk.blockSignals(True)
         self.liq_chk.setChecked(key == "liquify")
         self.liq_chk.blockSignals(False)
@@ -2428,6 +2776,7 @@ class GiongoPanel(QWidget):
             W.radius_for(self._params["liquify_size"])
             if key in ("liquify", "erase") else 0.0)
         self._refresh_legend()
+        self._refresh_action_bar()
         self._status("")
 
     def erase_armed(self):
@@ -2450,6 +2799,9 @@ class GiongoPanel(QWidget):
                 return
             key = (pl["group"], pl["index"])
             self.preview.select(key)
+        if not self._touches_ink(pl, scene):
+            self._status(self._t("gi_nothing_there"))
+            return
         if not self._drag_open:     # one undo step for the whole stroke,
             self._drag_open = True  # opening the letter included
             self._history.append(G.sanitize(self._params))
@@ -2530,6 +2882,126 @@ class GiongoPanel(QWidget):
         self._status(self._t("gi_pts_opened", n=N.count(cs)))
         return cs
 
+    def point_selection(self):
+        """Which points are chosen, as (contour, node) pairs."""
+        cs = self.point_contours()
+        return N.valid_keys(cs, getattr(self, "_pt_sel", []))
+
+    def set_point_selection(self, keys):
+        self._pt_sel = list(keys or [])
+        self._refresh_action_bar()
+        self.preview.update()
+
+    def point_gizmo(self):
+        """(centre, radius) of the chosen points, in scene units."""
+        key = self.preview.selected()
+        pl, _inv = self._letter_space(key)
+        if pl is None:
+            return None
+        cs = self.point_contours(key)
+        keys = N.valid_keys(cs, getattr(self, "_pt_sel", []))
+        if not keys:
+            return None
+        box = N.nodes_bounds(cs, keys)
+        tr = R.letter_transform(pl)
+        mid = tr.map(QPointF((box[0] + box[2]) / 2.0,
+                             (box[1] + box[3]) / 2.0))
+        corner = tr.map(QPointF(box[2], box[3]))
+        r = max(18.0, abs(corner.x() - mid.x()), abs(corner.y() - mid.y()))
+        return (mid.x(), mid.y()), r
+
+    def point_band(self, x0, y0, x1, y1, add=False):
+        """Choose every point inside a rectangle drawn on the preview."""
+        key = self.preview.selected()
+        pl, inv = self._letter_space(key)
+        if pl is None or inv is None:
+            return
+        cs = self.point_contours(key)
+        a = inv.map(QPointF(x0, y0))
+        b = inv.map(QPointF(x1, y1))
+        got = N.nodes_in_rect(cs, a.x(), a.y(), b.x(), b.y())
+        if add:
+            got = [k for k in self._pt_sel if k not in got] + got
+        self.set_point_selection(got)
+
+    def point_gizmo_drag(self, what, scene, prev):
+        """One step of a drag on the gizmo over the chosen points."""
+        import math as _m
+        key = self.preview.selected()
+        pl, inv = self._letter_space(key)
+        if pl is None or inv is None:
+            return
+        cs = self.point_contours(key)
+        keys = N.valid_keys(cs, getattr(self, "_pt_sel", []))
+        if not keys:
+            return
+        here = inv.map(QPointF(scene[0], scene[1]))
+        was = inv.map(QPointF(prev[0], prev[1]))
+        self._open_drag_step()
+        cx, cy = N.nodes_centre(cs, keys)
+        if what in ("pfree", "pmovex", "pmovey"):
+            dx = here.x() - was.x() if what != "pmovey" else 0.0
+            dy = here.y() - was.y() if what != "pmovex" else 0.0
+            N.move_nodes(cs, keys, dx, dy)
+        elif what == "protate":
+            a0 = _m.degrees(_m.atan2(was.y() - cy, was.x() - cx))
+            a1 = _m.degrees(_m.atan2(here.y() - cy, here.x() - cx))
+            N.rotate_nodes(cs, keys, cx, cy, a1 - a0)
+        elif what == "pscale":
+            d0 = _m.hypot(was.x() - cx, was.y() - cy)
+            d1 = _m.hypot(here.x() - cx, here.y() - cy)
+            if d0 > 1e-6:
+                N.scale_nodes(cs, keys, cx, cy,
+                              max(0.05, min(20.0, d1 / d0)))
+        else:
+            return
+        N.set_nodes(self._params, key[0], key[1], cs)
+        self._schedule_live()
+
+    def _open_drag_step(self):
+        """The first step of a drag opens one step in the history."""
+        if self._drag_open:
+            return
+        self._drag_open = True
+        self._history.append(G.sanitize(self._params))
+        del self._history[:-_HISTORY]
+        self._future = []
+        self._refresh_history_ui()
+
+    def point_double(self, scene, grab_px, scale):
+        """Double-click in points mode: on a point, corner <-> curve; on
+        the outline, a new point there."""
+        key = self.preview.selected()
+        pl, inv = self._letter_space(key)
+        if pl is None or inv is None:
+            return False
+        cs = self.point_contours(key)
+        if not cs:
+            return False
+        here = inv.map(QPointF(scene[0], scene[1]))
+        x, y = here.x(), here.y()
+        tol = grab_px / max(1e-6, scale) * (R._REF / max(1.0, pl["size"]))
+        hit = N.nearest_node(cs, x, y, tol)
+        if hit is not None:
+            self._push_history()
+            chosen = self.point_selection()
+            if hit in chosen and len(chosen) > 1:
+                N.smooth_nodes(cs, chosen, not cs[hit[0]][hit[1]][6])
+            else:
+                N.toggle_smooth(cs, hit[0], hit[1])
+            N.set_nodes(self._params, key[0], key[1], cs)
+            self._schedule()
+            return True
+        seg = N.nearest_segment(cs, x, y)
+        if seg is not None and seg[3] <= tol * 2.0:
+            self._push_history()
+            N.set_nodes(self._params, key[0], key[1],
+                        N.insert_node(cs, seg[0], seg[1], seg[2]))
+            self.set_point_selection([(seg[0], seg[1] + 1)])
+            self._schedule()
+            return True
+        return False
+
     def point_contours(self, key=None):
         """The nodes of the letter being edited, in its own em."""
         key = key or self.preview.selected()
@@ -2546,12 +3018,14 @@ class GiongoPanel(QWidget):
         cs = self.point_contours(key)
         if not cs:
             return []
+        _chosen = set(self.point_selection())
         tr = R.letter_transform(pl)
         out = []
         for ci, ring in enumerate(cs):
             for ni, n in enumerate(ring):
                 pt = tr.map(QPointF(n[0], n[1]))
                 item = {"ci": ci, "ni": ni, "smooth": bool(n[6]),
+                        "chosen": (ci, ni) in _chosen,
                         "p": (pt.x(), pt.y()), "in": None, "out": None}
                 if n[2] or n[3]:
                     h = tr.map(QPointF(n[0] + n[2], n[1] + n[3]))
@@ -2594,30 +3068,41 @@ class GiongoPanel(QWidget):
             if alt:
                 self._push_history()
                 N.set_nodes(self._params, key[0], key[1],
-                            N.delete_node(cs, ci, ni))
+                            N.delete_nodes(cs, self.point_selection()
+                                           or [(ci, ni)]))
+                self.set_point_selection([])
                 self._schedule()
                 return None
             if shift:
-                self._push_history()
-                N.set_nodes(self._params, key[0], key[1],
-                            N.toggle_smooth(cs, ci, ni))
-                self._schedule()
+                # Shift gathers points up instead of changing one
+                sel = list(getattr(self, "_pt_sel", []))
+                if (ci, ni) in sel:
+                    sel.remove((ci, ni))
+                else:
+                    sel.append((ci, ni))
+                self.set_point_selection(sel)
                 return None
+            if (ci, ni) in self.point_selection() \
+                    and len(self.point_selection()) > 1:
+                return ("nodes", ci, ni, None)   # drag what is chosen
+            self.set_point_selection([(ci, ni)])
             return ("node", ci, ni, None)
-        seg = N.nearest_segment(cs, x, y)
-        if seg is not None and seg[3] <= tol * 1.5:
-            self._push_history()
-            N.set_nodes(self._params, key[0], key[1],
-                        N.insert_node(cs, seg[0], seg[1], seg[2]))
-            self._schedule()
-            return ("node", seg[0], seg[1] + 1, None)
-        # nowhere near this letter: pick up another one
+        # a single click on the outline starts a rectangle like anywhere
+        # else; adding a point is a double-click, as in the original
+        # on another letter: pick that one up. On empty space: start a
+        # rectangle to gather points with
         other = G.nearest_letter(self._places, scene)
         if other is not None and (other["group"], other["index"]) != key \
                 and not other["bar"]:
-            self.preview.select((other["group"], other["index"]))
-            self.open_points((other["group"], other["index"]))
-        return None
+            _ol = self.selection_outline((other["group"], other["index"]))
+            if _ol is not None and _ol.contains(QPointF(scene[0], scene[1])):
+                self.preview.select((other["group"], other["index"]))
+                self.set_point_selection([])
+                self.open_points((other["group"], other["index"]))
+                return None
+        if not shift:
+            self.set_point_selection([])
+        return ("band", scene[0], scene[1], None)
 
     def point_drag(self, what, scene):
         """Move the point or handle that is being dragged."""
@@ -2638,6 +3123,10 @@ class GiongoPanel(QWidget):
             self._refresh_history_ui()
         if kind == "handle":
             N.move_handle(cs, ci, ni, which, here.x(), here.y())
+        elif kind == "nodes":
+            n = cs[ci][ni]
+            N.move_nodes(cs, self.point_selection(),
+                         here.x() - n[0], here.y() - n[1])
         else:
             n = cs[ci][ni]
             N.move_node(cs, ci, ni, here.x() - n[0], here.y() - n[1])
@@ -2672,10 +3161,15 @@ class GiongoPanel(QWidget):
             pl = self._placement(key)
             if pl is None:
                 return
-            if what == "move":
-                G.set_letter_edit(self._params, key[0], key[1],
-                                  dx=dx0 + scene[0] - start[0],
-                                  dy=dy0 + scene[1] - start[1])
+            if what in ("move", "free", "movex", "movey"):
+                # the arrows hold one direction still, which is what they
+                # are for: nudging a letter sideways without drifting
+                mx = what != "movey"
+                my = what != "movex"
+                G.set_letter_edit(
+                    self._params, key[0], key[1],
+                    dx=dx0 + (scene[0] - start[0] if mx else 0.0),
+                    dy=dy0 + (scene[1] - start[1] if my else 0.0))
             elif what == "rotate":
                 # the angle the pointer makes with the letter, against the
                 # angle it made when the drag began
@@ -2729,11 +3223,16 @@ class GiongoPanel(QWidget):
                 return pl
         return None
 
-    def _advance_fn(self):
+    def _advance_fn(self, params=None):
         """Letter advances from the real font, so the path handles sit where
-        the letters really end."""
-        return R.advance_fn(self._params,
-                            G.resolve_font(self._params, self.families()))
+        the letters really end.
+
+        From the *effective* parameters, like the renderer: the macros
+        change the thickening and the shear, and an advance taken from
+        the raw settings would be a different letter's.
+        """
+        p = params if params is not None else G.effective(self._params)
+        return R.advance_fn(p, G.resolve_font(p, self.families()))
 
     # --- preview -----------------------------------------------------------
 
@@ -2817,6 +3316,34 @@ class GiongoPanel(QWidget):
         half = (len(rest) + 1) // 2
         return [[blocks[0]], rest[:half], rest[half:]]
 
+    def _split_blocks(self, cols):
+        """Which block goes in which column, in reading order.
+
+        The block with the canvas in it keeps a column of its own as soon
+        as there are two; the heading goes with the settings.
+        """
+        blocks = [b for b in self._blocks if b is not None]
+        if not blocks:
+            return []
+        canvas = self._canvas_block if self._canvas_block in blocks \
+            else blocks[0]
+        rest = [b for b in blocks if b is not canvas]
+        if cols <= 1:
+            return [[canvas] + rest if canvas is blocks[0] else blocks]
+        if cols == 2:
+            return [[canvas], rest]
+        half = (len(rest) + 1) // 2
+        return [[canvas], rest[:half], rest[half:]]
+
+    def _apply_docked_view(self):
+        """In the tab: the heading and the button, nothing else."""
+        for b in self._blocks:
+            if b is None:
+                continue
+            b.setVisible(self._popped or b is self._blocks[0])
+        if hasattr(self, "tab_only"):
+            self.tab_only.setVisible(not self._popped)
+
     def _recheck_columns(self):
         """Re-read the width once the layout has settled.
 
@@ -2828,6 +3355,16 @@ class GiongoPanel(QWidget):
     def _place_blocks(self, cols):
         """(Re)arrange the groups. Does nothing when the count is unchanged."""
         cols = max(1, int(cols))
+        # the height is re-read even when the columns did not change: the
+        # window can be resized without the count ever moving
+        if cols > 1:
+            room = max(260, self.height() - 400)
+            self.preview.setMinimumHeight(min(int(self.height() * 0.45),
+                                              room))
+            self.preview.setMaximumHeight(room)
+        else:
+            self.preview.setMinimumHeight(200)
+            self.preview.setMaximumHeight(16777215)
         if cols == self._cols:
             return
         self._cols = cols
@@ -2857,14 +3394,13 @@ class GiongoPanel(QWidget):
             grid.addWidget(block, 0, 0, max(1, rows) + 1, 1)
             block.setParent(self)
             block.show()
+        self._apply_docked_view()
         for r in range(rows):
             grid.setRowStretch(r, 0)
         grid.setRowStretch(rows, 1)
         # in a window the canvas is the point of the thing: it gets most
         # of the height outright, rather than whatever the other widgets
         # in its column leave over
-        self.preview.setMinimumHeight(
-            max(260, int(self.height() * 0.45)) if cols > 1 else 200)
 
     # --- tab or window ------------------------------------------------------
 
@@ -2890,6 +3426,7 @@ class GiongoPanel(QWidget):
         self._popped = True
         self._restore_geometry(win)
         self.popout_btn.setText(self._t("gi_popin"))
+        self._apply_docked_view()
         self._apply_active()
         win.show()
         self._layout_timer.start()
@@ -2906,6 +3443,7 @@ class GiongoPanel(QWidget):
         if self._home is not None:
             self._home.addWidget(self)
         self.popout_btn.setText(self._t("gi_popout"))
+        self._apply_docked_view()
         self._apply_active()
         self._layout_timer.start()
 
@@ -3041,18 +3579,20 @@ class GiongoPanel(QWidget):
             self.preview.setText(str(exc))
             return
         self.preview.setPixmap(QPixmap.fromImage(img))
+        self._refresh_action_bar()
         # what the preview may be grabbed by: where every letter landed and
         # where the path runs, in the same coordinates, with the transform
         # that maps them onto the image just drawn
         try:
-            adv = self._advance_fn()
-            self._places = G.layout(self.text(), self._params,
-                                    advance_fn=adv)
+            # exactly what the renderer did, or the mouse points at
+            # letters that are not where they are drawn
+            eff = G.effective(self._params)
+            adv = self._advance_fn(eff)
+            self._places = G.layout(self.text(), eff, advance_fn=adv)
             k, ox, oy = R.thumb_transform(scene, w, h)
             self.preview.set_frame(k, ox, oy, img.width(), img.height(),
                                    self._places,
-                                   G.path_points(self.text(), self._params,
-                                                 0, adv))
+                                   G.path_points(self.text(), eff, 0, adv))
         except Exception:               # noqa: BLE001
             self._places = []
 

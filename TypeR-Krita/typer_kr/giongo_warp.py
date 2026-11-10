@@ -149,14 +149,72 @@ def _bounded(ox, oy, limit):
     return ox * k, oy * k
 
 
-def warp_points(points, dabs):
-    """A whole contour moved at once: [(x, y)] -> [(x, y)]."""
+#: how far one point may travel in all, as a share of the widest brush
+#: that touched it. Past this a stroke stops being a push and starts
+#: being a tear.
+MAX_TRAVEL = 1.6
+
+#: how much the movement is evened out along the contour. 0 = not at
+#: all; each pass is a [1, 2, 1] average over a point and its two
+#: neighbours.
+SMOOTH_PASSES = 2
+
+
+def displace_seq(x, y, dabs):
+    """Where (x, y) ends up, each dab acting on what the last one left.
+
+    A stroke is many dabs along a path: applying each to the *original*
+    point makes a second stroke over the same place pull the untouched
+    outline again, instead of carrying the material on.
+    """
+    cx, cy = float(x), float(y)
+    for d in dabs:
+        ox, oy = displace(cx, cy, (d,))
+        cx += ox
+        cy += oy
+    return cx - x, cy - y
+
+
+def _smooth_ring(vals, passes):
+    """[1, 2, 1] over a closed ring of (dx, dy), `passes` times."""
+    n = len(vals)
+    if n < 3 or passes <= 0:
+        return vals
+    cur = list(vals)
+    for _ in range(passes):
+        out = []
+        for i in range(n):
+            ax, ay = cur[(i - 1) % n]
+            bx, by = cur[i]
+            cx2, cy2 = cur[(i + 1) % n]
+            out.append(((ax + 2.0 * bx + cx2) / 4.0,
+                        (ay + 2.0 * by + cy2) / 4.0))
+        cur = out
+    return cur
+
+
+def warp_points(points, dabs, smooth=None):
+    """A whole contour moved at once: [(x, y)] -> [(x, y)].
+
+    The movement is worked out per point, evened out along the contour,
+    capped, and only then applied - so the brush bends the outline
+    instead of denting it point by point.
+    """
     if not dabs:
         return list(points)
+    cap = MAX_TRAVEL * max(d[3] for d in dabs)
+    moves = [displace_seq(x, y, dabs) for x, y in points]
+    passes = SMOOTH_PASSES if smooth is None else int(smooth)
+    eased = _smooth_ring(moves, passes)
+    # a point the brush never reached stays exactly where it was: the
+    # evening-out must not carry movement out past the rim
+    moves = [e if (m[0] or m[1]) else m for m, e in zip(moves, eased)]
     out = []
-    for x, y in points:
-        ox, oy = displace(x, y, dabs)
-        out.append((x + ox, y + oy))
+    for (x, y), (dx, dy) in zip(points, moves):
+        dist = math.hypot(dx, dy)
+        if dist > cap > 0:
+            dx, dy = dx * cap / dist, dy * cap / dist
+        out.append((x + dx, y + dy))
     return out
 
 

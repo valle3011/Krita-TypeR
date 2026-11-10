@@ -356,6 +356,101 @@ def delete_node(contours, ci, ni):
     return contours
 
 
+# --- a handful of points at once ------------------------------------------
+
+def valid_keys(contours, keys):
+    """The (contour, node) pairs that still point at something."""
+    out = []
+    for ci, ni in keys or ():
+        if 0 <= ci < len(contours) and 0 <= ni < len(contours[ci]):
+            out.append((ci, ni))
+    return out
+
+
+def nodes_in_rect(contours, x0, y0, x1, y1):
+    """Every point inside the rectangle, in reading order."""
+    lo_x, hi_x = (x0, x1) if x0 <= x1 else (x1, x0)
+    lo_y, hi_y = (y0, y1) if y0 <= y1 else (y1, y0)
+    out = []
+    for ci, ring in enumerate(contours):
+        for ni, n in enumerate(ring):
+            if lo_x <= n[0] <= hi_x and lo_y <= n[1] <= hi_y:
+                out.append((ci, ni))
+    return out
+
+
+def nodes_bounds(contours, keys):
+    """(x0, y0, x1, y1) around the chosen points, or None."""
+    pts = [(contours[ci][ni][0], contours[ci][ni][1])
+           for ci, ni in valid_keys(contours, keys)]
+    if not pts:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def nodes_centre(contours, keys):
+    """The middle of what is chosen - what a turn or a resize is about."""
+    box = nodes_bounds(contours, keys)
+    if box is None:
+        return None
+    return (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+
+
+def move_nodes(contours, keys, dx, dy):
+    """Move every chosen point. Handles are offsets, so they come along."""
+    for ci, ni in valid_keys(contours, keys):
+        n = contours[ci][ni]
+        n[0] += float(dx)
+        n[1] += float(dy)
+    return contours
+
+
+def rotate_nodes(contours, keys, cx, cy, degrees):
+    """Turn the chosen points about (cx, cy), handles turning with them."""
+    a = math.radians(float(degrees))
+    ca, sa = math.cos(a), math.sin(a)
+    for ci, ni in valid_keys(contours, keys):
+        n = contours[ci][ni]
+        x, y = n[0] - cx, n[1] - cy
+        n[0], n[1] = cx + x * ca - y * sa, cy + x * sa + y * ca
+        for a0, b0 in ((2, 3), (4, 5)):
+            hx, hy = n[a0], n[b0]
+            n[a0], n[b0] = hx * ca - hy * sa, hx * sa + hy * ca
+    return contours
+
+
+def scale_nodes(contours, keys, cx, cy, factor):
+    """Resize the chosen points about (cx, cy), handles with them."""
+    k = float(factor)
+    if k <= 0.0:
+        return contours
+    for ci, ni in valid_keys(contours, keys):
+        n = contours[ci][ni]
+        n[0] = cx + (n[0] - cx) * k
+        n[1] = cy + (n[1] - cy) * k
+        for i in (2, 3, 4, 5):
+            n[i] *= k
+    return contours
+
+
+def smooth_nodes(contours, keys, smooth):
+    """Corner or curve, for everything chosen."""
+    for ci, ni in valid_keys(contours, keys):
+        set_smooth(contours, ci, ni, smooth)
+    return contours
+
+
+def delete_nodes(contours, keys):
+    """Take several points away at once, back to front so the rest keep
+    the numbers they were chosen by."""
+    for ci, ni in sorted(valid_keys(contours, keys), reverse=True):
+        if ci < len(contours) and ni < len(contours[ci]):
+            delete_node(contours, ci, ni)
+    return contours
+
+
 def bounds(contours):
     """(x0, y0, x1, y1) of the points and their handles, or None."""
     xs = []

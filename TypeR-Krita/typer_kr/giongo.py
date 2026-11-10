@@ -206,8 +206,8 @@ RANGES = {
 
 MAX_OUTLINES = 3
 #: see DECOS below for what may be scattered around the lettering
-FILL_MODES = ("solid", "gradient", "tone", "pattern", "negative",
-              "line", "line_tone")
+FILL_MODES = ("solid", "gradient", "tone", "tone_grad", "pattern",
+              "negative", "line", "line_tone")
 #: where a caption may sit. Kept here rather than imported from the
 #: renderer: `sanitize` has to work without Qt.
 R_CAPTION_POS = ("below", "above", "right", "left")
