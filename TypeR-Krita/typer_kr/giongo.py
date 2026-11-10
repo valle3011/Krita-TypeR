@@ -29,6 +29,9 @@ import math
 import random
 import unicodedata
 
+from . import giongo_warp as W
+from . import giongo_nodes as N
+
 # --- the sound types -------------------------------------------------------
 # `fonts` is a preference list of free (SIL OFL / M+) families; the first one
 # installed wins. They are suggestions, not requirements: with none of them
@@ -140,13 +143,38 @@ DEFAULTS = {
     "fill_pattern_scale": 100,
     "fill2": "#d02020",     # gradient end
     "tone_dot": 8,          # halftone dot spacing (px)
+    "neg_pad": 22,          # negative: the area around the letters, %
+    "fill_line_w": 2,       # line only: the contour's width, % of size
+    #: a small reading or translation beside the effect
+    "caption": "",
+    "caption_pos": "below",  # below | above | right | left
+    "caption_size": 30,     # % of the letter size
+    #: per-letter edits: {"group:index": [dx, dy, rot, scale]}
+    "letters": {},
+    #: per-letter liquify: {"g:i": [[mode, x, y, r, p, q, hard], ...]}
+    "warps": {},
+    #: per-letter outlines, once opened for point editing
+    "nodes": {},
+    #: a set of traced lettering to draw with instead of a font
+    "letterset": "",
+    "liquify_mode": "push",  # push | inflate | pinch | twirl
+    "liquify_size": 40,     # % of the letter
+    "liquify_force": 50,    # %
+    "liquify_hard": 30,     # % of the radius at full strength
     "outlines": [["#ffffff", 5.0]],   # [colour, width % of size], inner first
     "outline_mode": "letter",         # letter | merged
     "shadow_dx": 0.0,       # % of the size
     "shadow_dy": 0.0,
     "shadow_color": "#111111",
     "extrude": 0,           # 0 = flat shadow, n = n steps of 3D extrusion
+    "deco": "off",          # rays | debris | sparkle | drops
+    "deco_n": 14,           # how many of them
+    "deco_size": 20,        # % of the letter size
+    "deco_dist": 30,        # % of the word, how far out they scatter
     "shake": 0,             # trembling line-only copies
+    "noise_lines": 0,       # hand-drawn copies of the contour
+    "noise_amp": 40,        # % of how far that hand wanders
+    "noise_style": "hand",  # hand | dry | fuzzy
     "afterimage": 0,        # faint copies trailing behind the motion
     "power": 0,             # macro sliders, -100..100 (0 = type default)
     "rough": 0,
@@ -160,18 +188,29 @@ RANGES = {
     "lean": (0, 100), "slant": (-45, 45), "stretch": (-60, 150),
     "bounce": (0, 100), "jitter": (0, 100), "rot_var": (0, 60),
     "size_var": (0, 60), "thicken": (0.0, 12.0), "tone_dot": (3, 60),
-    "fill_pattern_scale": (10, 400),
+    "fill_pattern_scale": (10, 400), "neg_pad": (0, 120),
+    "fill_line_w": (1, 40),
+    "caption_size": (8, 120),
     "pen_width": (40, 220), "pen_taper": (0, 200),
     "pen_wobble": (0, 300), "pen_angle": (0, 200),
     "pen_dry": (0, 250),
     "shadow_dx": (-40.0, 40.0), "shadow_dy": (-40.0, 40.0),
     "extrude": (0, 30), "shake": (0, 5), "afterimage": (0, 6),
+    "noise_lines": (0, 4), "noise_amp": (0, 150),
+    "deco_n": (0, 60), "deco_size": (1, 100), "deco_dist": (0, 150),
+    "liquify_size": (5, 200), "liquify_force": (1, 100),
+    "liquify_hard": (0, 95),
     "power": (-100, 100), "rough": (-100, 100), "momentum": (-100, 100),
     "seed": (0, 2 ** 31 - 1),
 }
 
 MAX_OUTLINES = 3
-FILL_MODES = ("solid", "gradient", "tone", "pattern")
+#: see DECOS below for what may be scattered around the lettering
+FILL_MODES = ("solid", "gradient", "tone", "pattern", "negative",
+              "line", "line_tone")
+#: where a caption may sit. Kept here rather than imported from the
+#: renderer: `sanitize` has to work without Qt.
+R_CAPTION_POS = ("below", "above", "right", "left")
 #: how a letter is drawn: from the font's outline, or along its centre
 #: lines with one of the pens in giongo_brush
 PENS = ("off", "pen", "marker", "brush", "board", "lightning", "rough")
@@ -248,6 +287,45 @@ def sanitize(params):
         elif k == "fill_pattern":
             if isinstance(v, str):
                 p[k] = v
+        elif k == "caption":
+            if isinstance(v, str):
+                p[k] = v.replace("\n", " ").strip()
+        elif k == "caption_pos":
+            if v in R_CAPTION_POS:
+                p[k] = v
+        elif k == "deco":
+            if v in DECOS:
+                p[k] = v
+        elif k == "noise_style":
+            if v in NOISE_STYLES:
+                p[k] = v
+        elif k == "warps":
+            p[k] = W.sanitize_table(v if isinstance(v, dict) else {})
+        elif k == "nodes":
+            p[k] = N.sanitize_table(v if isinstance(v, dict) else {})
+        elif k == "letterset":
+            if isinstance(v, str):
+                p[k] = v.strip()
+        elif k == "liquify_mode":
+            if v in W.MODES:
+                p[k] = v
+        elif k == "letters":
+            # {"g:i": [dx, dy, rot, scale]}, anything else dropped: these
+            # come back from JSON and from other people's shared settings
+            out = {}
+            if isinstance(v, dict):
+                for key, val in v.items():
+                    if not isinstance(key, str) or ":" not in key:
+                        continue
+                    if not isinstance(val, (list, tuple)) or len(val) != 4:
+                        continue
+                    try:
+                        out[key] = [float(val[0]), float(val[1]),
+                                    float(val[2]),
+                                    max(0.05, min(20.0, float(val[3])))]
+                    except (TypeError, ValueError):
+                        continue
+            p[k] = out
         elif k == "fill_mode":
             if v in FILL_MODES:
                 p[k] = v
@@ -306,6 +384,9 @@ def effective(params):
         p["size_start"] = _clamp("size_start", p["size_start"] - 15 * pw)
     if rg:
         p["jitter"] = _clamp("jitter", p["jitter"] + 35 * rg)
+        # only visible once noise lines are switched on: roughness says how
+        # rough, not what is drawn
+        p["noise_amp"] = _clamp("noise_amp", p["noise_amp"] + 30 * rg)
         p["rot_var"] = _clamp("rot_var", p["rot_var"] * (1 + rg) + 8 * rg)
         p["size_var"] = _clamp("size_var", p["size_var"] + 14 * rg)
     if mo:
@@ -476,6 +557,12 @@ def omakase(text):
 
 # --- tokens ----------------------------------------------------------------
 
+#: the marks that belong to the letter in front of them, not beside it:
+#: the combining dakuten and handakuten. A scream is drawn with a dakuten on
+#: letters that never have one in writing (ア゛, ン゛), so any letter may take
+#: them here.
+_COMBINING = ("\u3099", "\u309a")
+
 def tokenize(text, merge_bars=True):
     """Lines of tokens. A token is {"ch": str, "bar": int}: `bar` > 0 marks a
     run of ー merged into one long stroke of that many units."""
@@ -483,6 +570,11 @@ def tokenize(text, merge_bars=True):
     for raw in (text or "").splitlines():
         toks = []
         for ch in raw:
+            if ch in _COMBINING and toks and toks[-1]["ch"] != " ":
+                # a mark is not a letter: it hangs on the one before it, or
+                # the layout would walk it along the path on its own
+                toks[-1]["ch"] += ch
+                continue
             if ch.isspace():
                 if toks:
                     toks.append({"ch": " ", "bar": 0})
@@ -572,6 +664,179 @@ def _path_for(length, angle_deg, bend):
 
 # --- layout ----------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Per-letter edits, and the path as something you can take hold of
+# ---------------------------------------------------------------------------
+
+def letter_key(group, index):
+    """The name a per-letter edit is filed under. A string, because the
+    parameters are saved as JSON and JSON has no integer keys."""
+    return "%d:%d" % (int(group), int(index))
+
+
+def letter_edit(params, group, index):
+    """(dx, dy, rotation, scale) for one letter - the neutral four if none."""
+    ed = (params or {}).get("letters") or {}
+    v = ed.get(letter_key(group, index))
+    if not isinstance(v, (list, tuple)) or len(v) != 4:
+        return (0.0, 0.0, 0.0, 1.0)
+    try:
+        return (float(v[0]), float(v[1]), float(v[2]),
+                max(0.05, min(20.0, float(v[3]))))
+    except (TypeError, ValueError):
+        return (0.0, 0.0, 0.0, 1.0)
+
+
+def set_letter_edit(params, group, index, dx=None, dy=None, rot=None,
+                    scale=None):
+    """Change one letter. Only what is passed changes; the rest stays.
+
+    An edit back to neutral is removed rather than stored as zeroes, so a
+    letter that was moved and put back leaves nothing behind - and `gacha`,
+    the history and the saved parameters stay small and readable.
+    """
+    cur = list(letter_edit(params, group, index))
+    for i, v in enumerate((dx, dy, rot, scale)):
+        if v is not None:
+            cur[i] = float(v)
+    cur[3] = max(0.05, min(20.0, cur[3]))
+    ed = dict(params.get("letters") or {})
+    key = letter_key(group, index)
+    if (abs(cur[0]) < 0.01 and abs(cur[1]) < 0.01 and abs(cur[2]) < 0.01
+            and abs(cur[3] - 1.0) < 0.001):
+        ed.pop(key, None)
+    else:
+        ed[key] = cur
+    params["letters"] = ed
+    return params
+
+
+def clear_letter_edits(params):
+    params["letters"] = {}
+    return params
+
+
+def natural_length(text, params, group=0, advance_fn=None):
+    """The arc length of one group's path at spacing 0.
+
+    The letters decide how long the path is: every advance is scaled by
+    (1 + spacing), so the length is linear in it and can be inverted.
+    `tokenize` gives one list of tokens per line, and a line is a group.
+    """
+    p = effective(params)
+    adv = advance_fn or (lambda _ch: 1.0)
+    S = float(p["letter_px"])
+    sx = max(0.2, 1.0 + p["stretch"] / 100.0)
+    groups = tokenize(text, p["merge_bars"])
+    if not groups:
+        return 0.0
+    toks = groups[min(max(0, int(group)), len(groups) - 1)]
+    if not toks:
+        return 0.0
+    n = len(toks)
+    total = 0.0
+    for i, tok in enumerate(toks):
+        u = i / float(n - 1) if n > 1 else 0.0
+        pct = p["size_start"] + (p["size_end"] - p["size_start"]) * u
+        size = max(2.0, S * pct / 100.0)
+        if tok["ch"] == " ":
+            a = size * 0.45
+        elif tok["bar"]:
+            a = size * 0.9 * tok["bar"]
+        else:
+            a = size * (adv(tok["ch"]) if not p["vertical"] else 1.0)
+            if not p["vertical"]:
+                a *= sx
+        total += max(1.0, a)
+    return total
+
+
+def path_for_text(text, params, group=0, advance_fn=None):
+    """The `_Path` one group's letters are laid along."""
+    p = effective(params)
+    base = 90.0 if p["vertical"] else 0.0
+    angle = base - p["rise"] if not p["vertical"] else base + p["rise"]
+    length = natural_length(text, params, group, advance_fn) * (
+        1.0 + p["spacing"] / 100.0)
+    return _path_for(max(1.0, length), angle, p["bend"] / 100.0)
+
+
+def path_points(text, params, group=0, advance_fn=None):
+    """[(x, y)] start, middle and end of the path, in layout coordinates.
+
+    The same coordinates the placements use, so the panel can map all four
+    with one transform.
+    """
+    path = path_for_text(text, params, group, advance_fn)
+    return [path.at(0.0)[:2], path.at(path.length / 2.0)[:2],
+            path.at(path.length)[:2]]
+
+
+def set_path_end(params, text, point, advance_fn=None):
+    """Point the path at `point`: its direction becomes the angle, its
+    distance the spacing. Both are clamped, so a drag far outside simply
+    stops at the end of the range instead of doing something wild.
+    """
+    p = effective(params)
+    base = 90.0 if p["vertical"] else 0.0
+    ang = math.degrees(math.atan2(point[1], point[0]))
+    rise = (base - ang) if not p["vertical"] else (ang - base)
+    # a rise is a slope, not a direction: keep it in (-180, 180]
+    while rise > 180.0:
+        rise -= 360.0
+    while rise <= -180.0:
+        rise += 360.0
+    params["rise"] = _clamp("rise", rise)
+    nat = natural_length(text, params, 0, advance_fn)
+    if nat > 0:
+        want = math.hypot(point[0], point[1])
+        # the arc is longer than the chord once it bends, so aim the ARC at
+        # the distance dragged: that is what the eye is matching
+        probe = _path_for(1.0, 0.0, p["bend"] / 100.0)
+        chord_per_arc = math.hypot(probe.p2[0], probe.p2[1]) or 1.0
+        arc = want / chord_per_arc
+        params["spacing"] = _clamp("spacing", (arc / nat - 1.0) * 100.0)
+    return params
+
+
+def set_path_bend(params, text, point, advance_fn=None):
+    """Bulge the middle of the path towards `point`.
+
+    The quadratic's midpoint sits at `bend` x chord along the normal, so the
+    bend is the sideways distance of the dragged point from the straight
+    line between the ends, as a share of that line.
+    """
+    path = path_for_text(text, params, 0, advance_fn)
+    x0, y0 = path.p0
+    x1, y1 = path.p2
+    cx, cy = x1 - x0, y1 - y0
+    chord = math.hypot(cx, cy)
+    if chord <= 0:
+        return params
+    ux, uy = cx / chord, cy / chord
+    nx, ny = -uy, ux
+    mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    d = (point[0] - mx) * nx + (point[1] - my) * ny
+    params["bend"] = _clamp("bend", d / chord * 100.0)
+    return params
+
+
+def nearest_letter(placements, point, slack=1.0):
+    """The placement `point` lands on, or None.
+
+    Front to back, because that is the order they are drawn in and the one
+    the eye picks: the letter on top is the one being pointed at.
+    """
+    best = None
+    for pl in reversed(list(placements or [])):
+        r = max(6.0, pl["size"] * 0.55 * slack)
+        if (abs(point[0] - pl["x"]) <= r * max(1.0, pl.get("sx", 1.0))
+                and abs(point[1] - pl["y"]) <= r):
+            best = pl
+            break
+    return best
+
+
 def layout(text, params, advance_fn=None):
     """One placement per letter, in drawing order (back to front).
 
@@ -648,15 +913,79 @@ def layout(text, params, advance_fn=None):
                 rot = rel * p["lean"] / 100.0 + \
                     rng.uniform(-1, 1) * p["rot_var"]
                 length = 0.0
+            # what the user moved, turned or resized by hand, on top of
+            # everything the parameters worked out
+            edx, edy, edr, eds = letter_edit(p, g, i)
             out.append({
                 "ch": tok["ch"], "bar": tok["bar"], "group": g, "index": i,
-                "x": x + gx, "y": y + gy, "size": size, "angle": rot,
-                "sx": sx, "shear": p["slant"], "length": length,
-                "path_angle": tan,
+                "x": x + gx + edx, "y": y + gy + edy,
+                "size": size * eds, "angle": rot + edr,
+                "sx": sx, "shear": p["slant"], "length": length * eds,
+                "path_angle": tan, "edited": (edx, edy, edr, eds) != (
+                    0.0, 0.0, 0.0, 1.0),
             })
     # the bigger letter is the nearer one: drawn last, its outline cuts into
     # the letter behind it ("手前の字のフチが奥の字を切る")
     out.sort(key=lambda pl: (round(pl["size"], 1), pl["group"], pl["index"]))
+    return out
+
+
+#: the three hands the noise lines can be drawn with
+NOISE_STYLES = ("hand", "dry", "fuzzy")
+
+#: what can be scattered around the lettering
+DECOS = ("off", "rays", "debris", "sparkle", "drops")
+
+
+def deco_items(params, box):
+    """Where the decorations sit, as plain numbers.
+
+    `box` is (x, y, w, h) of the finished lettering. Returns a list of
+    {"kind", "x", "y", "size", "angle", "len"} - the renderer turns each
+    into a shape. Reproducible from the seed, like everything else here,
+    so a gacha roll moves them and a reroll does not.
+    """
+    p = sanitize(params)
+    kind = p.get("deco", "off")
+    n = int(p.get("deco_n", 14))
+    if kind == "off" or kind not in DECOS or n <= 0 or not box:
+        return []
+    x, y, w, h = box
+    if w <= 0 or h <= 0:
+        return []
+    rng = random.Random(p["seed"] * 977 + 11)
+    cx, cy = x + w / 2.0, y + h / 2.0
+    rx, ry = w / 2.0, h / 2.0
+    mean = (rx + ry) / 2.0
+    #: never right up against the letters
+    gap = mean * 0.06 + 1.0
+    dist = max(0, int(p.get("deco_dist", 30))) / 100.0
+    size = float(p["letter_px"]) * max(1, int(p.get("deco_size", 20))) / 100.0
+    out = []
+    for i in range(n):
+        # one per slice of the circle, nudged: evenly spread but not a comb
+        a = (i + rng.uniform(-0.35, 0.35)) * 2.0 * math.pi / n
+        ca, sa = math.cos(a), math.sin(a)
+        off = 0.0 if kind == "rays" else rng.uniform(0.0, 1.0) * dist * mean
+        px = cx + ca * (rx + gap + off)
+        py = cy + sa * (ry + gap + off)
+        # the parameter angle is NOT the direction the piece lies in: on
+        # an oval the point at 45 degrees sits nowhere near 45 degrees
+        # from the middle, and a wide word is a very flat oval
+        out_deg = math.degrees(math.atan2(py - cy, px - cx))
+        if kind == "rays":
+            out.append({"kind": "ray", "x": px, "y": py,
+                        "angle": out_deg,
+                        "len": mean * (0.18 + dist) * rng.uniform(0.6, 1.4),
+                        "size": size * 0.5})
+        else:
+            # a drop was thrown out of the word, so it flies outward; a
+            # shard or a sparkle has no front and may lie as it likes
+            ang = out_deg + rng.uniform(-25.0, 25.0) if kind == "drops" \
+                else rng.uniform(0.0, 360.0)
+            out.append({"kind": kind, "x": px, "y": py, "angle": ang,
+                        "len": 0.0,
+                        "size": size * rng.uniform(0.5, 1.3)})
     return out
 
 
@@ -687,6 +1016,7 @@ def gacha(text, params, rng=None, wild=False):
         p[k] = int(_clamp(k, rng.uniform(-amp, amp)))
     p["seed"] = rng.randint(1, 2 ** 31 - 1)
     _roll_fill(p, tid, rng, wild)
+    _roll_deco(p, tid, rng, wild)
     if rng.random() < 0.3:
         p["bend"] = int(_clamp("bend", p["bend"] + rng.uniform(-25, 25)))
     if rng.random() < 0.3:
@@ -726,6 +1056,29 @@ def _roll_fill(p, tid, rng, wild=False):
     elif p["fill_mode"] == "pattern":
         p["fill_pattern_scale"] = int(_clamp("fill_pattern_scale",
                                              rng.uniform(60, 180)))
+
+
+#: what each kind of sound throws off, and how readily. An impact bursts;
+#: a small sound rarely does anything at all.
+_DECO_TASTE = {
+    "impact": ("rays", 0.35), "slash": ("rays", 0.3),
+    "rumble": ("debris", 0.2), "cute": ("sparkle", 0.35),
+    "glare": ("sparkle", 0.25), "drops": ("drops", 0.4),
+    "pop": ("sparkle", 0.3), "small": ("sparkle", 0.15),
+    "machine": ("debris", 0.15),
+}
+
+
+def _roll_deco(p, tid, rng, wild=False):
+    """Now and then, something scattered around the lettering."""
+    kind, taste = _DECO_TASTE.get(tid, ("rays", 0.2))
+    if rng.random() > taste * (1.5 if wild else 1.0):
+        p["deco"] = "off"
+        return
+    p["deco"] = kind
+    p["deco_n"] = int(_clamp("deco_n", rng.uniform(8, 26)))
+    p["deco_size"] = int(_clamp("deco_size", rng.uniform(12, 34)))
+    p["deco_dist"] = int(_clamp("deco_dist", rng.uniform(10, 70)))
 
 
 _MUTABLE = ("spacing", "rise", "bend", "size_start", "size_end", "lean",

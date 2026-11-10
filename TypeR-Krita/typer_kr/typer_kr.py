@@ -91,7 +91,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.21"
+VERSION = "1.22"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -602,7 +602,8 @@ LANG = {
                     "code is written from scratch."),
         "typer_credit_sakushi": ("TypeR for Photoshop \u2014 the tool several "
                                  "of these were rebuilt from"),
-        "typer_credit_giongo": "the Giongo lettering tool",
+        "typer_credit_giongo": ("the Giongo manga SFX tool "
+                                "(tools.oyasumi-gamedev.com)"),
         "typer_credit_ksr": ("suggested writing the script inside the "
                              "program"),
         "cr_textshapr": "TextShapR \u2014 line-break proposals",
@@ -1663,7 +1664,8 @@ LANG = {
                     "anderem nach; der Code ist neu geschrieben."),
         "typer_credit_sakushi": ("TypeR f\u00fcr Photoshop \u2014 das Werkzeug, "
                                  "aus dem mehreres hiervon nachgebaut ist"),
-        "typer_credit_giongo": "das Giongo-Letteringwerkzeug",
+        "typer_credit_giongo": ("das Giongo-SFX-Werkzeug "
+                                "(tools.oyasumi-gamedev.com)"),
         "typer_credit_ksr": ("hat vorgeschlagen, das Skript im Programm "
                              "selbst zu schreiben"),
         "cr_textshapr": "TextShapR \u2014 Umbruchvorschl\u00e4ge",
@@ -7289,10 +7291,10 @@ class TyperDocker(DockWidget):
         opt_row = QHBoxLayout()
         self.skip_empty = QCheckBox()
         self.skip_empty.setChecked(True)
-        self.skip_empty.stateChanged.connect(self.analyze)
+        self.skip_empty.stateChanged.connect(self.on_analyze)
         opt_row.addWidget(self.skip_empty)
         self.analyze_btn = QPushButton()
-        self.analyze_btn.clicked.connect(self.analyze)
+        self.analyze_btn.clicked.connect(self.on_analyze)
         opt_row.addWidget(self.analyze_btn)
         _slay.addLayout(opt_row)
 
@@ -12760,17 +12762,24 @@ class TyperDocker(DockWidget):
         n_placed = len([c for c in cs if (c.text or "").strip()])
         self._set_status(self._tr("st_img_loaded").format(c=n_placed))
 
-    def analyze(self):
-        # Re-reading the text throws away whatever was edited in the table or
-        # in the active field, because those live in the parsed units and not
-        # in the text. Losing an hour of corrections to a stray click on
-        # Analyze is not something to find out about afterwards.
+    def on_analyze(self, *_a):
+        """The Analyze button, and the toggle that re-reads the text.
+
+        Re-reading throws away whatever was edited in the table or in the
+        active field, because those live in the parsed units and not in the
+        text. Losing an hour of corrections to a stray click is not
+        something to find out about afterwards - so this asks, and
+        `analyze()` itself stays a method any code path can call.
+        """
         if getattr(self, "_hand_edited", False):
             if QMessageBox.question(
                     self.widget(), self._tr("analyze_btn"),
                     self._tr("analyze_lose_q")) != \
                     QMessageBox.StandardButton.Yes:
                 return
+        self.analyze()
+
+    def analyze(self):
         lines = split_lines(self.editor.toPlainText(), self.skip_empty.isChecked())
         # pair_lines_paged also pulls out the "Page N" markers and tells us which
         # page every unit belongs to (so we can show it and jump between pages).

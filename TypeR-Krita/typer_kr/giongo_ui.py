@@ -17,17 +17,33 @@ import json
 import os
 import random
 
+import time as _time
+
 from ._qt import Qt, QTimer, QSize, QPointF, QTransform
 from .nowheel import (NoScrollComboBox, NoScrollDoubleSpinBox,
                       NoScrollSlider, NoScrollSpinBox)
 from ._qt import QColor, QPixmap, QIcon, QImage, QPainter
+from ._qt import QFont
+from ._qt import QKeySequence
+from ._qt import QPen, QPainterPath, QRectF
+from ._qt import QPainterPathStroker
 from ._qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
+    QLineEdit,
     QComboBox, QCheckBox, QSlider, QSpinBox, QPlainTextEdit, QToolButton,
     QColorDialog, QFileDialog, QSizePolicy, QDoubleSpinBox, QDialog,
+    QScrollArea, QFrame, QApplication, QShortcut,
+    QListWidget, QListWidgetItem,
 )
+from ._qt import QGuiApplication, QPoint
 
 from . import giongo as G
+from . import giongo_dict as GD
+from . import giongo_warp as W
+from . import giongo_nodes as N
+from . import giongo_brush as BR
+from . import userfonts as UF
+from . import giongo_trace as TR
 from . import giongo_render as R
 from . import strokefont as SF
 
@@ -42,6 +58,33 @@ _EN = {
                     "ン, repeats) with a fixed rule table — no AI."),
     "gi_auto_done": "Switched to “{k}” (other good fits: {o})",
     "gi_font": "Font:",
+    "gi_font_load": "+",
+    "gi_font_load_tip": ("Load a font file that is not installed "
+                         "(.ttf, .otf, .ttc). It stays loaded, and comes "
+                         "back the next time Krita starts."),
+    "gi_font_pick": "\U0001f50d",
+    "gi_font_pick_tip": "Pick a font by looking at it",
+    "gi_font_pick_title": "Pick a font",
+    "gi_font_pick_search": "Search a font",
+    "gi_font_pick_use": "Use it",
+    "gi_font_pick_more": "\u2026 and {n} more. Narrow the search.",
+    "gi_font_pick_count": "{n} fonts",
+    "gi_font_pick_auto": "The type\u2019s own font",
+    "gi_window_hint": "This tab has a lot in it \u2014 it works best in its "
+                      "own window:",
+    "gi_font_loaded": "Loaded: {f}",
+    "gi_font_load_bad": "Could not read: {f}",
+    "gi_set": "Lettering:",
+    "gi_set_none": "The font",
+    "gi_set_tip": ("Your own drawn letters instead of a font. A letter the "
+                   "set does not have is drawn by the font as usual."),
+    "gi_set_import": "Import\u2026",
+    "gi_set_import_tip": ("Trace images of drawn letters into a set. Pick "
+                          "images, a folder or a ZIP; each file is the "
+                          "letter its name is (\u30c9.png is \u30c9)."),
+    "gi_set_done": "{n} letters traced into \u201c{s}\u201d: {l}",
+    "gi_set_skipped": " \u00b7 {n} skipped",
+    "gi_set_none_found": "No letters found. A file is the letter its name is.",
     "gi_font_auto": "Type's font ({f})",
     "gi_font_none": "default sans",
     "gi_bold": "Bold",
@@ -63,6 +106,8 @@ _EN = {
     "gi_wild": "Wild",
     "gi_wild_tip": "Gacha also shakes Power, Roughness and Momentum hard",
     "gi_back": "↶ Back",
+    "gi_forward": "↷ Forward",
+    "gi_forward_tip": "The step that was just undone, back again (Ctrl+Y)",
     "gi_back_tip": "Back to the settings before the last Auto/Gacha/pick",
     "gi_pick_tip": "Use option {n}: {k}",
     "gi_close": "✕",
@@ -97,6 +142,65 @@ _EN = {
     "gi_sec_var": "Variation",
     "gi_sec_fill": "Fill & outlines",
     "gi_sec_shadow": "Shadow & motion",
+    "gi_tool_move": "\u2725 Move",
+    "gi_tool_liquify": "\u25d0 Liquify",
+    "gi_tool_points": "\u25c7 Points",
+    "gi_tool_erase": "\u232b Erase",
+    "gi_tool_move_tip": ("Drag a letter to move it, the ring above it to "
+                         "turn it, the square to resize it. Double-click "
+                         "puts it back. The path has handles too: the end "
+                         "aims the whole effect, the middle bends it."),
+    "gi_tool_erase_tip": ("Wipe parts of a letter away. The brush size is "
+                          "the one under Liquify."),
+    "gi_legend_move": ("\u25cf letter: drag = move \u00b7 ring = turn \u00b7 "
+                       "square = size \u00b7 double-click = back  \u2502  "
+                       "\u25c6 path: end = aim \u00b7 middle = bend"),
+    "gi_legend_liquify": ("drag over a letter to push it about \u00b7 Alt "
+                          "turns the tool round \u00b7 size, force and "
+                          "hardness are under Liquify"),
+    "gi_legend_points": ("drag a point or its handle \u00b7 click the "
+                         "outline between two points to add one \u00b7 "
+                         "Alt+click deletes \u00b7 Shift+click corner "
+                         "\u21c4 curve"),
+    "gi_legend_erase": ("drag to wipe parts of a letter away \u00b7 the "
+                        "letter keeps everything else, and undo takes the "
+                        "whole stroke back"),
+    "gi_erased": "Wiped away. Undo takes it back.",
+    "gi_sec_points": "Points",
+    "gi_pts_on": "Edit points (drag in the preview)",
+    "gi_pts_on_tip": ("Take hold of the outline itself. Click a letter to "
+                      "open it, drag its points and handles; click the "
+                      "outline between two points to add one; Alt+click a "
+                      "point to delete it, Shift+click to switch between a "
+                      "corner and a curve."),
+    "gi_pts_opened": "{n} points on this letter.",
+    "gi_pts_reset": "Back to the font's outline",
+    "gi_pts_reset_done": "Every letter is back to the outline the font drew.",
+    "gi_sec_liquify": "Liquify",
+    "gi_liq_on": "Brush on (drag in the preview)",
+    "gi_liq_on_tip": ("While this is on, dragging in the preview pushes the "
+                      "letter about instead of moving it. Hold Alt to turn "
+                      "the tool round."),
+    "gi_liq_tool": "Tool:",
+    "gi_liq_push": "Push",
+    "gi_liq_inflate": "Inflate",
+    "gi_liq_pinch": "Pinch",
+    "gi_liq_twirl": "Twirl",
+    "gi_liq_size": "Brush size",
+    "gi_liq_force": "Force",
+    "gi_liq_hard": "Hardness",
+    "gi_liq_reset": "Undo all warping",
+    "gi_liq_reset_done": "Every letter is back to the shape the font drew.",
+    "gi_sec_deco": "Decorations",
+    "gi_deco": "Around it:",
+    "gi_deco_off": "None",
+    "gi_deco_rays": "Impact rays",
+    "gi_deco_debris": "Debris",
+    "gi_deco_sparkle": "Sparkle",
+    "gi_deco_drops": "Drops",
+    "gi_deco_n": "How many",
+    "gi_deco_size": "Their size",
+    "gi_deco_dist": "How far out",
     "gi_letter_px": "Letter size (px):",
     "gi_vertical": "Vertical",
     "gi_merge_bars": "ーー as one long stroke",
@@ -121,6 +225,32 @@ _EN = {
     "gi_fill_gradient": "Gradient",
     "gi_fill_tone": "Halftone",
     "gi_fill2": "to",
+    "gi_caption": "Caption:",
+    "gi_caption_ph": "e.g. BOOM",
+    "gi_caption_tip": ("A small reading or translation beside the effect. "
+                       "Set plainly: none of the shaping touches it."),
+    "gi_caption_pos": "Where:",
+    "gi_caption_below": "Below",
+    "gi_caption_above": "Above",
+    "gi_caption_right": "Right",
+    "gi_caption_left": "Left",
+    "gi_caption_size": "Caption size",
+    "gi_fill_negative": "Negative",
+    "gi_fill_line": "Line only",
+    "gi_fill_line_tone": "Line in halftone",
+    "gi_fill_line_w": "Line width",
+    "gi_neg_pad": "Area around",
+    "gi_dict": "\U0001f4d6",
+    "gi_dict_tip": "Known sound effects to pick from (sets the type too)",
+    "gi_dict_title": "Sound effects",
+    "gi_dict_search": "Search: kana, reading or meaning",
+    "gi_dict_hint": "Double-click a sound to use it",
+    "gi_dict_take": "Use it",
+    "gi_dict_took": "{s} \u2014 {m} \u00b7 type \u201c{k}\u201d",
+    "gi_dakuten": "\u309b",
+    "gi_dakuten_tip": ("Put a dakuten \u309b on the letter before the cursor "
+                       "\u2014 any letter, the way a scream is drawn "
+                       "(\u30a2\u3099, \u30f3\u3099)."),
     "gi_fill_pattern": "Pattern",
     "gi_pattern_pick": "Choose tile\u2026",
     "gi_pattern_none": "no tile chosen",
@@ -143,6 +273,12 @@ _EN = {
     "gi_shadow_color": "Shadow",
     "gi_extrude": "3D steps",
     "gi_shake": "Shake",
+    "gi_noise_lines": "Noise lines",
+    "gi_noise_style": "Drawn with:",
+    "gi_noise_hand": "Hand-drawn",
+    "gi_noise_dry": "Dry brush",
+    "gi_noise_fuzzy": "Fuzzy",
+    "gi_noise_amp": "Noise width",
     "gi_afterimage": "Afterimage",
     "gi_fit": "Fit into the selection",
     "gi_fit_tip": ("With a selection, the lettering is scaled to fill it; "
@@ -158,6 +294,16 @@ _EN = {
     "gi_insert_vec_tip": ("Editable shapes on a new vector layer. A halftone "
                           "fill is inserted as pixels instead."),
     "gi_insert_px": "Insert (pixels)",
+    "gi_save_zip": "Layers (ZIP)\u2026",
+    "gi_save_zip_tip": ("Every layer as its own PNG, all on the same "
+                        "canvas: text, outlines, shadow, afterimage, "
+                        "decorations, noise."),
+    "gi_save_psd": "PSD\u2026",
+    "gi_save_psd_tip": ("The same layers as a Photoshop file, written by "
+                        "Krita itself. Needs a running Krita."),
+    "gi_scale": "Size:",
+    "gi_scale_tip": "What PNG and ZIP are rendered at",
+    "gi_saved_zip": "{n} layers written to {p}",
     "gi_save_png": "Save PNG…",
     "gi_save_svg": "Save SVG…",
     "gi_reset": "Reset",
@@ -192,9 +338,38 @@ _DE = {
                     "ン, Wiederholungen) – feste Regeltabelle, keine KI."),
     "gi_auto_done": "Auf „{k}“ gestellt (passt auch: {o})",
     "gi_font": "Schrift:",
+    "gi_set": "Lettering:",
+    "gi_set_none": "Die Schrift",
+    "gi_set_tip": ("Eigene gezeichnete Buchstaben statt einer Schrift. Was "
+                   "der Satz nicht hat, zeichnet weiterhin die Schrift."),
+    "gi_set_import": "Importieren\u2026",
+    "gi_set_import_tip": ("Bilder gezeichneter Buchstaben zu einem Satz "
+                          "nachzeichnen. Bilder, Ordner oder ZIP w\u00e4hlen; "
+                          "jede Datei ist der Buchstabe, nach dem sie "
+                          "hei\u00dft (\u30c9.png ist \u30c9)."),
+    "gi_set_done": "{n} Buchstaben nachgezeichnet in \u201e{s}\u201c: {l}",
+    "gi_set_skipped": " \u00b7 {n} \u00fcbersprungen",
+    "gi_set_none_found": ("Keine Buchstaben gefunden. Eine Datei ist der "
+                          "Buchstabe, nach dem sie hei\u00dft."),
     "gi_font_auto": "Schrift der Art ({f})",
     "gi_font_none": "Standard-Sans",
     "gi_bold": "Fett",
+    "gi_font_load": "+",
+    "gi_font_load_tip": ("Eine nicht installierte Schriftdatei laden "
+                         "(.ttf, .otf, .ttc). Sie bleibt geladen und ist "
+                         "beim n\u00e4chsten Krita-Start wieder da."),
+    "gi_font_pick": "\U0001f50d",
+    "gi_font_pick_tip": "Eine Schrift aussuchen, indem man sie ansieht",
+    "gi_font_pick_title": "Schrift aussuchen",
+    "gi_font_pick_search": "Schrift suchen",
+    "gi_font_pick_use": "Nehmen",
+    "gi_font_pick_more": "\u2026 und {n} weitere. Suche eingrenzen.",
+    "gi_font_pick_count": "{n} Schriften",
+    "gi_font_pick_auto": "Die Schrift der Art",
+    "gi_window_hint": "In diesem Tab steckt viel \u2014 am besten im "
+                      "eigenen Fenster:",
+    "gi_font_loaded": "Geladen: {f}",
+    "gi_font_load_bad": "Nicht lesbar: {f}",
     "gi_font_missing": ("Keine der vorgeschlagenen Schriften dieser Art ist "
                         "installiert ({f}). Sie sind kostenlos bei Google "
                         "Fonts; bis dahin wird die Standard-Sans benutzt."),
@@ -213,6 +388,9 @@ _DE = {
     "gi_wild": "Wild",
     "gi_wild_tip": "Gacha schüttelt auch Wucht, Rauheit und Schwung kräftig",
     "gi_back": "↶ Zurück",
+    "gi_forward": "↷ Vor",
+    "gi_forward_tip": ("Der gerade zurückgenommene Schritt, wieder hin "
+                       "(Strg+Y)"),
     "gi_back_tip": ("Zurück zu den Einstellungen vor dem letzten "
                     "Automatisch/Gacha/Übernehmen"),
     "gi_pick_tip": "Vorschlag {n} übernehmen: {k}",
@@ -248,6 +426,71 @@ _DE = {
     "gi_sec_var": "Streuung",
     "gi_sec_fill": "Füllung & Konturen",
     "gi_sec_shadow": "Schatten & Bewegung",
+    "gi_tool_move": "\u2725 Bewegen",
+    "gi_tool_liquify": "\u25d0 Verfl\u00fcssigen",
+    "gi_tool_points": "\u25c7 Punkte",
+    "gi_tool_erase": "\u232b Wischen",
+    "gi_tool_move_tip": ("Buchstaben ziehen verschiebt ihn, der Ring "
+                         "dreht, das Quadrat skaliert. Doppelklick setzt "
+                         "zur\u00fcck. Der Pfad hat auch Griffe: das Ende "
+                         "richtet den Effekt aus, die Mitte beugt ihn."),
+    "gi_tool_erase_tip": ("Teile eines Buchstabens wegwischen. Die "
+                          "Pinselgr\u00f6\u00dfe ist die unter "
+                          "Verfl\u00fcssigen."),
+    "gi_legend_move": ("\u25cf Buchstabe: ziehen = versetzen \u00b7 Ring = "
+                       "drehen \u00b7 Quadrat = Gr\u00f6\u00dfe \u00b7 "
+                       "Doppelklick = zur\u00fcck  \u2502  \u25c6 Pfad: "
+                       "Ende = ausrichten \u00b7 Mitte = beugen"),
+    "gi_legend_liquify": ("\u00fcber einen Buchstaben ziehen schiebt ihn "
+                          "herum \u00b7 Alt kehrt das Werkzeug um \u00b7 "
+                          "Gr\u00f6\u00dfe, St\u00e4rke und H\u00e4rte "
+                          "stehen unter Verfl\u00fcssigen"),
+    "gi_legend_points": ("Punkt oder Anfasser ziehen \u00b7 Klick auf die "
+                         "Kontur zwischen zwei Punkten setzt einen \u00b7 "
+                         "Alt+Klick l\u00f6scht \u00b7 Umschalt+Klick "
+                         "Ecke \u21c4 Kurve"),
+    "gi_legend_erase": ("ziehen wischt Teile eines Buchstabens weg \u00b7 "
+                        "alles andere bleibt, und ein Undo nimmt den "
+                        "ganzen Strich zur\u00fcck"),
+    "gi_erased": "Weggewischt. Undo holt es zur\u00fcck.",
+    "gi_sec_points": "Punkte",
+    "gi_pts_on": "Punkte bearbeiten (in der Vorschau ziehen)",
+    "gi_pts_on_tip": ("Die Kontur selbst anfassen. Buchstabe anklicken "
+                      "\u00f6ffnet ihn; Punkte und Anfasser ziehen; ein "
+                      "Klick auf die Kontur zwischen zwei Punkten setzt "
+                      "einen neuen; Alt+Klick l\u00f6scht einen Punkt, "
+                      "Umschalt+Klick macht aus einer Ecke eine Kurve und "
+                      "zur\u00fcck."),
+    "gi_pts_opened": "{n} Punkte auf diesem Buchstaben.",
+    "gi_pts_reset": "Zur\u00fcck zur Kontur der Schrift",
+    "gi_pts_reset_done": ("Jeder Buchstabe hat wieder die Kontur, die die "
+                          "Schrift gezeichnet hat."),
+    "gi_sec_liquify": "Verfl\u00fcssigen",
+    "gi_liq_on": "Pinsel an (in der Vorschau ziehen)",
+    "gi_liq_on_tip": ("Solange das an ist, schiebt Ziehen in der Vorschau "
+                      "den Buchstaben herum, statt ihn zu versetzen. Alt "
+                      "halten kehrt das Werkzeug um."),
+    "gi_liq_tool": "Werkzeug:",
+    "gi_liq_push": "Schieben",
+    "gi_liq_inflate": "Aufblasen",
+    "gi_liq_pinch": "Zusammenziehen",
+    "gi_liq_twirl": "Drehen",
+    "gi_liq_size": "Pinselgr\u00f6\u00dfe",
+    "gi_liq_force": "St\u00e4rke",
+    "gi_liq_hard": "H\u00e4rte",
+    "gi_liq_reset": "Alles Verformen zur\u00fccknehmen",
+    "gi_liq_reset_done": ("Jeder Buchstabe hat wieder die Form, die die "
+                          "Schrift gezeichnet hat."),
+    "gi_sec_deco": "Deko",
+    "gi_deco": "Drumherum:",
+    "gi_deco_off": "Nichts",
+    "gi_deco_rays": "Aufprallstrahlen",
+    "gi_deco_debris": "Tr\u00fcmmer",
+    "gi_deco_sparkle": "Funkeln",
+    "gi_deco_drops": "Tropfen",
+    "gi_deco_n": "Wie viele",
+    "gi_deco_size": "Ihre Gr\u00f6\u00dfe",
+    "gi_deco_dist": "Wie weit drau\u00dfen",
     "gi_letter_px": "Zeichengröße (px):",
     "gi_vertical": "Senkrecht",
     "gi_merge_bars": "ーー als ein langer Strich",
@@ -273,6 +516,34 @@ _DE = {
     "gi_fill_gradient": "Verlauf",
     "gi_fill_tone": "Raster",
     "gi_fill2": "bis",
+    "gi_caption": "Beischrift:",
+    "gi_caption_ph": "z.\u202fB. BOOM",
+    "gi_caption_tip": ("Eine kleine Lesung oder \u00dcbersetzung neben dem "
+                       "Effekt. Schlicht gesetzt: keine der Verformungen "
+                       "fasst sie an."),
+    "gi_caption_pos": "Wo:",
+    "gi_caption_below": "Unten",
+    "gi_caption_above": "Oben",
+    "gi_caption_right": "Rechts",
+    "gi_caption_left": "Links",
+    "gi_caption_size": "Gr\u00f6\u00dfe der Beischrift",
+    "gi_fill_negative": "Negativ",
+    "gi_fill_line": "Nur Linie",
+    "gi_fill_line_tone": "Linie im Raster",
+    "gi_fill_line_w": "Linienbreite",
+    "gi_neg_pad": "Fl\u00e4che drumherum",
+    "gi_dict": "\U0001f4d6",
+    "gi_dict_tip": ("Bekannte Lauteffekte zum Ausw\u00e4hlen (setzt auch "
+                    "die Art)"),
+    "gi_dict_title": "Lauteffekte",
+    "gi_dict_search": "Suche: Kana, Lesung oder Bedeutung",
+    "gi_dict_hint": "Doppelklick auf einen Laut \u00fcbernimmt ihn",
+    "gi_dict_take": "\u00dcbernehmen",
+    "gi_dict_took": "{s} \u2014 {m} \u00b7 Art \u201e{k}\u201c",
+    "gi_dakuten": "\u309b",
+    "gi_dakuten_tip": ("Setzt ein Dakuten \u309b auf den Buchstaben vor dem "
+                       "Cursor \u2014 auf jeden, so wie ein Schrei gezeichnet "
+                       "wird (\u30a2\u3099, \u30f3\u3099)."),
     "gi_fill_pattern": "Muster",
     "gi_pattern_pick": "Kachel wählen\u2026",
     "gi_pattern_none": "keine Kachel gewählt",
@@ -295,6 +566,12 @@ _DE = {
     "gi_shadow_color": "Schatten",
     "gi_extrude": "3D-Stufen",
     "gi_shake": "Zittern",
+    "gi_noise_lines": "Rauschlinien",
+    "gi_noise_style": "Gezeichnet mit:",
+    "gi_noise_hand": "Hand",
+    "gi_noise_dry": "Trockener Pinsel",
+    "gi_noise_fuzzy": "Flaum",
+    "gi_noise_amp": "Rauschbreite",
     "gi_afterimage": "Nachbild",
     "gi_fit": "In die Auswahl einpassen",
     "gi_fit_tip": ("Mit Auswahl wird der Schriftzug auf ihre Größe skaliert, "
@@ -311,6 +588,16 @@ _DE = {
                           "Eine Rasterfüllung wird stattdessen als Pixel "
                           "eingefügt."),
     "gi_insert_px": "Einfügen (Pixel)",
+    "gi_save_zip": "Ebenen (ZIP)\u2026",
+    "gi_save_zip_tip": ("Jede Ebene als eigenes PNG, alle auf derselben "
+                        "Fl\u00e4che: Text, Konturen, Schatten, Nachbild, "
+                        "Deko, Rauschen."),
+    "gi_save_psd": "PSD\u2026",
+    "gi_save_psd_tip": ("Dieselben Ebenen als Photoshop-Datei, von Krita "
+                        "selbst geschrieben. Braucht ein laufendes Krita."),
+    "gi_scale": "Gr\u00f6\u00dfe:",
+    "gi_scale_tip": "Womit PNG und ZIP gerendert werden",
+    "gi_saved_zip": "{n} Ebenen in {p} geschrieben",
     "gi_save_png": "PNG speichern…",
     "gi_save_svg": "SVG speichern…",
     "gi_reset": "Zurücksetzen",
@@ -360,6 +647,8 @@ _SHADOW_SLIDERS = [
     ("extrude", "gi_extrude", 0, 30, 1),
     ("shake", "gi_shake", 0, 5, 1),
     ("afterimage", "gi_afterimage", 0, 6, 1),
+    ("noise_lines", "gi_noise_lines", 0, 4, 1),
+    ("noise_amp", "gi_noise_amp", 0, 150, 1),
 ]
 _MACROS = [("power", "gi_power"), ("rough", "gi_rough"),
            ("momentum", "gi_momentum")]
@@ -422,8 +711,142 @@ class _Section(QWidget):
             self._on_toggle(self.key, on)
 
 
+
+class SoundDialog(QDialog):
+    """Known sound effects, to pick from instead of typing them.
+
+    Not modal: the preview behind it keeps working, and picking several
+    sounds in a row is one window, not one window per sound.
+    """
+
+    def __init__(self, panel):
+        super().__init__(panel.window())
+        self._panel = panel
+        self.setModal(False)
+        self.setWindowTitle(panel._t("gi_dict_title"))
+        lay = QVBoxLayout(self)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(panel._t("gi_dict_search"))
+        self.search.textChanged.connect(self._refill)
+        lay.addWidget(self.search)
+        self.list = QListWidget()
+        self.list.itemDoubleClicked.connect(lambda _i: self._take())
+        lay.addWidget(self.list, 1)
+        row = QHBoxLayout()
+        self.hint = QLabel(panel._t("gi_dict_hint"))
+        self.hint.setStyleSheet("color: gray;")
+        row.addWidget(self.hint, 1)
+        self.take_btn = QPushButton(panel._t("gi_dict_take"))
+        self.take_btn.clicked.connect(self._take)
+        row.addWidget(self.take_btn)
+        self.close_btn = QPushButton(panel._t("gi_close"))
+        self.close_btn.clicked.connect(self.close)
+        row.addWidget(self.close_btn)
+        lay.addLayout(row)
+        self.resize(460, 520)
+        self._refill()
+
+    def _refill(self, *_a):
+        lang = self._panel._lang_fn() or "en"
+        self.list.clear()
+        for e in GD.find(self.search.text(), lang):
+            it = QListWidgetItem("%s   %s\n%s" % (e["kana"], e["romaji"],
+                                                  GD.gloss(e, lang)))
+            it.setData(Qt.ItemDataRole.UserRole, e)
+            self.list.addItem(it)
+        if self.list.count():
+            self.list.setCurrentRow(0)
+
+    def _take(self):
+        it = self.list.currentItem()
+        if it is not None:
+            self._panel.take_sound(it.data(Qt.ItemDataRole.UserRole))
+
+
+
+class FontPickDialog(QDialog):
+    """The installed fonts, each drawn in itself, with a search box.
+
+    At most `SHOWN` rows at a time: with a few thousand families the
+    list is of no use anyway until it has been narrowed down, and the
+    count under it says how much is still hidden.
+    """
+
+    SHOWN = 400
+
+    def __init__(self, panel):
+        super().__init__(panel.window())
+        self._panel = panel
+        self.setModal(False)
+        self.setWindowTitle(panel._t("gi_font_pick_title"))
+        lay = QVBoxLayout(self)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(panel._t("gi_font_pick_search"))
+        self.search.textChanged.connect(self._refill)
+        lay.addWidget(self.search)
+        self.list = QListWidget()
+        self.list.itemDoubleClicked.connect(lambda _i: self._take())
+        lay.addWidget(self.list, 1)
+        self.count_lbl = QLabel()
+        self.count_lbl.setStyleSheet("color: gray;")
+        lay.addWidget(self.count_lbl)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.take_btn = QPushButton(panel._t("gi_font_pick_use"))
+        self.take_btn.clicked.connect(self._take)
+        row.addWidget(self.take_btn)
+        self.close_btn = QPushButton(panel._t("gi_close"))
+        self.close_btn.clicked.connect(self.close)
+        row.addWidget(self.close_btn)
+        lay.addLayout(row)
+        self.resize(460, 560)
+        self._refill()
+
+    def _sample(self):
+        txt = " ".join(self._panel.text().split())[:8]
+        return txt or "\u30c9\u30ab\u30fc\u30f3"
+
+    def _refill(self, *_a):
+        q = self.search.text().strip().lower()
+        fams = [f for f in self._panel.families() if not q or q in f.lower()]
+        self.list.clear()
+        auto = QListWidgetItem(self._panel._t("gi_font_pick_auto"))
+        auto.setData(Qt.ItemDataRole.UserRole, "")
+        self.list.addItem(auto)
+        sample = self._sample()
+        for fam in fams[:self.SHOWN]:
+            it = QListWidgetItem("%s    %s" % (fam, sample))
+            it.setData(Qt.ItemDataRole.UserRole, fam)
+            f = QFont(fam)
+            f.setPointSize(13)
+            it.setFont(f)
+            self.list.addItem(it)
+        left = len(fams) - self.SHOWN
+        self.count_lbl.setText(
+            self._panel._t("gi_font_pick_more", n=left) if left > 0
+            else self._panel._t("gi_font_pick_count", n=len(fams)))
+        cur = self._panel.params().get("font", "")
+        for i in range(self.list.count()):
+            if self.list.item(i).data(Qt.ItemDataRole.UserRole) == cur:
+                self.list.setCurrentRow(i)
+                break
+        else:
+            self.list.setCurrentRow(0)
+
+    def _take(self):
+        it = self.list.currentItem()
+        if it is not None:
+            self._panel.take_font(it.data(Qt.ItemDataRole.UserRole))
+
+
 class GiongoWindow(QDialog):
-    """A plain window holding the panel. Not modal: Krita stays usable."""
+    """A plain window holding the panel. Not modal: Krita stays usable.
+
+    The panel sits in a scroll area. Without one the window inherits the
+    panel's minimum height - over 1100 px with every section open - and
+    a window that cannot be made shorter than the screen hangs off the
+    bottom of it with no way to pull it back.
+    """
 
     def __init__(self, panel, parent=None):
         super().__init__(parent)
@@ -432,13 +855,350 @@ class GiongoWindow(QDialog):
         self.setSizeGripEnabled(True)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
-        lay.addWidget(panel)
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # the scroll area holds a plain widget for its whole life and the
+        # panel sits in that. Handing the panel back with
+        # QScrollArea.takeWidget() while the window is closing crashed
+        # Krita outright (ensureWidgetVisible on a widget that is being
+        # reparented away, twice in the crash log).
+        self.holder = QWidget()
+        hold = QVBoxLayout(self.holder)
+        hold.setContentsMargins(0, 0, 0, 0)
+        hold.addWidget(panel)
+        self.scroll.setWidget(self.holder)
+        lay.addWidget(self.scroll)
+
+    def release_panel(self):
+        """Hand the panel out of the holder, still alive."""
+        panel = self._panel
+        if panel is not None and panel.parent() is self.holder:
+            self.holder.layout().removeWidget(panel)
+            panel.setParent(None)
+        return panel
 
     def closeEvent(self, ev):           # noqa: N802 (Qt API)
         # hand the panel back before the window goes, or it would be
         # destroyed along with it
         self._panel.dock_back()
         super().closeEvent(ev)
+
+
+class GiongoPreview(QLabel):
+    """The preview, with the path and the letters as things you can drag.
+
+    It knows nothing about parameters: it finds what is under the pointer,
+    reports the drag to the panel in scene coordinates, and draws the
+    handles. Everything the drag means is decided in `giongo.py`, where it
+    can be tested without a mouse.
+    """
+
+    HANDLE = 7              # radius of a drawn handle, in screen px
+    GRAB = 11               # how near the pointer has to be to take one
+
+    def __init__(self, panel):
+        super().__init__()
+        self._panel = panel
+        self._k = 1.0
+        self._ox = 0.0
+        self._oy = 0.0
+        self._pix = (0, 0)      # where the pixmap sits inside the label
+        self._places = []
+        self._path = []
+        self._sel = None        # (group, index) of the selected letter
+        self._drag = None       # what is being dragged
+        self._brush_r = 0.0     # liquify brush, in scene units
+        self._points = False    # point editing: nodes instead of handles
+        self._grabbed = None    # which node or handle is being dragged
+        self._cursor = None     # where it is, in widget pixels
+        self.setMouseTracking(True)
+        self._from = (0.0, 0.0)
+        self._start = None      # the letter's edit when the drag began
+        self.setMouseTracking(False)
+
+    # -- what the panel hands over after every render --------------------
+    def set_frame(self, k, ox, oy, pix_w, pix_h, places, path):
+        self._k, self._ox, self._oy = k, ox, oy
+        self._pix = (pix_w, pix_h)
+        self._places = list(places or [])
+        self._path = list(path or [])
+        if self._sel is not None and not self._find(self._sel):
+            self._sel = None    # the text changed under the selection
+        self.update()
+
+    def selected(self):
+        return self._sel
+
+    def clear_selection(self):
+        self._sel = None
+        self.update()
+
+    def set_points(self, on):
+        """Show the outline's own points instead of the letter handles."""
+        self._points = bool(on)
+        self.update()
+
+    def select(self, key):
+        self._sel = key
+        self.update()
+
+    def set_brush(self, radius):
+        """The liquify brush to draw under the pointer; 0 hides it."""
+        self._brush_r = float(radius or 0.0)
+        self.update()
+
+    def _find(self, key):
+        for pl in self._places:
+            if (pl["group"], pl["index"]) == key:
+                return pl
+        return None
+
+    # -- coordinates ------------------------------------------------------
+    def _to_widget(self, pt):
+        px = (self.width() - self._pix[0]) / 2.0
+        py = (self.height() - self._pix[1]) / 2.0
+        return (px + self._ox + pt[0] * self._k,
+                py + self._oy + pt[1] * self._k)
+
+    def _to_scene(self, pos):
+        if self._k <= 0:
+            return None
+        px = (self.width() - self._pix[0]) / 2.0
+        py = (self.height() - self._pix[1]) / 2.0
+        return ((pos.x() - px - self._ox) / self._k,
+                (pos.y() - py - self._oy) / self._k)
+
+    def _handles(self):
+        """Everything grabbable, as (name, widget point), nearest last."""
+        out = []
+        if len(self._path) >= 3:
+            out.append(("bend", self._to_widget(self._path[1])))
+            out.append(("end", self._to_widget(self._path[2])))
+        pl = self._find(self._sel) if self._sel else None
+        if pl is not None:
+            r = max(10.0, pl["size"] * 0.5 * self._k)
+            cx, cy = self._to_widget((pl["x"], pl["y"]))
+            out.append(("rotate", (cx, cy - r - 14)))
+            out.append(("scale", (cx + r + 10, cy + r + 10)))
+        return out
+
+    # -- mouse ------------------------------------------------------------
+    @staticmethod
+    def _alt(ev):
+        return bool(ev.modifiers() & Qt.KeyboardModifier.AltModifier)
+
+    def mousePressEvent(self, ev):                      # noqa: N802
+        pos = ev.position() if hasattr(ev, "position") else ev.pos()
+        if self._panel.liquify_armed():
+            scene = self._to_scene(pos)
+            if scene is None:
+                return
+            self._drag = "liquify"
+            self._from = scene
+            self._panel.liquify_step(scene, scene, self._alt(ev))
+            return
+        if self._panel.erase_armed():
+            scene = self._to_scene(pos)
+            if scene is None:
+                return
+            self._drag = "erase"
+            self._from = scene
+            self._panel.erase_step(scene, scene)
+            return
+        if self._points:
+            scene = self._to_scene(pos)
+            if scene is None:
+                return
+            grabbed = self._panel.point_press(
+                scene, self.GRAB, self._k, self._alt(ev),
+                bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier))
+            self._drag = "point" if grabbed else None
+            self._grabbed = grabbed
+            self.update()
+            return
+        for name, pt in reversed(self._handles()):
+            if (abs(pos.x() - pt[0]) <= self.GRAB
+                    and abs(pos.y() - pt[1]) <= self.GRAB):
+                self._drag = name
+                self._from = self._to_scene(pos) or (0.0, 0.0)
+                self._start = self._panel.letter_edit_of(self._sel) \
+                    if self._sel else None
+                return
+        scene = self._to_scene(pos)
+        if scene is None:
+            return
+        pl = G.nearest_letter(self._places, scene)
+        if pl is None:
+            self._sel = None
+            self.update()
+            return
+        self._sel = (pl["group"], pl["index"])
+        self._drag = "move"
+        self._from = scene
+        self._start = self._panel.letter_edit_of(self._sel)
+        self.update()
+
+    def mouseMoveEvent(self, ev):                       # noqa: N802
+        pos = ev.position() if hasattr(ev, "position") else ev.pos()
+        if self._brush_r:
+            self._cursor = (pos.x(), pos.y())
+            self.update()
+        if self._drag is None:
+            return
+        scene = self._to_scene(pos)
+        if scene is None:
+            return
+        if self._drag == "liquify":
+            self._panel.liquify_step(scene, self._from, self._alt(ev))
+            self._from = scene
+            return
+        if self._drag == "point":
+            self._panel.point_drag(self._grabbed, scene)
+            self.update()
+            return
+        if self._drag == "erase":
+            self._panel.erase_step(scene, self._from)
+            self._from = scene
+            return
+        self._panel.preview_drag(self._drag, scene, self._from, self._sel,
+                                 self._start)
+
+    def mouseReleaseEvent(self, ev):                    # noqa: N802
+        if self._drag is not None:
+            self._drag = None
+            self._panel.preview_drag_done()
+
+    def mouseDoubleClickEvent(self, ev):                # noqa: N802
+        pos = ev.position() if hasattr(ev, "position") else ev.pos()
+        scene = self._to_scene(pos)
+        if scene is None:
+            return
+        pl = G.nearest_letter(self._places, scene)
+        if pl is not None:
+            self._panel.reset_letter((pl["group"], pl["index"]))
+
+    # -- drawing ----------------------------------------------------------
+    @staticmethod
+    def _sane(*points):
+        """True when every point is a number Qt can be asked to draw at."""
+        for pt in points:
+            for v in pt:
+                if v != v or v in (float("inf"), float("-inf")):
+                    return False
+                if abs(v) > 1e6:
+                    return False
+        return True
+
+    def _draw_points(self, p):
+        """The outline's points: squares for corners, circles for curves."""
+        try:
+            items = self._panel.point_overlay()
+        except Exception:               # noqa: BLE001
+            return
+        for it in items:
+            pt = self._to_widget(it["p"])
+            if not self._sane(pt):
+                continue
+            for which in ("in", "out"):
+                h = it.get(which)
+                if h is None:
+                    continue
+                hp = self._to_widget(h)
+                if not self._sane(hp):
+                    continue
+                p.setPen(QPen(QColor(70, 140, 220, 160), 1))
+                p.drawLine(QPointF(*pt), QPointF(*hp))
+                p.setBrush(QColor(255, 255, 255))
+                p.drawEllipse(QPointF(*hp), 3.0, 3.0)
+            p.setPen(QPen(QColor(200, 60, 140), 1))
+            p.setBrush(QColor(255, 255, 255) if it["smooth"]
+                       else QColor(255, 220, 120))
+            if it["smooth"]:
+                p.drawEllipse(QPointF(*pt), 4.0, 4.0)
+            else:
+                p.drawRect(QRectF(pt[0] - 3.5, pt[1] - 3.5, 7.0, 7.0))
+
+    def _draw_brush(self, p):
+        """The liquify brush: a ring the size it really works at."""
+        if not (self._brush_r and self._cursor):
+            return
+        r = self._brush_r * self._k
+        if not (r > 0.5 and r < 1e5):
+            return
+        x, y = self._cursor
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(40, 170, 120), 1))
+        p.drawEllipse(QPointF(x, y), r, r)
+        p.setPen(QPen(QColor(40, 170, 120, 90), 1, Qt.PenStyle.DotLine))
+        p.drawEllipse(QPointF(x, y), r * 0.35, r * 0.35)
+
+    def paintEvent(self, ev):                           # noqa: N802
+        super().paintEvent(ev)
+        if self.width() <= 0 or self.height() <= 0:
+            return
+        if self._brush_r or self._points:
+            # the brush or the points are doing the dragging now: the
+            # letter handles and the selection box would only be in the way
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            self._draw_brush(p)
+            if self._points:
+                self._draw_points(p)
+            return
+        if not self._path and not self._places:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if len(self._path) >= 3:
+            a = self._to_widget(self._path[0])
+            m = self._to_widget(self._path[1])
+            b = self._to_widget(self._path[2])
+        else:
+            a = m = b = None
+        if a is not None and self._sane(a, m, b):
+            pen = QPen(QColor(70, 140, 220, 150))
+            pen.setWidth(1)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            p.setPen(pen)
+            path = QPainterPath(QPointF(*a))
+            # the drawn curve is the quadratic the layout uses, so the line
+            # under the pointer is the line the letters sit on
+            path.quadTo(QPointF(2 * m[0] - (a[0] + b[0]) / 2.0,
+                                2 * m[1] - (a[1] + b[1]) / 2.0),
+                        QPointF(*b))
+            p.drawPath(path)
+            p.setPen(QPen(QColor(70, 140, 220)))
+            p.setBrush(QColor(255, 255, 255))
+            for pt in (m, b):
+                p.drawEllipse(QPointF(*pt), self.HANDLE, self.HANDLE)
+        pl = self._find(self._sel) if self._sel else None
+        if pl is not None:
+            r = max(10.0, min(1e5, pl["size"] * 0.5 * self._k))
+            cx, cy = self._to_widget((pl["x"], pl["y"]))
+        if pl is not None and self._sane((cx, cy), (r, r)):
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(230, 120, 40), 1, Qt.PenStyle.DashLine))
+            p.drawRect(QRectF(cx - r, cy - r, 2 * r, 2 * r))
+            p.setPen(QPen(QColor(230, 120, 40)))
+            p.setBrush(QColor(255, 255, 255))
+            p.drawEllipse(QPointF(cx, cy - r - 14), self.HANDLE, self.HANDLE)
+            p.drawRect(QRectF(cx + r + 10 - self.HANDLE,
+                              cy + r + 10 - self.HANDLE,
+                              2 * self.HANDLE, 2 * self.HANDLE))
+        p.end()
+
+
+#: which row of the fill section each control sits in. They used to be
+#: written out at the call sites and three of them collided.
+_R_FILL = 0
+_R_TONE = 1
+_R_PATTERN = 2
+_R_PATSCALE = 3
+_R_NEG = 4
+_R_LINEW = 5
+_R_THICKEN = 6
+_R_OUTLINES = 7
 
 
 class GiongoPanel(QWidget):
@@ -463,13 +1223,29 @@ class GiongoPanel(QWidget):
         self._active = True         # the docker turns this off for a tab
         self._tab_active = True     # ...kept apart from the window, which is
         self._popped = False        # on screen whatever the tab is doing
+        self._dict_win = None       # the sound dictionary
+        self._font_win = None       # the font list
+        self._future = []           # undone steps, waiting to be redone
+        self._hist_key = None       # which slider the last step was, and
+        self._hist_at = 0.0         # when, so one drag is one step
+        self._drag_open = False     # a drag in the preview is one step
         self._blocks = []           # the groups the grid arranges
         self._cols = 0              # how many columns they sit in now
         self._home = None           # the layout to go back to
         self._window = None
         self._pending = True        # owes a preview as soon as it is shown
+        self._places = []           # where the letters landed, for the mouse
         self._last_size = (0, 0)    # what the last preview was rendered for
         self._fonts_filled = False  # the family list is filled on first show
+        UF.load_all(UF.from_json(self._get("giongoUserFonts", "[]")))
+        try:
+            _sets = json.loads(self._get("giongoLetterSets", "[]"))
+        except ValueError:
+            _sets = []
+        for _p in _sets if isinstance(_sets, list) else []:
+            _d = TR.load_set(_p) if isinstance(_p, str) else None
+            if _d:
+                TR.register(_d, _p)
         try:
             self._open = json.loads(self._get("giongoOpen", "{}")) or {}
         except ValueError:
@@ -484,12 +1260,26 @@ class GiongoPanel(QWidget):
         self._layout_timer.setSingleShot(True)
         self._layout_timer.setInterval(0)
         self._layout_timer.timeout.connect(self._recheck_columns)
+        #: a drag draws while it is happening, see `_schedule_live`
+        self._live_timer = QTimer(self)
+        self._live_timer.setSingleShot(True)
+        self._live_timer.setInterval(30)
+        self._live_timer.timeout.connect(self._refresh_preview)
+        self._last_live = 0.0
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(600)
         self._save_timer.timeout.connect(self._save_state)
         self._build()
         self.retranslate()
+        self._keys = []
+        for seq, slot in (("Ctrl+Z", self.on_undo_key),
+                          ("Ctrl+Y", self.on_redo_key),
+                          ("Ctrl+Shift+Z", self.on_redo_key)):
+            sc = QShortcut(QKeySequence(seq), self)
+            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc.activated.connect(slot)
+            self._keys.append(sc)
         self._load_into_widgets()
         self._schedule()
 
@@ -555,6 +1345,10 @@ class GiongoPanel(QWidget):
         inner = QVBoxLayout(box)
         inner.setContentsMargins(0, 0, 0, 0)
         inner.setSpacing(6)
+        if not self._blocks:
+            # the first block holds the canvas: it takes what it is given
+            box.setSizePolicy(QSizePolicy.Policy.Preferred,
+                              QSizePolicy.Policy.Expanding)
         self._blocks.append(box)
         return inner
 
@@ -572,6 +1366,10 @@ class GiongoPanel(QWidget):
         lay.addWidget(self.intro)
         row = QHBoxLayout()
         row.addStretch(1)
+        self.window_hint = QLabel()
+        self.window_hint.setWordWrap(True)
+        self.window_hint.setStyleSheet("color: #806000;")
+        row.addWidget(self.window_hint, 1)
         self.popout_btn = QPushButton()
         self.popout_btn.clicked.connect(self.on_popout)
         row.addWidget(self.popout_btn)
@@ -581,7 +1379,38 @@ class GiongoPanel(QWidget):
         self.text_edit.setFixedHeight(58)
         self.text_edit.setPlainText(self._get("giongoText", "ドーーン！"))
         self.text_edit.textChanged.connect(self._on_text)
-        lay.addWidget(self.text_edit)
+        trow = QHBoxLayout()
+        trow.addWidget(self.text_edit, 1)
+        self.dict_btn = QPushButton()
+        self.dict_btn.setFixedWidth(34)
+        self.dict_btn.clicked.connect(self.on_dictionary)
+        trow.addWidget(self.dict_btn, 0, Qt.AlignmentFlag.AlignTop)
+        self.dakuten_btn = QPushButton()
+        self.dakuten_btn.setFixedWidth(34)
+        self.dakuten_btn.clicked.connect(self.on_dakuten)
+        trow.addWidget(self.dakuten_btn, 0,
+                       Qt.AlignmentFlag.AlignTop)
+        lay.addLayout(trow)
+
+        crow = QHBoxLayout()
+        self.caption_lbl = QLabel()
+        crow.addWidget(self.caption_lbl)
+        self.caption_edit = QLineEdit()
+        self.caption_edit.textChanged.connect(
+            lambda s: self._set_param("caption", s))
+        crow.addWidget(self.caption_edit, 1)
+        self.caption_pos = NoScrollComboBox()
+        for where in G.R_CAPTION_POS:
+            self.caption_pos.addItem("", where)
+        self.caption_pos.currentIndexChanged.connect(
+            lambda _i: self._set_param("caption_pos",
+                                       self.caption_pos.currentData()))
+        crow.addWidget(self.caption_pos)
+        lay.addLayout(crow)
+        cgrid = QGridLayout()
+        self._add_slider(cgrid, 0, "caption_size", "gi_caption_size",
+                         8, 120, 1)
+        lay.addLayout(cgrid)
 
         row = QHBoxLayout()
         self.type_lbl = QLabel()
@@ -610,22 +1439,63 @@ class GiongoPanel(QWidget):
         # looking at this tab, and there can be a few thousand of them
         self.font_combo.activated.connect(self._on_font)
         row.addWidget(self.font_combo, 1)
+        self.font_pick_btn = QPushButton()
+        self.font_pick_btn.setFixedWidth(26)
+        self.font_pick_btn.clicked.connect(self.on_pick_font)
+        row.addWidget(self.font_pick_btn)
+        self.font_load_btn = QPushButton()
+        self.font_load_btn.setFixedWidth(26)
+        self.font_load_btn.clicked.connect(self.on_load_font)
+        row.addWidget(self.font_load_btn)
         self.bold_chk = QCheckBox()
         self.bold_chk.toggled.connect(lambda on: self._set_param("bold", on))
         row.addWidget(self.bold_chk)
         lay.addLayout(row)
+        srow = QHBoxLayout()
+        self.set_lbl = QLabel()
+        srow.addWidget(self.set_lbl)
+        self.set_combo = NoScrollComboBox()
+        self.set_combo.addItem("", "")
+        self.set_combo.currentIndexChanged.connect(
+            lambda _i: self._set_param("letterset",
+                                       self.set_combo.currentData() or ""))
+        srow.addWidget(self.set_combo, 1)
+        self.set_import_btn = QPushButton()
+        self.set_import_btn.clicked.connect(self.on_import_lettering)
+        srow.addWidget(self.set_import_btn)
+        lay.addLayout(srow)
         self.font_hint = QLabel()
         self.font_hint.setWordWrap(True)
         self.font_hint.setStyleSheet("color: gray; font-size: 10px;")
         lay.addWidget(self.font_hint)
 
-        self.preview = QLabel()
+        tbar = QHBoxLayout()
+        self.tool_btns = {}
+        for _key in ("move", "liquify", "points", "erase"):
+            _b = QPushButton()
+            _b.setCheckable(True)
+            _b.clicked.connect(lambda _c=False, k=_key: self.set_tool(k))
+            tbar.addWidget(_b)
+            self.tool_btns[_key] = _b
+        self.tool_btns["move"].setChecked(True)
+        tbar.addStretch(1)
+        self.size_lbl = QLabel()
+        self.size_lbl.setStyleSheet("color: gray;")
+        tbar.addWidget(self.size_lbl)
+        lay.addLayout(tbar)
+
+        self.preview = GiongoPreview(self)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumHeight(170)
+        self.preview.setMinimumHeight(200)
         self.preview.setSizePolicy(QSizePolicy.Policy.Ignored,
-                                   QSizePolicy.Policy.Preferred)
+                                   QSizePolicy.Policy.Expanding)
         self.preview.setStyleSheet("border: 1px solid #888;")
-        lay.addWidget(self.preview)
+        lay.addWidget(self.preview, 1)
+
+        self.legend_lbl = QLabel()
+        self.legend_lbl.setWordWrap(True)
+        self.legend_lbl.setStyleSheet("color: gray; font-size: 10px;")
+        lay.addWidget(self.legend_lbl)
 
         row = QHBoxLayout()
         self.bg_lbl = QLabel()
@@ -639,7 +1509,12 @@ class GiongoPanel(QWidget):
         row.addWidget(self.bg_combo, 1)
         self.back_btn = QPushButton()
         self.back_btn.clicked.connect(self.on_back)
+        self.back_btn.setEnabled(False)
         row.addWidget(self.back_btn)
+        self.fwd_btn = QPushButton()
+        self.fwd_btn.clicked.connect(self.on_forward)
+        self.fwd_btn.setEnabled(False)
+        row.addWidget(self.fwd_btn)
         lay.addLayout(row)
 
         row = QHBoxLayout()
@@ -780,7 +1655,8 @@ class GiongoPanel(QWidget):
                                                                     c)))
         frow.addWidget(self.fill2_btn)
         g.addLayout(frow, 0, 1, 1, 2)
-        self._add_slider(g, 1, "tone_dot", "gi_tone_dot", 3, 60, 1)
+        self._add_slider(g, _R_TONE, "tone_dot", "gi_tone_dot",
+                         3, 60, 1)
         prow = QHBoxLayout()
         self.pattern_btn = QPushButton()
         self.pattern_btn.clicked.connect(self.on_pick_pattern)
@@ -788,16 +1664,20 @@ class GiongoPanel(QWidget):
         self.pattern_lbl = QLabel()
         self.pattern_lbl.setStyleSheet("color: gray;")
         prow.addWidget(self.pattern_lbl, 1)
-        g.addLayout(prow, 2, 0, 1, 3)
-        self._add_slider(g, 3, "fill_pattern_scale", "gi_pattern_scale",
-                         10, 400, 1)
+        g.addLayout(prow, _R_PATTERN, 0, 1, 3)
+        self._add_slider(g, _R_NEG, "neg_pad", "gi_neg_pad", 0, 120, 1)
+        self._add_slider(g, _R_LINEW, "fill_line_w", "gi_fill_line_w",
+                         1, 40, 1)
+        self._add_slider(g, _R_PATSCALE, "fill_pattern_scale",
+                         "gi_pattern_scale", 10, 400, 1)
 
-        self._add_slider(g, 2, "thicken", "gi_thicken", 0, 12, 4)
+        self._add_slider(g, _R_THICKEN, "thicken", "gi_thicken",
+                         0, 12, 4)
         self._outline_rows = []
         for i in range(G.MAX_OUTLINES):
             chk = QCheckBox()
             chk.toggled.connect(self._on_outlines)
-            g.addWidget(chk, 3 + i, 0)
+            g.addWidget(chk, _R_OUTLINES + i, 0)
             orow = QHBoxLayout()
             btn = QPushButton()
             btn.setFixedWidth(42)
@@ -810,9 +1690,9 @@ class GiongoPanel(QWidget):
             spin.setSuffix(" %")
             spin.valueChanged.connect(self._on_outlines)
             orow.addWidget(spin, 1)
-            g.addLayout(orow, 3 + i, 1, 1, 2)
+            g.addLayout(orow, _R_OUTLINES + i, 1, 1, 2)
             self._outline_rows.append((chk, btn, spin))
-        r = 3 + G.MAX_OUTLINES
+        r = _R_OUTLINES + G.MAX_OUTLINES
         self.omode_lbl = QLabel()
         g.addWidget(self.omode_lbl, r, 0)
         self.omode_combo = NoScrollComboBox()
@@ -830,14 +1710,82 @@ class GiongoPanel(QWidget):
         g = self.sec_shadow.grid
         for r, spec in enumerate(_SHADOW_SLIDERS):
             self._add_slider(g, r, *spec)
+        self.noise_style_lbl = QLabel()
+        g.addWidget(self.noise_style_lbl, len(_SHADOW_SLIDERS), 0)
+        self.noise_style = NoScrollComboBox()
+        for st in G.NOISE_STYLES:
+            self.noise_style.addItem("", st)
+        self.noise_style.currentIndexChanged.connect(
+            lambda _i: self._set_param("noise_style",
+                                       self.noise_style.currentData()))
+        g.addWidget(self.noise_style, len(_SHADOW_SLIDERS), 1, 1, 2)
         self.shadow_lbl = QLabel()
-        g.addWidget(self.shadow_lbl, len(_SHADOW_SLIDERS), 0)
+        g.addWidget(self.shadow_lbl, len(_SHADOW_SLIDERS) + 1, 0)
         self.shadow_btn = self._color_button(
             lambda b: self._pick_color(
                 b, lambda c: self._set_param("shadow_color", c)))
-        g.addWidget(self.shadow_btn, len(_SHADOW_SLIDERS), 1)
+        g.addWidget(self.shadow_btn, len(_SHADOW_SLIDERS) + 1, 1)
         lay = self._new_block()
         lay.addWidget(self.sec_shadow)
+
+        self.sec_liquify = _Section("liquify",
+                                    self._open.get("liquify", False),
+                                    self._on_section)
+        g = self.sec_liquify.grid
+        self.liq_chk = QCheckBox()
+        self.liq_chk.toggled.connect(self._on_liquify_armed)
+        g.addWidget(self.liq_chk, 0, 0, 1, 3)
+        self.liq_tool_lbl = QLabel()
+        g.addWidget(self.liq_tool_lbl, 1, 0)
+        self.liq_tool = NoScrollComboBox()
+        for m in W.MODES:
+            self.liq_tool.addItem("", m)
+        self.liq_tool.currentIndexChanged.connect(
+            lambda _i: self._set_param("liquify_mode",
+                                       self.liq_tool.currentData()))
+        g.addWidget(self.liq_tool, 1, 1, 1, 2)
+        self._add_slider(g, 2, "liquify_size", "gi_liq_size", 5, 200, 1)
+        self._add_slider(g, 3, "liquify_force", "gi_liq_force", 1, 100, 1)
+        self._add_slider(g, 4, "liquify_hard", "gi_liq_hard", 0, 95, 1)
+        self.liq_reset_btn = QPushButton()
+        self.liq_reset_btn.clicked.connect(self.on_reset_warps)
+        g.addWidget(self.liq_reset_btn, 5, 0, 1, 3)
+        lay = self._new_block()
+        lay.addWidget(self.sec_liquify)
+
+        self.sec_points = _Section("points",
+                                   self._open.get("points", False),
+                                   self._on_section)
+        g = self.sec_points.grid
+        self.pts_chk = QCheckBox()
+        self.pts_chk.toggled.connect(self._on_points_armed)
+        g.addWidget(self.pts_chk, 0, 0, 1, 3)
+        self.pts_hint = QLabel()
+        self.pts_hint.setWordWrap(True)
+        self.pts_hint.setStyleSheet("color: gray;")
+        g.addWidget(self.pts_hint, 1, 0, 1, 3)
+        self.pts_reset_btn = QPushButton()
+        self.pts_reset_btn.clicked.connect(self.on_reset_points)
+        g.addWidget(self.pts_reset_btn, 2, 0, 1, 3)
+        lay = self._new_block()
+        lay.addWidget(self.sec_points)
+
+        self.sec_deco = _Section("deco", self._open.get("deco", False),
+                                 self._on_section)
+        g = self.sec_deco.grid
+        self.deco_lbl = QLabel()
+        g.addWidget(self.deco_lbl, 0, 0)
+        self.deco_combo = NoScrollComboBox()
+        for d in G.DECOS:
+            self.deco_combo.addItem("", d)
+        self.deco_combo.currentIndexChanged.connect(
+            lambda _i: self._set_param("deco", self.deco_combo.currentData()))
+        g.addWidget(self.deco_combo, 0, 1, 1, 2)
+        self._add_slider(g, 1, "deco_n", "gi_deco_n", 0, 60, 1)
+        self._add_slider(g, 2, "deco_size", "gi_deco_size", 1, 100, 1)
+        self._add_slider(g, 3, "deco_dist", "gi_deco_dist", 0, 150, 1)
+        lay = self._new_block()
+        lay.addWidget(self.sec_deco)
 
         # output
         lay = self._new_block()
@@ -863,6 +1811,28 @@ class GiongoPanel(QWidget):
         self.save_svg_btn = QPushButton()
         self.save_svg_btn.clicked.connect(lambda *_a: self.on_save("svg"))
         row.addWidget(self.save_svg_btn)
+        self.save_zip_btn = QPushButton()
+        self.save_zip_btn.clicked.connect(lambda *_a: self.on_save("zip"))
+        row.addWidget(self.save_zip_btn)
+        self.save_psd_btn = QPushButton()
+        self.save_psd_btn.clicked.connect(lambda *_a: self.on_save("psd"))
+        row.addWidget(self.save_psd_btn)
+        self.scale_lbl = QLabel()
+        row.addWidget(self.scale_lbl)
+        self.scale_combo = NoScrollComboBox()
+        for _k in (1, 2, 3, 4):
+            self.scale_combo.addItem("%d\u00d7" % _k, _k)
+        try:
+            _sk = int(self._get("giongoScale", "1"))
+        except ValueError:
+            _sk = 1
+        self.scale_combo.setCurrentIndex(
+            max(0, self.scale_combo.findData(_sk)))
+        self.scale_combo.currentIndexChanged.connect(
+            lambda _i: self._set("giongoScale",
+                                 str(self.scale_combo.currentData() or 1)))
+        row.addWidget(self.scale_combo)
+        lay.addLayout(row)
         self.reset_btn = QPushButton()
         self.reset_btn.clicked.connect(self.on_reset)
         row.addWidget(self.reset_btn)
@@ -909,6 +1879,8 @@ class GiongoPanel(QWidget):
             self.bg_combo.setItemText(i, t(k))
         self.back_btn.setText(t("gi_back"))
         self.back_btn.setToolTip(t("gi_back_tip"))
+        self.fwd_btn.setText(t("gi_forward"))
+        self.fwd_btn.setToolTip(t("gi_forward_tip"))
         self.reroll_btn.setText(t("gi_reroll"))
         self.reroll_btn.setToolTip(t("gi_reroll_tip"))
         self.gacha_btn.setText(t("gi_gacha"))
@@ -929,8 +1901,34 @@ class GiongoPanel(QWidget):
         for sec, key in ((self.sec_layout, "gi_sec_layout"),
                          (self.sec_var, "gi_sec_var"),
                          (self.sec_fill, "gi_sec_fill"),
-                         (self.sec_shadow, "gi_sec_shadow")):
+                         (self.sec_shadow, "gi_sec_shadow"),
+                         (self.sec_deco, "gi_sec_deco"),
+                         (self.sec_liquify, "gi_sec_liquify"),
+                         (self.sec_points, "gi_sec_points")):
             sec.btn.setText(t(key).replace("&", "&&"))
+        self.deco_lbl.setText(t("gi_deco"))
+        for _k, _b in self.tool_btns.items():
+            _b.setText(t("gi_tool_" + _k))
+        self.tool_btns["move"].setToolTip(t("gi_tool_move_tip"))
+        self.tool_btns["liquify"].setToolTip(t("gi_liq_on_tip"))
+        self.tool_btns["points"].setToolTip(t("gi_pts_on_tip"))
+        self.tool_btns["erase"].setToolTip(t("gi_tool_erase_tip"))
+        self._refresh_legend()
+        self.pts_chk.setText(t("gi_pts_on"))
+        self.pts_chk.setToolTip(t("gi_pts_on_tip"))
+        self.pts_hint.setText(t("gi_pts_on_tip"))
+        self.pts_reset_btn.setText(t("gi_pts_reset"))
+        self.liq_chk.setText(t("gi_liq_on"))
+        self.liq_chk.setToolTip(t("gi_liq_on_tip"))
+        self.liq_tool_lbl.setText(t("gi_liq_tool"))
+        self.liq_reset_btn.setText(t("gi_liq_reset"))
+        for i, m in enumerate(W.MODES):
+            self.liq_tool.setItemText(i, t("gi_liq_" + m))
+        self.noise_style_lbl.setText(t("gi_noise_style"))
+        for i, st in enumerate(G.NOISE_STYLES):
+            self.noise_style.setItemText(i, t("gi_noise_" + st))
+        for i, d in enumerate(G.DECOS):
+            self.deco_combo.setItemText(i, t("gi_deco_" + d))
         self.letter_lbl.setText(t("gi_letter_px"))
         self.vertical_chk.setText(t("gi_vertical"))
         self.bars_chk.setText(t("gi_merge_bars"))
@@ -953,6 +1951,12 @@ class GiongoPanel(QWidget):
         self.insert_px_btn.setText(t("gi_insert_px"))
         self.save_png_btn.setText(t("gi_save_png"))
         self.save_svg_btn.setText(t("gi_save_svg"))
+        self.save_zip_btn.setText(t("gi_save_zip"))
+        self.save_zip_btn.setToolTip(t("gi_save_zip_tip"))
+        self.save_psd_btn.setText(t("gi_save_psd"))
+        self.save_psd_btn.setToolTip(t("gi_save_psd_tip"))
+        self.scale_lbl.setText(t("gi_scale"))
+        self.scale_combo.setToolTip(t("gi_scale_tip"))
         self.pattern_btn.setText(t("gi_pattern_pick"))
         self.pattern_btn.setToolTip(t("gi_pattern_tip"))
         self._refresh_pattern_name()
@@ -962,8 +1966,19 @@ class GiongoPanel(QWidget):
             self.pen_combo.setItemText(i, t("gi_pen_" + name))
         self._refresh_pen_hint()
         self.reset_btn.setText(t("gi_reset"))
+        self.dict_btn.setText(t("gi_dict"))
+        self.dict_btn.setToolTip(t("gi_dict_tip"))
+        self.dakuten_btn.setText(t("gi_dakuten"))
+        self.caption_lbl.setText(t("gi_caption"))
+        self.caption_edit.setPlaceholderText(t("gi_caption_ph"))
+        self.caption_edit.setToolTip(t("gi_caption_tip"))
+        for i, where in enumerate(G.R_CAPTION_POS):
+            self.caption_pos.setItemText(i, t("gi_caption_" + where))
+        self.dakuten_btn.setToolTip(t("gi_dakuten_tip"))
         self.popout_btn.setText(t("gi_popin") if self._popped
                                 else t("gi_popout"))
+        self.window_hint.setText("" if self._popped
+                                 else t("gi_window_hint"))
         self.popout_btn.setToolTip(t("gi_popout_tip"))
         self._refresh_font_ui()
         self._refresh_option_tips()
@@ -987,8 +2002,20 @@ class GiongoPanel(QWidget):
             self._paint_swatch(self.fill_btn, p["fill"])
             self._paint_swatch(self.fill2_btn, p["fill2"])
             self._paint_swatch(self.shadow_btn, p["shadow_color"])
+            self.caption_edit.setText(p.get("caption", ""))
+            self.caption_pos.setCurrentIndex(
+                max(0, self.caption_pos.findData(
+                    p.get("caption_pos", "below"))))
             self.fill_mode.setCurrentIndex(
                 max(0, self.fill_mode.findData(p["fill_mode"])))
+            self.deco_combo.setCurrentIndex(
+                max(0, self.deco_combo.findData(p.get("deco", "off"))))
+            self.liq_tool.setCurrentIndex(
+                max(0, self.liq_tool.findData(
+                    p.get("liquify_mode", "push"))))
+            self.noise_style.setCurrentIndex(
+                max(0, self.noise_style.findData(
+                    p.get("noise_style", "hand"))))
             self.omode_combo.setCurrentIndex(
                 max(0, self.omode_combo.findData(p["outline_mode"])))
             outs = p["outlines"]
@@ -1001,6 +2028,7 @@ class GiongoPanel(QWidget):
                 spin.setValue(w)
             self._refresh_enabled()
             self._refresh_font_ui()
+            self._refresh_sets()
         finally:
             self._loading = False
 
@@ -1015,11 +2043,31 @@ class GiongoPanel(QWidget):
         sl = self._sliders.get("tone_dot")
         if sl:
             for w in sl[:3]:
-                w.setEnabled(p["fill_mode"] == "tone")
+                w.setEnabled(p["fill_mode"] in ("tone", "line_tone"))
+        for key in ("deco_n", "deco_size", "deco_dist"):
+            sl = self._sliders.get(key)
+            if sl:
+                for w in sl[:3]:
+                    w.setEnabled(p.get("deco", "off") != "off")
+        on = int(p.get("noise_lines", 0)) > 0
+        self.noise_style.setEnabled(on)
+        self.noise_style_lbl.setEnabled(on)
+        sl = self._sliders.get("noise_amp")
+        if sl:
+            for w in sl[:3]:
+                w.setEnabled(on)
+        sl = self._sliders.get("fill_line_w")
+        if sl:
+            for w in sl[:3]:
+                w.setEnabled(p["fill_mode"] in ("line", "line_tone"))
         sl = self._sliders.get("fill_pattern_scale")
         if sl:
             for w in sl[:3]:
                 w.setEnabled(p["fill_mode"] == "pattern")
+        sl = self._sliders.get("neg_pad")
+        if sl:
+            for w in sl[:3]:
+                w.setEnabled(p["fill_mode"] == "negative")
         if hasattr(self, "pattern_lbl"):
             self.pattern_lbl.setEnabled(p["fill_mode"] == "pattern")
         # outline k only makes sense when the ones before it are on
@@ -1039,6 +2087,14 @@ class GiongoPanel(QWidget):
         idx = self.font_combo.findData(p["font"]) if p["font"] else 0
         self.font_combo.setCurrentIndex(max(0, idx))
         missing = not p["font"] and not resolved
+        self.set_lbl.setText(self._t("gi_set"))
+        self.set_combo.setToolTip(self._t("gi_set_tip"))
+        self.set_import_btn.setText(self._t("gi_set_import"))
+        self.set_import_btn.setToolTip(self._t("gi_set_import_tip"))
+        self.font_pick_btn.setText(self._t("gi_font_pick"))
+        self.font_pick_btn.setToolTip(self._t("gi_font_pick_tip"))
+        self.font_load_btn.setText(self._t("gi_font_load"))
+        self.font_load_btn.setToolTip(self._t("gi_font_load_tip"))
         self.font_hint.setVisible(missing)
         if missing:
             self.font_hint.setText(self._t("gi_font_missing",
@@ -1047,12 +2103,14 @@ class GiongoPanel(QWidget):
     def _set_param(self, key, value):
         if self._loading:
             return
+        if self._params.get(key) != value:
+            self._push_history(key)
         self._params[key] = value
         if key in ("fill", "fill2", "shadow_color"):
             btn = {"fill": self.fill_btn, "fill2": self.fill2_btn,
                    "shadow_color": self.shadow_btn}[key]
             self._paint_swatch(btn, value)
-        if key == "fill_mode":
+        if key in ("fill_mode", "deco", "noise_lines"):
             self._refresh_enabled()
         if key == "seed":
             self.seed_spin.blockSignals(True)
@@ -1061,6 +2119,8 @@ class GiongoPanel(QWidget):
         self._schedule()
 
     def _on_slider(self, key, v, steps):
+        if key == "liquify_size" and self.liquify_armed():
+            self.preview.set_brush(W.radius_for(v / float(steps)))
         val = v / float(steps)
         if steps == 1:
             val = int(v)
@@ -1088,6 +2148,50 @@ class GiongoPanel(QWidget):
             self._on_outlines()
         self._pick_color(btn, apply)
 
+    def on_dictionary(self, *_a):
+        """The list of known sounds, to pick from."""
+        if self._dict_win is None:
+            self._dict_win = SoundDialog(self)
+        self._dict_win.show()
+        self._dict_win.raise_()
+        self._dict_win.search.setFocus()
+
+    def take_sound(self, entry):
+        """A sound picked from the dictionary: its kana at the cursor, and
+        the look that belongs to it."""
+        if not entry:
+            return
+        self._push_history()
+        cur = self.text_edit.textCursor()
+        cur.insertText(entry["kana"])
+        self.text_edit.setTextCursor(cur)
+        tid = entry.get("type")
+        if tid and tid != self._params.get("type"):
+            self._params = G.apply_type(self._params, tid)
+            self._params["font"] = ""
+            self._load_into_widgets()
+        self._schedule()
+        self._status(self._tr_sound(entry))
+
+    def _tr_sound(self, entry):
+        lang = self._lang_fn() or "en"
+        return self._t("gi_dict_took", s=entry["kana"],
+                       k=self._t("gi_type_" + entry["type"]),
+                       m=GD.gloss(entry, lang))
+
+    def on_dakuten(self, *_a):
+        """Put a ゛ on the letter before the cursor.
+
+        The combining mark, not the standalone one: `tokenize` hangs it on
+        the letter in front of it, so ア゛ is drawn and laid out as one
+        letter instead of two.
+        """
+        cur = self.text_edit.textCursor()
+        if cur.position() <= 0:
+            return
+        cur.insertText("\u3099")
+        self.text_edit.setTextCursor(cur)
+
     def _on_text(self):
         self._schedule()
 
@@ -1100,6 +2204,125 @@ class GiongoPanel(QWidget):
             self._params = G.apply_type(self._params, tid)
             self._load_into_widgets()
             self._schedule()
+
+    def _refresh_sets(self):
+        """The lettering sets that are loaded, in the combo."""
+        self.set_combo.blockSignals(True)
+        want = self._params.get("letterset", "")
+        self.set_combo.clear()
+        self.set_combo.addItem(self._t("gi_set_none"), "")
+        for name in TR.names():
+            self.set_combo.addItem("%s (%d)" % (name, len(TR.letters(name))),
+                                   name)
+        self.set_combo.setCurrentIndex(max(0, self.set_combo.findData(want)))
+        self.set_combo.blockSignals(False)
+
+    def load_lettering(self, paths):
+        """Load saved sets from disk and make them available."""
+        names = []
+        for p in paths or []:
+            data = TR.load_set(p)
+            if data:
+                got = TR.register(data, p)
+                if got:
+                    names.append(got)
+        if names:
+            self._refresh_sets()
+        return names
+
+    def on_import_lettering(self, *_a):
+        """Pick images, a folder or a ZIP and trace them into a set."""
+        last = self._get("giongoSaveDir", "")
+        files, _f = QFileDialog.getOpenFileNames(
+            self, self._t("gi_set_import_tip"), last,
+            "Lettering (*.png *.jpg *.jpeg *.bmp *.gif *.webp *.tif *.tiff "
+            "*.zip)")
+        if not files:
+            folder = QFileDialog.getExistingDirectory(
+                self, self._t("gi_set_import_tip"), last)
+            if not folder:
+                return
+            files = [folder]
+        self.import_lettering(files)
+
+    def import_lettering(self, paths, name=None):
+        """Trace `paths` into a set, save it beside them and use it."""
+        base = paths[0] if paths else ""
+        name = name or os.path.splitext(os.path.basename(
+            base.rstrip("\\/")))[0] or "lettering"
+        data, skipped = TR.build_set(name, paths)
+        if not data["glyphs"]:
+            self._status(self._t("gi_set_none_found"))
+            return ""
+        folder = base if os.path.isdir(base) else os.path.dirname(base)
+        try:
+            where = TR.save_set(data, os.path.join(
+                folder, name + ".typer-lettering.json"))
+        except OSError:
+            where = ""
+        got = TR.register(data, where)
+        self._remember_sets()
+        self._refresh_sets()
+        self._push_history()
+        self._params["letterset"] = got
+        self._load_into_widgets()
+        self._schedule()
+        msg = self._t("gi_set_done", n=len(data["glyphs"]), s=got,
+                      l=" ".join(sorted(data["glyphs"])[:24]))
+        if skipped:
+            msg += self._t("gi_set_skipped", n=len(skipped))
+        self._status(msg)
+        return got
+
+    def _remember_sets(self):
+        paths = [TR.path_of(n) for n in TR.names() if TR.path_of(n)]
+        self._set("giongoLetterSets", json.dumps(paths))
+
+    def on_pick_font(self, *_a):
+        """The font list, to look at rather than to remember."""
+        if self._font_win is None:
+            self._font_win = FontPickDialog(self)
+        self._font_win._refill()
+        self._font_win.show()
+        self._font_win.raise_()
+        self._font_win.search.setFocus()
+
+    def take_font(self, family):
+        """Draw with this family from now on ("" = the type's own)."""
+        if self._params.get("font", "") == (family or ""):
+            return
+        self._push_history()
+        self._params["font"] = family or ""
+        self._load_into_widgets()
+        self._schedule()
+
+    def on_load_font(self, *_a):
+        """Pick font files and use them without installing them."""
+        names, _f = QFileDialog.getOpenFileNames(
+            self, self._t("gi_font_load_tip"), "",
+            "Fonts (*.ttf *.otf *.ttc *.otc)")
+        if not names:
+            return
+        self.add_font_files(names)
+
+    def add_font_files(self, names):
+        """Load font files, remember them, and pick the first one."""
+        fams, bad = UF.load_all(names)
+        self._set("giongoUserFonts", UF.to_json())
+        if fams:
+            self._families = None       # the list has new names in it
+            self._fonts_filled = False
+            self._fill_fonts()
+            self._push_history()
+            self._params["font"] = fams[0]
+            self._load_into_widgets()
+            self._schedule()
+            self._status(self._t("gi_font_loaded", f=", ".join(fams)))
+        if bad:
+            self._status(self._t("gi_font_load_bad",
+                                 f=", ".join(os.path.basename(b)
+                                             for b in bad)))
+        return fams
 
     def _on_font(self, _i):
         fam = self.font_combo.currentData()
@@ -1119,11 +2342,419 @@ class GiongoPanel(QWidget):
         self._open[key] = bool(on)
         self._set("giongoOpen", json.dumps(self._open))
 
+    # --- the preview you can grab ------------------------------------------
+    def letter_edit_of(self, key):
+        """The four numbers of one letter's edit, for a drag to start from."""
+        if not key:
+            return None
+        return G.letter_edit(self._params, key[0], key[1])
+
+    # --- liquify -----------------------------------------------------------
+
+    def liquify_armed(self):
+        """Is the brush on? The preview asks before it moves a letter."""
+        return bool(self.liq_chk.isChecked())
+
+    def _on_liquify_armed(self, on):
+        if on:
+            self.set_tool("liquify")
+            return
+        if self.tool() == "liquify":
+            self.set_tool("move")
+            return
+        self.preview.set_brush(W.radius_for(self._params["liquify_size"])
+                               if on else 0.0)
+        self._status(self._t("gi_liq_on_tip") if on else "")
+
+    def liquify_step(self, scene, prev, alt=False):
+        """One step of a drag with the brush, at a point in scene units."""
+        pl = G.nearest_letter(self._places, scene)
+        if pl is None:
+            return
+        tr, ok = R.letter_transform(pl).inverted()
+        if not ok:
+            return
+        here = tr.map(QPointF(scene[0], scene[1]))
+        was = tr.map(QPointF(prev[0], prev[1]))
+        dabs = W.dabs_for(self._params.get("liquify_mode", "push"),
+                          was.x(), was.y(), here.x(), here.y(),
+                          self._params["liquify_size"],
+                          self._params["liquify_force"],
+                          self._params["liquify_hard"])
+        if alt:
+            dabs = [W.invert(d) for d in dabs]
+        if not self._drag_open:     # one undo step for the whole stroke
+            self._drag_open = True
+            self._history.append(G.sanitize(self._params))
+            del self._history[:-_HISTORY]
+            self._future = []
+            self._refresh_history_ui()
+        for d in dabs:
+            W.add_dab(self._params, pl["group"], pl["index"], d)
+        self._schedule_live()
+
+    def on_reset_warps(self, *_a):
+        """Every letter back to the shape the font drew."""
+        if not W.has_warp(self._params):
+            return
+        self._push_history()
+        W.clear_warp(self._params)
+        self._schedule()
+        self._status(self._t("gi_liq_reset_done"))
+
+    # --- the outline's own points ------------------------------------------
+
+    # --- which tool the pointer is -----------------------------------------
+
+    TOOLS = ("move", "liquify", "points", "erase")
+
+    def tool(self):
+        return getattr(self, "_tool", "move")
+
+    def set_tool(self, key):
+        """Pick the tool the preview answers to. One at a time."""
+        key = key if key in self.TOOLS else "move"
+        self._tool = key
+        for k, b in self.tool_btns.items():
+            b.setChecked(k == key)
+        self.liq_chk.blockSignals(True)
+        self.liq_chk.setChecked(key == "liquify")
+        self.liq_chk.blockSignals(False)
+        self.pts_chk.blockSignals(True)
+        self.pts_chk.setChecked(key == "points")
+        self.pts_chk.blockSignals(False)
+        self.preview.set_points(key == "points")
+        self.preview.set_brush(
+            W.radius_for(self._params["liquify_size"])
+            if key in ("liquify", "erase") else 0.0)
+        self._refresh_legend()
+        self._status("")
+
+    def erase_armed(self):
+        return self.tool() == "erase"
+
+    def _refresh_legend(self):
+        self.legend_lbl.setText(self._t("gi_legend_" + self.tool()))
+
+    def erase_step(self, scene, prev):
+        """Wipe the letter under the pointer along the way just travelled.
+
+        The whole step is taken off at once, as a line with round ends,
+        so a fast drag leaves a stroke and not a row of bites.
+        """
+        key = self.preview.selected()
+        pl = self._placement(key) if key else None
+        if pl is None or pl["bar"]:
+            pl = G.nearest_letter(self._places, scene)
+            if pl is None or pl["bar"]:
+                return
+            key = (pl["group"], pl["index"])
+            self.preview.select(key)
+        if not self._drag_open:     # one undo step for the whole stroke,
+            self._drag_open = True  # opening the letter included
+            self._history.append(G.sanitize(self._params))
+            del self._history[:-_HISTORY]
+            self._future = []
+            self._refresh_history_ui()
+        cs = self.open_points(key)
+        if not cs:
+            return
+        tr, ok = R.letter_transform(pl).inverted()
+        if not ok:
+            return
+        here = tr.map(QPointF(scene[0], scene[1]))
+        was = tr.map(QPointF(prev[0], prev[1]))
+        r = W.radius_for(self._params["liquify_size"])
+        cut = QPainterPath()
+        cut.moveTo(was)
+        cut.lineTo(here)
+        # Qt's boolean ops hand back an odd-even path; the nodes are
+        # redrawn winding, which would fill the hole that was just cut.
+        # simplified() rewinds the contours so a hole stays a hole.
+        left = R.path_from_nodes(cs).subtracted(R._ring_cut(cut, r))
+        # Qt fills what it gives back odd-even, an outline of nodes is
+        # filled non-zero: the holes have to be wound to match
+        N.set_nodes(self._params, key[0], key[1],
+                    N.rewind(R.nodes_from_path(left)))
+        self._schedule_live()
+        self._status(self._t("gi_erased"))
+
+    def points_armed(self):
+        return bool(self.pts_chk.isChecked())
+
+    def _on_points_armed(self, on):
+        if on:
+            self.set_tool("points")
+            return
+        if self.tool() == "points":
+            self.set_tool("move")
+            return
+        self.preview.set_points(on)
+        self._status(self._t("gi_pts_on_tip") if on else "")
+
+    def _letter_space(self, key):
+        """(placement, scene -> em transform) for one letter, or None."""
+        pl = self._placement(key) if key else None
+        if pl is None or pl["bar"]:
+            return None, None
+        inv, ok = R.letter_transform(pl).inverted()
+        return (pl, inv) if ok else (pl, None)
+
+    def open_points(self, key):
+        """Freeze a letter's outline so its points can be taken hold of.
+
+        Whatever it looks like now - the font, a pen, a warp - becomes
+        the points. The warp is folded in and cleared, or it would be
+        applied a second time on top of the outline it is already in.
+        """
+        pl = self._placement(key)
+        if pl is None or pl["bar"]:
+            return []
+        if N.has_nodes(self._params, key[0], key[1]):
+            return N.nodes_of(self._params, key[0], key[1])
+        pen = self._params.get("pen", "off")
+        shape = R.em_shape(pl, G.resolve_font(self._params, self.families()),
+                           self._params["bold"], pen, self._params["seed"],
+                           self._params.get("pen_width", 100),
+                           BR.style_from(G.effective(self._params), pen),
+                           W.warp_of(self._params, key[0], key[1]), ())
+        cs = R.nodes_from_path(shape)
+        if not cs:
+            return []
+        if not self._drag_open:
+            # a drag that begins by opening a letter is one step, not two
+            self._push_history()
+        N.set_nodes(self._params, key[0], key[1], cs)
+        W.clear_warp(self._params, key[0], key[1])
+        self._schedule()
+        self._status(self._t("gi_pts_opened", n=N.count(cs)))
+        return cs
+
+    def point_contours(self, key=None):
+        """The nodes of the letter being edited, in its own em."""
+        key = key or self.preview.selected()
+        if not key:
+            return []
+        return N.nodes_of(self._params, key[0], key[1])
+
+    def point_overlay(self):
+        """What the preview draws: points and handles in scene units."""
+        key = self.preview.selected()
+        pl, _inv = self._letter_space(key)
+        if pl is None:
+            return []
+        cs = self.point_contours(key)
+        if not cs:
+            return []
+        tr = R.letter_transform(pl)
+        out = []
+        for ci, ring in enumerate(cs):
+            for ni, n in enumerate(ring):
+                pt = tr.map(QPointF(n[0], n[1]))
+                item = {"ci": ci, "ni": ni, "smooth": bool(n[6]),
+                        "p": (pt.x(), pt.y()), "in": None, "out": None}
+                if n[2] or n[3]:
+                    h = tr.map(QPointF(n[0] + n[2], n[1] + n[3]))
+                    item["in"] = (h.x(), h.y())
+                if n[4] or n[5]:
+                    h = tr.map(QPointF(n[0] + n[4], n[1] + n[5]))
+                    item["out"] = (h.x(), h.y())
+                out.append(item)
+        return out
+
+    def point_press(self, scene, grab_px, scale, alt=False, shift=False):
+        """A press in points mode. Returns what is now being dragged."""
+        key = self.preview.selected()
+        pl, inv = self._letter_space(key)
+        if pl is None or inv is None:
+            pl2 = G.nearest_letter(self._places, scene)
+            if pl2 is None or pl2["bar"]:
+                return None
+            self.preview.select((pl2["group"], pl2["index"]))
+            self.open_points((pl2["group"], pl2["index"]))
+            return None
+        cs = self.point_contours(key)
+        if not cs:
+            self.open_points(key)
+            cs = self.point_contours(key)
+            if not cs:
+                return None
+        here = inv.map(QPointF(scene[0], scene[1]))
+        x, y = here.x(), here.y()
+        # the pointer's reach, in the letter's own units
+        tol = grab_px / max(1e-6, scale) * (R._REF / max(1.0, pl["size"]))
+        if not (alt or shift):
+            # a plain drag may take a handle; Alt and Shift mean the point
+            hit = N.nearest_handle(cs, x, y, tol)
+            if hit is not None:
+                return ("handle", hit[0], hit[1], hit[2])
+        hit = N.nearest_node(cs, x, y, tol)
+        if hit is not None:
+            ci, ni = hit
+            if alt:
+                self._push_history()
+                N.set_nodes(self._params, key[0], key[1],
+                            N.delete_node(cs, ci, ni))
+                self._schedule()
+                return None
+            if shift:
+                self._push_history()
+                N.set_nodes(self._params, key[0], key[1],
+                            N.toggle_smooth(cs, ci, ni))
+                self._schedule()
+                return None
+            return ("node", ci, ni, None)
+        seg = N.nearest_segment(cs, x, y)
+        if seg is not None and seg[3] <= tol * 1.5:
+            self._push_history()
+            N.set_nodes(self._params, key[0], key[1],
+                        N.insert_node(cs, seg[0], seg[1], seg[2]))
+            self._schedule()
+            return ("node", seg[0], seg[1] + 1, None)
+        # nowhere near this letter: pick up another one
+        other = G.nearest_letter(self._places, scene)
+        if other is not None and (other["group"], other["index"]) != key \
+                and not other["bar"]:
+            self.preview.select((other["group"], other["index"]))
+            self.open_points((other["group"], other["index"]))
+        return None
+
+    def point_drag(self, what, scene):
+        """Move the point or handle that is being dragged."""
+        kind, ci, ni, which = what
+        key = self.preview.selected()
+        pl, inv = self._letter_space(key)
+        if pl is None or inv is None:
+            return
+        cs = self.point_contours(key)
+        if ci >= len(cs) or ni >= len(cs[ci]):
+            return
+        here = inv.map(QPointF(scene[0], scene[1]))
+        if not self._drag_open:
+            self._drag_open = True
+            self._history.append(G.sanitize(self._params))
+            del self._history[:-_HISTORY]
+            self._future = []
+            self._refresh_history_ui()
+        if kind == "handle":
+            N.move_handle(cs, ci, ni, which, here.x(), here.y())
+        else:
+            n = cs[ci][ni]
+            N.move_node(cs, ci, ni, here.x() - n[0], here.y() - n[1])
+        N.set_nodes(self._params, key[0], key[1], cs)
+        self._schedule_live()
+
+    def on_reset_points(self, *_a):
+        if not N.has_nodes(self._params):
+            return
+        self._push_history()
+        N.clear_nodes(self._params)
+        self._schedule()
+        self._status(self._t("gi_pts_reset_done"))
+
+    def preview_drag(self, what, scene, start, key, before):
+        """One step of a drag in the preview, in scene coordinates.
+
+        The panel decides what the gesture means and writes it into the
+        parameters; the widget only says where the pointer went.
+        """
+        before_all = G.sanitize(self._params)
+        if what in ("end", "bend"):
+            if what == "end":
+                G.set_path_end(self._params, self.text(), scene,
+                               self._advance_fn())
+            else:
+                G.set_path_bend(self._params, self.text(), scene,
+                                self._advance_fn())
+            self._load_into_widgets()
+        elif key is not None and before is not None:
+            dx0, dy0, rot0, sc0 = before
+            pl = self._placement(key)
+            if pl is None:
+                return
+            if what == "move":
+                G.set_letter_edit(self._params, key[0], key[1],
+                                  dx=dx0 + scene[0] - start[0],
+                                  dy=dy0 + scene[1] - start[1])
+            elif what == "rotate":
+                # the angle the pointer makes with the letter, against the
+                # angle it made when the drag began
+                import math as _m
+                cx, cy = pl["x"], pl["y"]
+                a0 = _m.degrees(_m.atan2(start[1] - cy, start[0] - cx))
+                a1 = _m.degrees(_m.atan2(scene[1] - cy, scene[0] - cx))
+                G.set_letter_edit(self._params, key[0], key[1],
+                                  rot=rot0 + (a1 - a0))
+            elif what == "scale":
+                import math as _m
+                cx, cy = pl["x"], pl["y"]
+                d0 = _m.hypot(start[0] - cx, start[1] - cy)
+                d1 = _m.hypot(scene[0] - cx, scene[1] - cy)
+                if d0 > 1.0:
+                    G.set_letter_edit(self._params, key[0], key[1],
+                                      scale=sc0 * d1 / d0)
+        else:
+            return
+        if not self._drag_open:     # one step for the whole drag, pushed
+            self._drag_open = True  # with the parameters it started from
+            self._history.append(G.sanitize(before_all))
+            del self._history[:-_HISTORY]
+            self._future = []
+            self._refresh_history_ui()
+        self._schedule_live()
+
+    def preview_drag_done(self):
+        """A drag is one step in the history, not one per mouse move."""
+        self._drag_open = False
+        self._save_state()
+
+    def reset_letter(self, key):
+        """Double-click: this letter goes back to what the parameters say."""
+        self._push_history()
+        G.set_letter_edit(self._params, key[0], key[1], dx=0.0, dy=0.0,
+                          rot=0.0, scale=1.0)
+        W.clear_warp(self._params, key[0], key[1])
+        self._schedule()
+
+    def reset_letters(self):
+        self._push_history()
+        G.clear_letter_edits(self._params)
+        W.clear_warp(self._params)
+        self._schedule()
+        self._status(self._t("gi_letters_reset"))
+
+    def _placement(self, key):
+        for pl in self._places:
+            if (pl["group"], pl["index"]) == key:
+                return pl
+        return None
+
+    def _advance_fn(self):
+        """Letter advances from the real font, so the path handles sit where
+        the letters really end."""
+        return R.advance_fn(self._params,
+                            G.resolve_font(self._params, self.families()))
+
     # --- preview -----------------------------------------------------------
 
     def _schedule(self):
         self._preview_timer.start()
         self._save_timer.start()
+
+    def _schedule_live(self):
+        """While a drag is running: keep up with the pointer.
+
+        `_schedule` waits for 90 ms of quiet, which a moving hand never
+        gives it, so the preview only caught up when the drag stopped.
+        """
+        self._save_timer.start()
+        now = _time.monotonic()
+        if now - self._last_live >= 0.04:
+            self._last_live = now
+            self._live_timer.stop()
+            self._refresh_preview()
+        else:
+            self._live_timer.start()        # the last step must still land
 
     def _background(self):
         bg = self.bg_combo.currentData() or "check"
@@ -1209,16 +2840,31 @@ class GiongoPanel(QWidget):
         columns = self._split_blocks(cols)
         rows = 0
         for c, column in enumerate(columns):
-            for r, block in enumerate(column):
-                grid.addWidget(block, r, c)
-                block.setParent(self)
-                block.show()
-            rows = max(rows, len(column))
+            if c > 0 or cols <= 1:
+                for r, block in enumerate(column):
+                    grid.addWidget(block, r, c)
+                    block.setParent(self)
+                    block.show()
+                rows = max(rows, len(column))
             # the first column carries the preview, so it may take more room
             grid.setColumnStretch(c, 3 if c == 0 else 2)
         for c in range(len(columns), 4):
             grid.setColumnStretch(c, 0)
+        if cols > 1 and columns and columns[0]:
+            # the canvas column spans every row there is, the stretch row
+            # included, so the preview fills the height of the window
+            block = columns[0][0]
+            grid.addWidget(block, 0, 0, max(1, rows) + 1, 1)
+            block.setParent(self)
+            block.show()
+        for r in range(rows):
+            grid.setRowStretch(r, 0)
         grid.setRowStretch(rows, 1)
+        # in a window the canvas is the point of the thing: it gets most
+        # of the height outright, rather than whatever the other widgets
+        # in its column leave over
+        self.preview.setMinimumHeight(
+            max(260, int(self.height() * 0.45)) if cols > 1 else 200)
 
     # --- tab or window ------------------------------------------------------
 
@@ -1254,6 +2900,7 @@ class GiongoPanel(QWidget):
             return
         if self._window is not None:
             self._remember_geometry(self._window)
+            self._window.release_panel()
         self._popped = False
         self._window = None
         if self._home is not None:
@@ -1267,19 +2914,50 @@ class GiongoPanel(QWidget):
         self._set("giongoWinGeom", "%d,%d,%d,%d"
                   % (g.x(), g.y(), g.width(), g.height()))
 
+    @staticmethod
+    def _screen_area(x, y, fallback):
+        """The usable area of the screen at (x, y), or of `fallback`'s."""
+        try:
+            scr = QGuiApplication.screenAt(QPoint(int(x), int(y)))
+        except Exception:               # noqa: BLE001
+            scr = None
+        if scr is None:
+            scr = fallback.screen() if hasattr(fallback, "screen") else None
+        if scr is None:
+            scr = QGuiApplication.primaryScreen()
+        return scr.availableGeometry() if scr is not None else None
+
     def _restore_geometry(self, win):
-        """Put the window back where it was, if that is still on a screen."""
+        """Put the window back where it was, if that is still on a screen.
+
+        Whatever is stored, the window has to end up somewhere the user
+        can reach: inside one screen's usable area, title bar included.
+        """
         raw = self._get("giongoWinGeom", "")
         parts = [p for p in str(raw).split(",") if p.strip()]
+        x = y = None
+        w, h = 1180, 760
         if len(parts) == 4:
             try:
-                x, y, w, h = (int(p) for p in parts)
+                sx, sy, sw, sh = (int(p) for p in parts)
             except ValueError:
-                x = y = w = h = 0
-            if w >= 420 and h >= 320:
-                win.setGeometry(x, y, w, h)
-                return
-        win.resize(1180, 760)
+                sx = sy = sw = sh = 0
+            if sw >= 420 and sh >= 320:
+                x, y, w, h = sx, sy, sw, sh
+        area = self._screen_area(x if x is not None else 0,
+                                 y if y is not None else 0, win)
+        if area is not None:
+            w = max(420, min(w, area.width() - 40))
+            h = max(320, min(h, area.height() - 60))
+            if x is None or y is None:
+                x = area.x() + (area.width() - w) // 2
+                y = area.y() + (area.height() - h) // 2
+            x = max(area.x(), min(x, area.x() + area.width() - w))
+            y = max(area.y(), min(y, area.y() + area.height() - h))
+        if x is None or y is None:
+            win.resize(w, h)
+            return
+        win.setGeometry(int(x), int(y), int(w), int(h))
 
     def set_active(self, on):
         """The docker calls this when its tab comes to the front or leaves.
@@ -1363,6 +3041,20 @@ class GiongoPanel(QWidget):
             self.preview.setText(str(exc))
             return
         self.preview.setPixmap(QPixmap.fromImage(img))
+        # what the preview may be grabbed by: where every letter landed and
+        # where the path runs, in the same coordinates, with the transform
+        # that maps them onto the image just drawn
+        try:
+            adv = self._advance_fn()
+            self._places = G.layout(self.text(), self._params,
+                                    advance_fn=adv)
+            k, ox, oy = R.thumb_transform(scene, w, h)
+            self.preview.set_frame(k, ox, oy, img.width(), img.height(),
+                                   self._places,
+                                   G.path_points(self.text(), self._params,
+                                                 0, adv))
+        except Exception:               # noqa: BLE001
+            self._places = []
 
     def showEvent(self, ev):            # noqa: N802 (Qt API)
         super().showEvent(ev)
@@ -1386,16 +3078,73 @@ class GiongoPanel(QWidget):
 
     # --- history -----------------------------------------------------------
 
-    def _push_history(self):
+    def _push_history(self, key=None):
+        """Remember what the parameters are, before they change.
+
+        `key` coalesces: dragging a slider calls this on every tick, and
+        forty steps of the same slider are one thing the user did, not
+        forty. A different slider, or a second of quiet, starts a new
+        step. Anything that is one action anyway passes no key.
+        """
+        now = _time.monotonic()
+        if key is not None and key == self._hist_key \
+                and now - self._hist_at < 1.0:
+            self._hist_at = now
+            return
+        self._hist_key, self._hist_at = key, now
         self._history.append(G.sanitize(self._params))
         del self._history[:-_HISTORY]
+        self._future = []
+        self._refresh_history_ui()
+
+    def _refresh_history_ui(self):
+        self.back_btn.setEnabled(bool(self._history))
+        self.fwd_btn.setEnabled(bool(self._future))
 
     def on_back(self, *_a):
         if not self._history:
             return
+        self._future.append(G.sanitize(self._params))
+        del self._future[:-_HISTORY]
         self._params = self._history.pop()
+        self._hist_key = None
         self._load_into_widgets()
+        self._refresh_history_ui()
         self._schedule()
+
+    def on_forward(self, *_a):
+        """The step that was just undone, back again."""
+        if not self._future:
+            return
+        self._history.append(G.sanitize(self._params))
+        del self._history[:-_HISTORY]
+        self._params = self._future.pop()
+        self._hist_key = None
+        self._load_into_widgets()
+        self._refresh_history_ui()
+        self._schedule()
+
+    def _editor_under_focus(self):
+        """The text field the user is typing in, if it is one of ours."""
+        w = QApplication.focusWidget()
+        if isinstance(w, (QPlainTextEdit, QLineEdit)) and self.isAncestorOf(w):
+            return w
+        return None
+
+    def on_undo_key(self):
+        """Ctrl+Z. While typing it belongs to the field, not to us."""
+        w = self._editor_under_focus()
+        if w is not None:
+            w.undo()
+            return
+        self.on_back()
+
+    def on_redo_key(self):
+        w = self._editor_under_focus()
+        if w is not None:
+            w.redo()
+            return
+        self.on_forward()
 
     # --- auto, gacha, mutate -----------------------------------------------
 
@@ -1459,24 +3208,100 @@ class GiongoPanel(QWidget):
 
     # --- output ------------------------------------------------------------
 
+    def save_scale(self):
+        """What PNG and ZIP are rendered at, 1 to 4."""
+        try:
+            return max(1, min(4, int(self.scale_combo.currentData() or 1)))
+        except (TypeError, ValueError):
+            return 1
+
+    def save_zip(self, path, scene=None, scale=None):
+        """Every layer as its own PNG in one ZIP. Returns how many."""
+        import zipfile
+        scene = scene or self.scene()
+        pngs = R.layer_pngs(scene, scale=scale or self.save_scale())
+        if not pngs:
+            return 0
+        try:
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                for name, data in pngs:
+                    z.writestr(name, data)
+                z.writestr("README.txt", self._zip_readme(pngs))
+        except OSError:
+            return 0
+        self._set("giongoSaveDir", os.path.dirname(path))
+        return len(pngs)
+
+    def _zip_readme(self, pngs):
+        return ("TypeR / Giongo - one PNG per layer, all the same size and\n"
+                "all on the same canvas, so stacking them in this order\n"
+                "gives the lettering back:\n\n"
+                + "".join("  %s\n" % n for n, _d in pngs))
+
+    def save_psd(self, path, scene=None, scale=None):
+        """The layers as a PSD, written by Krita. None without Krita."""
+        try:
+            from krita import Krita, InfoObject
+        except ImportError:
+            return None
+        scene = scene or self.scene()
+        imgs = R.render_layers(scene, scale=scale or self.save_scale())
+        if not imgs:
+            return None
+        w, h = imgs[0][1].width(), imgs[0][1].height()
+        app = Krita.instance()
+        doc = app.createDocument(w, h, "Giongo", "RGBA", "U8", "", 300.0)
+        root = doc.rootNode()
+        for old in list(root.childNodes()):
+            root.removeChildNode(old)
+        for name, img in imgs:
+            img = img.convertToFormat(QImage.Format.Format_ARGB32)
+            node = doc.createNode(name, "paintlayer")
+            root.addChildNode(node, None)
+            nbytes = (img.sizeInBytes() if hasattr(img, "sizeInBytes")
+                      else img.byteCount())
+            buf = img.constBits()
+            buf.setsize(nbytes)
+            node.setPixelData(bytes(buf), 0, 0, img.width(), img.height())
+        doc.refreshProjection()
+        try:
+            ok = doc.exportImage(path, InfoObject())
+        except Exception:               # noqa: BLE001
+            ok = doc.saveAs(path)
+        doc.close()
+        if ok:
+            self._set("giongoSaveDir", os.path.dirname(path))
+        return len(imgs) if ok else None
+
     def on_save(self, kind):
         scene = self.scene()
         if scene.is_empty():
             self._status(self._t("gi_empty"))
             return
         last = self._get("giongoSaveDir", "")
-        filt = "PNG (*.png)" if kind == "png" else "SVG (*.svg)"
+        filt = {"png": "PNG (*.png)", "svg": "SVG (*.svg)",
+                "zip": "ZIP (*.zip)",
+                "psd": "Photoshop (*.psd)"}.get(kind, "PNG (*.png)")
         path, _f = QFileDialog.getSaveFileName(self, "", last, filt)
         if not path:
             return
         if not path.lower().endswith("." + kind):
             path += "." + kind
+        if kind == "zip":
+            n = self.save_zip(path, scene)
+            self._status(self._t("gi_saved_zip", n=n, p=path) if n
+                         else self._t("gi_save_fail", p=path))
+            return
+        if kind == "psd":
+            n = self.save_psd(path, scene)
+            self._status(self._t("gi_saved", p=path) if n
+                         else self._t("gi_save_fail", p=path))
+            return
         ok = self.save_to(path, scene)
         self._status(self._t("gi_saved" if ok else "gi_save_fail", p=path))
 
     def save_to(self, path, scene=None):
         """Write the lettering to `path` (.png or .svg). True on success."""
-        import os
         scene = scene or self.scene()
         try:
             if path.lower().endswith(".svg"):
@@ -1484,7 +3309,7 @@ class GiongoPanel(QWidget):
                     fh.write(R.to_svg(scene))
                 ok = True
             else:
-                img, _tl = R.render_image(scene)
+                img, _tl = R.render_image(scene, scale=self.save_scale())
                 ok = bool(img.save(path, "PNG"))
         except OSError:
             return False

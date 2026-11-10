@@ -744,10 +744,10 @@ name them as suggestions and fall back to the default sans.
   `giongoOpen`, `giongoBg`, `giongoFit`, `giongoSaveDir`
 - Tests: `test_giongo.py`
 
-Not (yet) rebuilt from the original: brush lettering drawn from extracted
-centrelines (pen / marker / brush / slab / lightning strokes), decorations
-(impact rays, debris, sparkle, drops), point editing and liquify, the page
-mode, PSD / per-layer export.
+Not rebuilt from the original: the page mode (the page is already
+there in Krita) and the share link (there is no service behind it). Brush lettering along the centre lines (pen, marker,
+brush, board, lightning, rough) is rebuilt and lives in `giongo_brush.py` with
+`strokelines.txt`.
 
 ### Is there a newer version?
 
@@ -822,6 +822,32 @@ due at once the nested dialogs killed the process outright. For the same
 reason the deferred check hangs off a `QTimer` owned by the docker rather
 than a bare `QTimer.singleShot`, which would still fire after the docker was
 gone and reach a deleted C++ object.
+
+### A letter of its own, and a path you can grab
+
+Two gestures in the Giongo preview. **Click a letter** to pick it up: drag
+to move it, the ring above it to turn it, the square to resize it,
+double-click to put it back. **Drag the end of the path** to aim and stretch
+the whole effect, and the handle in its middle to bend it.
+
+- `giongo.py` → `letter_edit`, `set_letter_edit`, `clear_letter_edits`,
+  `natural_length`, `path_for_text`, `path_points`, `set_path_end`,
+  `set_path_bend`, `nearest_letter`; the per-letter edit is applied at the
+  end of `layout()`
+- `giongo_ui.py` → `GiongoPreview` (the widget that finds what is under the
+  pointer and draws the handles) and `preview_drag` / `reset_letter` on the
+  panel, which decide what a drag means
+- `giongo_render.py` → `thumb_transform` (the scene → preview mapping, so a
+  click can be mapped back) and `advance_fn`
+
+Three things. **The drags write into the parameters that already exist** -
+`rise`, `spacing`, `bend` and a per-letter table - so gacha, the history,
+saving and the insert path keep working without knowing a mouse was
+involved. **The inverse is exact**: dragging the end handle to a point puts
+the end of the path on that point, because the arc length is linear in the
+spacing and can be solved rather than searched. And **an edit put back to
+neutral is deleted**, not stored as zeroes, so a letter that was moved and
+moved back leaves nothing in the saved parameters.
 
 ### Fitting to the bubble's outline
 
@@ -1029,6 +1055,471 @@ references it.
 
 **If it wins:** the strip's layout is the part worth moving into TypeR proper —
 not this file.
+
+### Decorations: rays, debris, sparkle, drops
+
+What gets thrown off the lettering. Four kinds, with how many, how big and
+how far out, scattered reproducibly from the seed - so a gacha roll moves
+them and a reroll leaves them where they are.
+
+- `giongo.py` -> `DECOS`, `deco_items()` (where each piece goes, as plain
+  numbers - Qt-free, like `layout()`), `deco`, `deco_n`, `deco_size`,
+  `deco_dist`, and `_roll_deco` / `_DECO_TASTE` for the gacha
+- `giongo_render.py` -> `deco_path()` (what each piece looks like) and the
+  block in `build_scene` that puts them in
+- `giongo_ui.py` -> a Decorations section of its own in the panel
+- Tests: the placement is arithmetic, so most of it is tested without Qt
+
+**Where they go is not what they look like.** The placement is arithmetic
+on the finished word's box and lives in `giongo.py`, where it can be tested
+headless; only the shapes need Qt. The same split as `layout()` and
+`letter_path()`.
+
+**The parameter angle is not the direction.** Pieces are spread by walking
+the circle in equal slices, but they are placed on the *oval* of the word,
+and on a flat oval the point at 45 degrees sits nowhere near 45 degrees
+from the middle. Impact rays are 集中線: every one has to aim at the
+middle, so the direction is taken from where the piece actually landed,
+not from the angle it was spread at. The first version had it the other
+way round and the rays only roughly looked as if they converged; a test
+measures it now. A drop flies outward too (within 25 degrees); a shard or
+a sparkle has no front and may lie as it likes.
+
+**Behind the lettering, and with its outline.** Decorations go in front of
+every other layer in the list, so nothing scattered can cover a letter,
+and each piece gets the first outline the lettering has - otherwise they
+would vanish on dark art while the letters stayed readable. All the
+outlines are built first and the pieces then drawn over them, or one
+piece's outline would cut into the piece beside it.
+
+The gacha scatters something about three times in ten, and the kind
+follows the sound: an impact bursts into rays, something cute sparkles,
+`ポタ` throws drops.
+
+### Line only, and line in a tone
+
+Two more fills: the letter as its own contour, hollow inside, and the same
+contour filled with a screentone. The line's width is its own slider
+(`fill_line_w`, % of the letter size).
+
+- `giongo.py` -> `"line"` and `"line_tone"` in `FILL_MODES`, `fill_line_w`
+- `giongo_render.py` -> `_ring` and the `fill_layer` helper in `build_scene`
+- `giongo_ui.py` -> the width slider, awake only for those two fills; the
+  dot spacing is awake for "line_tone" as well
+
+**`_ring`, not `_stroke`.** The outlines want the band *united with* the
+shape - that is what an outline is. A hollow letter wants the band alone, so
+`_ring` keeps `createStroke`'s result and nothing else.
+
+**It stays vector art.** The ring is one path painted solid, so "line only"
+still goes into Krita as a vector layer; "line in a tone" is painted and
+reports `needs_raster()` like the other toned fills, through the same rule
+(`paint in ("tone", "pattern")`) rather than a second list to keep in sync.
+
+**White and grey are not rebuilt.** They are in the original's fill menu,
+but here the fill colour is a colour button: a menu entry that sets it to
+white would be the same click with less freedom.
+
+**The halftone used to shade the wrong way** (fixed with this). It is meant
+to grow from nothing at the top of the word to solid at the bottom. The dots
+are laid on a grid in a frame the painter has rotated by 45 degrees, and
+each dot's size comes from where it sits in the *unrotated* word - which is
+`R(+45)` of where it sits in that frame, not `R(-45)`. With the sign the
+other way round the formula reduces to `-x`: the shading ran across the word
+instead of down it, so a wide SFX came out solid at one end and blank at the
+other. Two tests measure the ink now: the lower half carries more than the
+upper, and the two ends carry about the same.
+
+### Undo and redo in the Giongo panel
+
+"Back" undid an Auto or a Gacha roll and nothing else, and there was no
+way forward. Now every change is a step, with the keys everyone reaches
+for.
+
+- `giongo_ui.py` -> `_push_history(key)`, `_future`, `on_forward`,
+  `_refresh_history_ui`, `on_undo_key` / `on_redo_key`, the `↷ Forward`
+  button beside `↶ Back`
+
+**One thing the user did is one step.** `_push_history` takes the key of
+whatever is changing: the same slider again inside a second extends the
+step it already pushed instead of pushing forty of them, a different
+slider starts a new one. A drag in the preview pushes once, with the
+parameters it started from, and ends when the mouse is let go.
+
+**Ctrl+Z belongs to whoever has the focus.** The shortcuts are bound to
+the panel with `WidgetWithChildrenShortcut`, so Krita's own undo on the
+canvas is untouched - and this is the one case where `QShortcut` works
+at all here, because the canvas only swallows keys from
+application-wide shortcuts. While the cursor is in the text field, the
+keys are handed to the field so typing undoes typing.
+
+### The sound dictionary
+
+Sixty-five known Japanese sound effects to pick from instead of typing:
+kana, reading, what it means, and the Giongo type that suits it.
+
+- `giongo_dict.py` -> `SOUNDS`, `entries()`, `find()`, `gloss()`,
+  `plain()`, `by_type()` - Qt-free and tested on its own
+- `giongo_ui.py` -> `SoundDialog` (search + list, not modal) and
+  `take_sound()`; the 📖 button sits beside the text field
+
+**Picking sets the look as well.** The kana goes in at the cursor and the
+entry's type is applied with it, in one undo step - that pairing is the
+reason to pick from a list rather than type the kana.
+
+**Searching meets people where they type.** `plain()` collapses the long
+vowels, so `dokan` finds ドカーン whose reading is `dokaan`. The kana, the
+reading and the meaning are all searched, in the interface language and
+in English, and an exact reading outranks a sound that merely contains
+it (`don` finds ドン before ゴロゴロ, whose German meaning happens to
+contain "Donner").
+
+### Liquify: pushing the letters about
+
+A brush in the preview. Switch it on, drag, and the letter under the
+pointer is pushed, swollen, drawn in or turned - the step from a letter
+that was generated to one that was drawn.
+
+- `giongo_warp.py` -> `MODES`, `falloff`, `dab`, `displace`,
+  `warp_points`, `dab_for` / `radius_for`, `invert`, `add_dab`,
+  `warp_of` / `clear_warp` / `has_warp`, `sanitize_table`,
+  `fingerprint`. Qt-free: a warp is numbers, so it is stored, shared,
+  undone and tested without a window
+- `giongo_render.py` -> `warp_path` (resample, then displace) and
+  `letter_transform`; the warp is part of the letter's cache key
+- `giongo_ui.py` -> the Liquify section, `liquify_step`, the brush ring
+  under the pointer, Alt to turn the tool round
+- `giongo.py` -> `warps` in the parameters, plus the three sliders
+
+**A warp belongs to a letter, not to a place on the page.** The dabs are
+in the glyph's own em - the box `glyph()` draws into, before the letter
+is turned, leaned, scaled and placed - so a warped letter can still be
+moved, rotated, resized and re-laid-out and takes its dents with it. The
+panel maps the pointer into that space with the inverse of
+`letter_transform`.
+
+**The outline is walked at a steady step before it is pushed.** A
+contour as the font drew it has long straight runs between its points,
+and a brush that lands in the middle of one would move nothing at all.
+`warp_path` resamples at a fraction of the brush radius first.
+
+**One dab cannot fold the outline over itself** (`MAX_PULL`): a brush
+that moved a point further than its own radius would drag the points on
+one side past those on the other and the letter would come apart into
+noodles. Pinch additionally never pulls a point past the middle. Enough
+strokes will still fold anything - as they do in any such tool - but one
+slider at its maximum will not.
+
+**A stroke is one undo step**, pushed when it starts, like a drag of a
+letter. Double-clicking a letter puts its warp back along with its
+position, and "Undo all warping" clears the lot.
+
+**It is cached like everything else about a letter**: the dabs go into
+the shape's cache key through `fingerprint()`, so dragging the brush
+rebuilds one letter per step and leaves the others alone.
+
+### The outline's own points
+
+The other half of "from generated to drawn": take hold of the outline
+itself. Switch Points on, click a letter to open it, then drag its
+points and handles; a click on the outline between two points adds one,
+Alt+click deletes one, Shift+click switches a corner to a curve and
+back.
+
+- `giongo_nodes.py` -> the node format, `insert_node` (de Casteljau),
+  `delete_node`, `set_smooth` / `toggle_smooth`, `move_node`,
+  `move_handle` (mirrors on a smooth node), `nearest_node` /
+  `nearest_handle` / `nearest_segment`, `fingerprint`. Qt-free
+- `giongo_render.py` -> `nodes_from_path` / `path_from_nodes` and
+  `em_shape`, which decides what a letter is made of
+- `giongo_ui.py` -> the Points section, `open_points`, `point_press` /
+  `point_drag` / `point_overlay`, and the markers in the preview
+- `giongo.py` -> `nodes` in the parameters
+
+**Opening a letter freezes what it looks like now.** Whatever it is
+made of - the font, a pen, a liquify warp - becomes the points, and the
+warp is cleared as it is folded in, or it would be applied a second time
+on top of the outline it is already part of. A test checks that opening
+a warped letter does not change a single pixel of it.
+
+**A path to numbers and back, exactly.** A font's outline is already
+lines and cubics, and `nodes_from_path` keeps them as they are rather
+than sampling them - five glyphs from four fonts come back pixel for
+pixel identical, which is the test. The one liberty taken is the closing
+point: a closed contour comes back with its last point on top of its
+first, so that point's incoming handle is moved onto the first and the
+duplicate dropped.
+
+**Adding a point never changes the shape.** `insert_node` splits the
+segment with de Casteljau, so the two halves together are the curve that
+was there; the new point only gives something to take hold of.
+
+**The gestures find what they are for.** A plain drag may take a handle,
+but Alt and Shift are gestures on a *point* and look for one first -
+otherwise a handle lying near its own point swallows the click, which it
+did on the first try.
+
+Nodes live in the glyph's own em, like a warp, so an edited letter still
+follows the layout, the per-letter edits and the path. Both are part of
+the letter's cache key, so editing a point rebuilds one letter.
+
+### Your own lettering as a letter style
+
+Images of drawn letters - files, a folder or a ZIP - are traced into
+outlines once, at import, and then drawn like any other letter: fill,
+outlines, shadow, the path, liquify and point editing all apply to
+them. A letter the set has not got is still drawn by the font.
+
+- `giongo_trace.py` -> `trace_image`, `sources` (files, folders, ZIPs),
+  `build_set`, `save_set` / `load_set`, `register` / `glyph_of`
+- `giongo_ui.py` -> the Lettering box beside the font, `import_lettering`
+- Stored as a `.typer-lettering.json` beside the images; kritarc keeps
+  the paths in `giongoLetterSets`
+
+**A file is the letter its name is.** `ド.png` is the lettering for ド.
+Anything whose name is not exactly one character is skipped and counted,
+rather than guessed at.
+
+**The tracing is Qt's work.** The mask becomes a `QRegion`, which merges
+its runs into rectangles, and that becomes a path; what is left to do is
+to drop the points that say nothing (Ramer-Douglas-Peucker) and hand the
+result to `giongo_nodes`, where it is an ordinary outline.
+
+**The settings came from measuring, not from taste.** Four glyphs from
+three fonts were drawn into images and traced back: at a tolerance of
+0.5 px the trace keeps 98.6 % of the shape, and *smoothing it costs ten
+points* (88 %) because the handles pinch thin strokes inward. So
+smoothing is off by default and kept as an option for lettering that is
+meant to look drawn rather than exact.
+
+### Saving: layers, scale, PSD
+
+- `giongo_render.py` -> `LAYER_GROUPS`, `layer_groups`, `render_layers`,
+  `layer_pngs`
+- `giongo_ui.py` -> `save_zip`, `save_psd`, the size box (1x-4x)
+
+**The ZIP is one PNG per layer, all the same size.** Every group is
+drawn on the *scene's* canvas rather than its own, so stacking them in
+another program gives the lettering back; a README in the ZIP says so
+and names the order.
+
+**The PSD is Krita's own.** The layers are put into a new Krita document
+and exported from there, rather than writing the format by hand. Without
+Krita it returns nothing and says so.
+
+**No share link.** The original uploads to its own service; there is
+none here, and a link to nothing is worse than no link. The settings
+already travel as text.
+
+### Font files that are not installed
+
+`QFontDatabase.addApplicationFont`, remembered as paths and loaded again
+at the next start.
+
+- `userfonts.py` -> `load` / `load_all`, `forget`, `families`,
+  `to_json` / `from_json`
+- `giongo_ui.py` -> the `+` beside the font box, `add_font_files`
+
+Qt reads .ttf, .otf and .ttc; .woff is a web format it does not take, so
+it is not offered. A file that has moved away since is reported rather
+than quietly missing.
+
+### The em is 200 units, not 1000
+
+`giongo_render._REF` is 200: glyph outlines are built at 200 px and
+scaled from there. Liquify and the tracing each wrote 1000 into their
+own copy of that constant, so **the brush was five times the size its
+slider said** and a traced letter came out five times too big beside the
+font's. Both are fixed, and a test now holds the three copies together
+(`WP.REF == R._REF == TR.REF`, and a brush at 100 % is one letter
+across).
+
+The brush's dabs are also laid *along* a drag now, a third of a radius
+apart: a hand moves further between two frames than a brush is wide, and
+one dab per frame tears the outline instead of dragging it. That only
+became visible once the brush was the size it claimed.
+
+### The window: a canvas with tools over it
+
+Laid out like the tool it rebuilds: the lettering fills the left of the
+window, the settings stand beside it, and the tools sit in a row over
+the canvas with a line under it saying what this tool does.
+
+- `giongo_ui.py` -> `set_tool` / `tool` and `tool_btns`, `_refresh_legend`,
+  the canvas height in `_place_blocks`
+- Four tools, one at a time: **Move**, **Liquify**, **Points**, **Erase**.
+  The switches inside the Liquify and Points sections and the buttons on
+  the bar are the same state, whichever is used
+
+**The window never takes the panel out of its scroll area.** It did,
+in the close event, and Krita died of it twice:
+`QScrollArea::ensureWidgetVisible` reading from address 4, under
+`QScrollArea::takeWidget`, under `QWidgetWindow::handleCloseEvent`. The
+scroll area now holds a plain widget for its whole life and the panel
+sits in that, so docking back reparents the panel out of something with
+no scrolling machinery to trip over. PyQt on this machine survives the
+old call, so the test cannot reproduce the fault - what it does is open
+and close the window three times, which would take the suite down with
+it.
+
+**The canvas gets the height outright.** It used to be one widget in a
+column of widgets and ended up as tall as its own size hint - 200 px in a
+820 px window. In a window it now takes 45 % of the height (and never so
+much that the line of gacha buttons under it is pushed out); in the
+docker, where the column is narrow, nothing changes.
+
+**Three controls in the fill section sat on top of each other** - thicken
+on the pattern button, the outline rows on the pattern scale - since
+1.21, in every docker. The row numbers are names now (`_R_THICKEN`,
+`_R_OUTLINES`, ...), so the next control added cannot land on somebody.
+
+### Wiping parts away
+
+The fourth tool: drag over a letter and what the brush touches is gone.
+
+- `giongo_ui.py` -> `erase_step`; `giongo_render.py` -> `_ring_cut`
+- `giongo_nodes.py` -> `rewind`, `signed_area`, `holds`, `reverse`
+
+The letter is opened for point editing first (so it has an outline of
+its own), and the whole step of the drag is taken off at once as a line
+with round ends - a fast drag leaves a stroke, not a row of bites. The
+outline that is left is an ordinary set of nodes, so the points can be
+tidied up afterwards and one undo takes the whole stroke back, the
+opening included.
+
+**A hole has to run the other way round.** Qt hands back a path from a
+boolean operation to be filled *odd-even*; an outline of nodes is drawn
+with the *non-zero* rule, like every font's. Drawn straight back, the
+bite came out filled solid again - measured: 11236 px instead of 9356.
+`rewind` turns every ring that sits inside an odd number of bigger ones.
+Which ring sits inside which is asked of a *point of* the ring, not of
+its middle: a box and the hole cut in its middle share a middle, and
+asking about that turned both of them round, which changes nothing.
+
+### Picking a font by looking at it
+
+`FontPickDialog`: the installed families, each row drawn in its own font
+with the sound effect itself as the sample, a search box over them, and
+the type's own font as the first row. At most 400 rows at a time - with
+a few thousand families the list is of no use until it is narrowed down,
+and the line underneath says how many are still hidden.
+
+The docker tab says in one line that this works best in its own window,
+beside the button that opens it.
+
+### What made the Giongo tab slow
+
+Three separate things, all measured rather than guessed, all fixed.
+
+**Thicken and outline are the same operation twice.** Both grow the
+letter outward by a round offset in page coordinates. The outlines were
+stroked onto the *already thickened* letter, and Qt had turned that
+letter's own outline into some 3,500 segments, so each
+`createStroke(...).united(...)` cost 20 ms - per outline, per letter. Two
+round offsets are one offset of their sum (a disc of radius a plus a disc
+of radius b is a disc of radius a+b), so the bands now grow out of the
+untouched letter by `thicken + width`. One frame with two outlines and
+thicken 2: **1352 ms -> 33 ms** (MS Gothic), 428 ms -> 20 ms (Bangers).
+The pictures before and after differ by less than a pixel at the
+anti-aliased edge, which is Qt flattening the round joins of one big
+offset slightly differently from two chained ones.
+
+**A letter's shape does not depend on where it sits.** `letter_shapes()`
+builds it at the origin and the caller moves it into place; `grown_band()`
+does the same for the bands around it. Both are cached on everything the
+shape depends on - character, font, size, angle, shear, pen, thicken -
+and *not* on the position, which is exactly what a drag changes sixty
+times a second. Dragging a letter: **23 ms -> 2 ms** per step, and the
+letters that are not being dragged cost nothing at all.
+
+**A drag has to draw while the hand moves.** `_schedule` restarts a 90 ms
+timer, which a moving hand never lets expire, so the preview only caught
+up when the drag stopped and the letter jumped at the end. A drag goes
+through `_schedule_live` instead: draw at once, at most every 40 ms, and
+the last step always lands through a short single-shot timer.
+
+**And the window would not fit.** Popped out, the panel's minimum height
+is over 1100 px and the window took it as its own, which is taller than a
+1080 px screen: the window could not be made shorter and sat with its
+bottom edge under the desktop. It holds the panel in a `QScrollArea` now
+(minimum height 85 px), and `_restore_geometry` finally does what its
+docstring always claimed - clamps the remembered geometry into the usable
+area of the screen it will appear on.
+
+Measuring this needed real fonts: with `QT_QPA_PLATFORM=offscreen` on this
+machine Qt reports **no font families at all**, every glyph comes out
+empty, and anything that counts ink or walks a contour measures nothing.
+The Giongo tests run both ways now, and the handful of checks that need a
+glyph say so.
+
+### Noise lines
+
+The edge of the lettering, walked again by a hand that wanders and lifts.
+Not Shake (whole copies of the word, offset) and not a pen (the stroke
+itself): this follows the contour that is already there, which is what
+makes hand-inked SFX look drawn rather than typeset.
+
+- `giongo.py` -> `noise_lines` (0-4 passes) and `noise_amp` (how far the
+  hand wanders, % of the letter size); Roughness widens the hand in
+  `effective()`
+- `giongo_render.py` -> `sketch_path` / `_resample`, and the `"noise"`
+  layers added after the fill
+- `giongo_ui.py` -> two sliders and the hand to draw with, under Shake
+
+**A damped walk, not fresh noise per point.** An offset drawn anew for
+every point is a jagged fringe; a hand drifts and comes back, so the offset
+keeps 72 % of itself and adds a little. **Resampled first**: the contour as
+Qt flattens it has long straight runs and crowded corners, and the wobble
+has to be evenly spaced to read as one hand, so the outline is walked at a
+steady step and jittered along its normal. It is flattened four times
+larger and divided back down, or the curves return as visible straight runs
+at the size the letters are actually drawn. And **the pen lifts**: without
+the gaps it is a closed loop around the letter, which reads as a second
+outline rather than as ink.
+
+**Three hands** (`NOISE_STYLES`, `NOISE_LOOK`): hand-drawn keeps 72 % of
+its last offset and lifts seldom - a line somebody drew; a dry brush lifts
+four times as often and is a touch wider, so it breaks into scratches; fuzz
+barely damps at all, steps finer and is drawn at half the width, which is
+the fringe rather than a line. One table of five numbers, no second
+algorithm.
+
+The passes go on the outermost silhouette, so they hug the edge the reader
+sees and not the glyph hidden under the white outline. They are line layers
+like Shake, so SVG and the vector insert get real strokes.
+
+### Negative, a dakuten button and a caption
+
+Three small things the drawn lettering needed in practice.
+
+- `giongo.py` -> `"negative"` in `FILL_MODES` with `neg_pad`; the combining
+  marks in `tokenize` (`_COMBINING`); `caption`, `caption_pos`, `caption_size`
+  with `R_CAPTION_POS`
+- `giongo_render.py` -> the negative branch in `build_scene`, and
+  `caption_path` / `place_caption`
+- `giongo_ui.py` -> the dakuten button beside the text field, the caption row
+  (field + where) and the caption-size slider
+
+**Negative is a shape, not a colour.** The letters are united, grown by
+`neg_pad` into one plate in the fill colour, and the letters themselves are
+then set in white on top of it. That way the hole is exactly the lettering,
+with the bends, the shear and the per-letter edits already in it, instead of
+a second set of glyphs that could drift.
+
+**A dakuten the font never drew.** ア゛ and ン゛ are standard manga: the mark
+on a letter that has no voiced form, so no font has a glyph for it. The two
+combining marks (U+3099 / U+309A) are attached to the token before them in
+`tokenize`, so the pair is laid out, bent and edited as *one* letter. A mark
+with nothing in front of it stays a letter of its own rather than vanishing.
+
+**The caption is not lettering.** A small "BOOM" under a drawn ドカーン, or a
+reading beside a kanji effect, is set plainly: no wobble, no gacha, no
+per-letter edits, no gradient or tone. It is placed last, against the
+bounding box of everything already drawn, so it never collides with the
+effect however far the letters were pushed around; the gap grows with the
+caption's own size, not with the effect's. It gets the first outline if there
+is one, for the same reason the lettering does: it has to stay readable on
+dark art.
 
 ## Conventions
 

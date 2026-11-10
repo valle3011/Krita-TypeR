@@ -13,6 +13,111 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22", {
+        "en": [
+            "The Giongo tab (drawn sound effects) grew a lot this time, "
+            "and it is “use it and tell me what breaks” rather than "
+            "finished. Expect rough edges, especially in Liquify: the "
+            "brush does what it says, but it is blunt - a firm stroke "
+            "smears a word rather than nudging it, and it has no "
+            "pressure, no smoothing and no undo while the mouse is down. "
+            "Everything here can be undone (Ctrl+Z), and nothing touches "
+            "your page until you insert it.",
+            "The letters can be drawn on now. Four tools sit over the "
+            "preview: move a letter, push it about with a brush "
+            "(Liquify), take hold of the outline’s own points, or wipe "
+            "parts of it away. A letter you have edited still follows the "
+            "layout, the path and the per-letter moves, and one undo "
+            "takes a whole stroke back.",
+            "Your own lettering can be the letter style. Point the import "
+            "at images, a folder or a ZIP — each file is the letter its "
+            "name is (ド.png is ド) — and they are traced into outlines "
+            "once and then drawn like any other letter, fill, outlines "
+            "and all.",
+            "A dictionary of 65 known sound effects to pick from instead "
+            "of typing: kana, reading and what it means, searchable in "
+            "German and English, and picking one sets the look that suits "
+            "it.",
+            "New in the look: a caption beside the effect (a small “BOOM” "
+            "under a drawn ドカーン), a dakuten button for ア゙ and ン゙, "
+            "negative lettering, line-only and line-in-halftone fills, "
+            "noise lines in three hands, and decorations — impact rays, "
+            "debris, sparkle, drops.",
+            "Undo and redo in the panel, on Ctrl+Z and Ctrl+Y, with every "
+            "change a step — and while you are typing in the text field "
+            "the keys belong to the field.",
+            "Saving: every layer as its own PNG in one ZIP (all on the "
+            "same canvas, so they stack again), a PSD written by Krita "
+            "itself, and a size of 1× to 4× for PNG and ZIP. Font files "
+            "that are not installed can be loaded by hand, and there is a "
+            "font list that shows each font in itself.",
+            "The tab is much faster. One frame with thicken and two "
+            "outlines cost 1352 ms and now costs 33; dragging a letter "
+            "cost 23 ms a step and now costs 2. Thicken and outline are "
+            "the same operation twice, and a letter’s shape does not "
+            "depend on where it sits — both were being recomputed from "
+            "nothing, sixty times a second.",
+            "Pulled out into its own window, the tab now has the "
+            "lettering filling the left and the settings beside it. The "
+            "window also fits on the screen again: it used to be taller "
+            "than 1080 px and could not be made shorter, so it sat with "
+            "its bottom edge under the desktop.",
+        ],
+        "de": [
+            "Der Giongo-Tab (gezeichnete Soundeffekte) hat diesmal viel "
+            "dazubekommen, und er ist eher „benutz ihn und sag mir, was "
+            "kaputtgeht“ als fertig. Rechne mit rauen Kanten, vor allem "
+            "bei Verflüssigen: der Pinsel tut, was draufsteht, ist aber "
+            "grob — ein fester Strich verschmiert ein Wort, statt es "
+            "anzuschubsen, und es gibt weder Druck noch Glättung noch ein "
+            "Undo während die Maus unten ist. Alles hier lässt sich "
+            "zurücknehmen (Strg+Z), und nichts fasst deine Seite an, "
+            "bevor du es einfügst.",
+            "Man kann die Buchstaben jetzt bearbeiten. Über der Vorschau "
+            "liegen vier Werkzeuge: Buchstaben bewegen, ihn mit einem "
+            "Pinsel herumschieben (Verflüssigen), die Punkte der Kontur "
+            "selbst anfassen oder Teile wegwischen. Ein bearbeiteter "
+            "Buchstabe folgt weiter dem Layout, dem Pfad und den "
+            "Einzelbuchstaben-Edits, und ein Undo nimmt einen ganzen "
+            "Strich zurück.",
+            "Eigene Letterings können der Buchstabenstil sein. Der Import "
+            "nimmt Bilder, einen Ordner oder ein ZIP — jede Datei ist der "
+            "Buchstabe, nach dem sie heißt (ド.png ist ド) — zeichnet sie "
+            "einmal nach und setzt sie danach wie jeden anderen "
+            "Buchstaben, mit Füllung, Konturen und allem.",
+            "Ein Wörterbuch mit 65 bekannten Lauteffekten zum Auswählen "
+            "statt Tippen: Kana, Lesung und Bedeutung, durchsuchbar auf "
+            "Deutsch und Englisch, und mit dem Laut kommt gleich der "
+            "passende Look.",
+            "Neu im Aussehen: eine Beischrift neben dem Effekt (ein "
+            "kleines „BOOM“ unter einem gezeichneten ドカーン), ein "
+            "Dakuten-Knopf für ア゙ und ン゙, Negativ-Lettering, die "
+            "Füllungen „nur Linie“ und „Linie im Raster“, Rauschlinien in "
+            "drei Händen und Deko — Aufprallstrahlen, Trümmer, Funkeln, "
+            "Tropfen.",
+            "Undo und Redo im Panel, auf Strg+Z und Strg+Y, und jede "
+            "Änderung ist ein Schritt — während du im Textfeld tippst, "
+            "gehören die Tasten dem Textfeld.",
+            "Speichern: jede Ebene als eigenes PNG in einem ZIP (alle auf "
+            "derselben Fläche, also wieder stapelbar), ein PSD, das Krita "
+            "selbst schreibt, und eine Größe von 1× bis 4× für PNG und "
+            "ZIP. Nicht installierte Schriftdateien lassen sich von Hand "
+            "laden, und es gibt eine Schriftliste, die jede Schrift in "
+            "sich selbst zeigt.",
+            "Der Tab ist deutlich schneller. Ein Bild mit Verdicken und "
+            "zwei Konturen kostete 1352 ms und kostet jetzt 33; einen "
+            "Buchstaben zu ziehen kostete 23 ms pro Schritt und kostet "
+            "jetzt 2. Verdicken und Kontur sind dieselbe Rechnung "
+            "zweimal, und die Form eines Buchstabens hängt nicht davon "
+            "ab, wo er steht — beides wurde sechzigmal pro Sekunde neu "
+            "ausgerechnet.",
+            "Im eigenen Fenster füllt das Lettering jetzt die linke Seite "
+            "und die Einstellungen stehen daneben. Das Fenster passt auch "
+            "wieder auf den Bildschirm: es war höher als 1080 px und ließ "
+            "sich nicht kleiner machen, saß also mit der Unterkante unter "
+            "dem Desktop.",
+        ],
+    }),
     ("1.21", {
         "en": [
             "The script is something you write now, not only something "

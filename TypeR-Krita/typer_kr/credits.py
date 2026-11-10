@@ -18,7 +18,7 @@ on its own tells a reader nothing.
 #: Who the names are. Keyed by the exact string used in CREDITS.
 IDEA_NOTES = (
     ("Sakushi", "typer_credit_sakushi"),
-    ("Giongo", "typer_credit_giongo"),
+    ("MIYADAIKU", "typer_credit_giongo"),
     ("KSR", "typer_credit_ksr"),
 )
 
@@ -29,7 +29,7 @@ CREDITS = (
     ("cr_textshapr", "Sakushi", "Claude"),
     ("cr_outline", "Sakushi", "Claude"),
     ("cr_batch", "Sakushi", "Claude"),
-    ("cr_giongo", "Giongo", "Claude"),
+    ("cr_giongo", "MIYADAIKU", "Claude"),
     ("cr_script_edit", "KSR", "Claude"),
     ("cr_fonts", "Valle", "Claude"),
     ("cr_font_search", "Valle", "Claude"),
