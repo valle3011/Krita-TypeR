@@ -1407,6 +1407,37 @@ and the line underneath says how many are still hidden.
 The docker tab says in one line that this works best in its own window,
 beside the button that opens it.
 
+### Reporting a problem
+
+A bug report is only useful if it says which version, which Krita, which
+Qt, and what the plugin was doing. Asking a person to find all that is
+asking them not to report it, so "Report a problem…" beside the version
+in Setup gathers it.
+
+- `report.py` -> `record()` / `events()`, `build()`, `issue_url()`,
+  `save()`, `hook_excepthook()`. Qt-free, so a report can be built and
+  tested without a window
+- `report_ui.py` -> `ReportDialog`: the report in full, editable, with
+  one field for the one thing only the person knows ("what happened?")
+- `typer_kr.py` -> the button, and `_set_status(..., error=True)` noting
+  every error the user is shown
+
+**Nothing is sent on its own, and nothing is collected that the person
+is not shown.** The window holds the whole report; from there it goes to
+the clipboard, to a file, or to a prefilled issue in the browser. Three
+doors because not everybody has a GitHub account.
+
+**What the plugin noticed** is the part a person cannot write
+themselves: the handlers that used to swallow an exception now call
+`record()` - the preview failing to draw, an insert failing, a file not
+saving - and `hook_excepthook` catches what nobody caught at all. Only
+the last dozen are kept, newest last, each with the last three frames of
+its traceback.
+
+**The link is trimmed, and says so.** A URL does not carry an arbitrary
+amount of text; the body is cut to fit with a line saying the full
+report is on the clipboard, rather than quietly arriving half-written.
+
 ### What made the Giongo tab slow
 
 Three separate things, all measured rather than guessed, all fixed.

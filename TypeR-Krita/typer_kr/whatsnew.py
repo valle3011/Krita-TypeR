@@ -13,6 +13,42 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.2", {
+        "en": [
+            "“Report a problem…” now brings the errors with it. The "
+            "places that used to swallow one write it down instead - a "
+            "preview that could not be drawn, an insert that failed, a "
+            "file that would not save - and so does every error the "
+            "plugin shows you in its status line. Anything nobody "
+            "caught at all is caught once, too. The last dozen are "
+            "kept, each with the last few lines of its traceback, and "
+            "they go into the report under “What the plugin noticed”. "
+            "Still nothing is sent on its own.",
+            "Fixed: the handler that watches the tab bar for dropped "
+            "panels could be asked to work after the docker it belongs "
+            "to was already gone, and raised instead of quietly giving "
+            "up. It only showed up once the report started catching "
+            "what nobody caught.",
+        ],
+        "de": [
+            "„Problem melden…“ bringt jetzt die Fehler mit. Die "
+            "Stellen, die bisher einen verschluckt haben, schreiben ihn "
+            "auf - eine Vorschau, die nicht gezeichnet werden konnte, "
+            "ein fehlgeschlagenes Einfügen, eine Datei, die sich nicht "
+            "speichern ließ - und ebenso jeder Fehler, den das Plugin "
+            "dir in der Statuszeile zeigt. Was niemand gefangen hat, "
+            "wird einmal zentral gefangen. Die letzten zwölf bleiben "
+            "erhalten, je mit den letzten Zeilen ihres Tracebacks, und "
+            "stehen im Bericht unter „What the plugin noticed“. Von "
+            "allein wird weiterhin nichts gesendet.",
+            "Behoben: der Handler, der die Tab-Leiste auf abgelegte "
+            "Panels beobachtet, konnte noch arbeiten sollen, nachdem "
+            "der Docker, zu dem er gehört, schon weg war - und warf "
+            "einen Fehler, statt stillschweigend aufzugeben. "
+            "Aufgefallen ist das erst, als der Bericht anfing, "
+            "Ungefangenes zu fangen.",
+        ],
+    }),
     ("1.22.1", {
         "en": [
             "A patch release: what a couple of recordings turned up, "

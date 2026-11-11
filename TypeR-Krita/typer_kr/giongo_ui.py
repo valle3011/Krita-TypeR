@@ -44,6 +44,7 @@ from . import giongo_nodes as N
 from . import giongo_brush as BR
 from . import userfonts as UF
 from . import giongo_trace as TR
+from . import report as RP
 from . import giongo_render as R
 from . import strokefont as SF
 
@@ -3576,6 +3577,7 @@ class GiongoPanel(QWidget):
             scene = self.scene()
             img = self._framed(scene, w, h)
         except Exception as exc:        # noqa: BLE001
+            RP.record("giongo preview", exc)
             self.preview.setText(str(exc))
             return
         self.preview.setPixmap(QPixmap.fromImage(img))
@@ -3767,7 +3769,8 @@ class GiongoPanel(QWidget):
                 for name, data in pngs:
                     z.writestr(name, data)
                 z.writestr("README.txt", self._zip_readme(pngs))
-        except OSError:
+        except OSError as exc:
+            RP.record("giongo save zip", exc, path)
             return 0
         self._set("giongoSaveDir", os.path.dirname(path))
         return len(pngs)
@@ -3851,7 +3854,8 @@ class GiongoPanel(QWidget):
             else:
                 img, _tl = R.render_image(scene, scale=self.save_scale())
                 ok = bool(img.save(path, "PNG"))
-        except OSError:
+        except OSError as exc:
+            RP.record("giongo save", exc, path)
             return False
         if ok:
             self._set("giongoSaveDir", os.path.dirname(path))
@@ -3914,6 +3918,7 @@ class GiongoPanel(QWidget):
                 kind = "gi_kind_vector"
             doc.refreshProjection()
         except Exception as exc:        # noqa: BLE001
+            RP.record("giongo insert", exc)
             self._status(self._t("gi_fail", e=exc))
             return None
         if node is None:

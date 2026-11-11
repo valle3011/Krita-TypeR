@@ -2742,5 +2742,23 @@ check("...and typing what happened puts it in",
 _dlg.close()
 
 
+# a preview that cannot be drawn is noted, with its traceback
+RP.clear()
+_broken = panel.scene
+panel.scene = lambda *_a, **_k: (_ for _ in ()).throw(
+    RuntimeError("the font went away"))
+panel._refresh_preview()
+panel.scene = _broken
+check("a preview that fails is written down for the report",
+      any("preview" in where for _s, where, _t in RP.events()))
+check("...with what went wrong in it",
+      any("the font went away" in (text or "")
+          for _s, _w, text in RP.events()))
+check("...and the report carries it",
+      "the font went away" in RP.build({"TypeR": "test"}))
+RP.clear()
+panel._refresh_preview()
+
+
 print("\npassed %d, failed %d" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

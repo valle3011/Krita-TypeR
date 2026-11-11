@@ -80,6 +80,7 @@ from . import gauth as GA
 from . import gdocs as GD
 from . import pdftext as PDF
 from . import update_check as UPD
+from . import report as RP
 from . import patternfind as PFIND
 from . import whatsnew as WN
 from . import comments as CM
@@ -91,7 +92,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.22.1"
+VERSION = "1.22.2"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -6679,6 +6680,7 @@ class TyperDocker(DockWidget):
         self._fill_pattern_img = None
         self._fill_pattern_stretch = False   # True for a gradient (fit, no tile)
         self._fill_pattern_grad_spec = None  # gradient params, re-rendered at size
+        RP.hook_excepthook()
         self._lang = self._load_lang()
         self._groups = self._load_groups()
         # Reopen on the manga (and character) worked on last time; _ensure_levels
@@ -9756,6 +9758,12 @@ class TyperDocker(DockWidget):
         RU.open_for(self, info, settings, self._lang)
 
     def _set_status(self, msg, error=False):
+        # an error the user is shown is the one worth having in a report
+        if error:
+            try:
+                RP.record("status", None, str(msg))
+            except Exception:                       # noqa: BLE001
+                pass
         self.status.setStyleSheet("color: #c0392b;" if error else "color: gray;")
         self.status.setText(msg)
 
@@ -10158,7 +10166,12 @@ class TyperDocker(DockWidget):
 
     def eventFilter(self, obj, ev):
         """Handle panel drops onto the top tab bar (cross-tab move)."""
-        bar = self.main_tabs.tabBar()
+        try:
+            bar = self.main_tabs.tabBar()
+        except RuntimeError:
+            # the docker is gone and Qt still has the filter installed;
+            # nothing to do and nothing worth reporting
+            return False
         if obj is bar:
             et = ev.type()
             if et in (QEvent.Type.DragEnter, QEvent.Type.DragMove):
