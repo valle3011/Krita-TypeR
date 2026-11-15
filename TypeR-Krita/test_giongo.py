@@ -44,6 +44,7 @@ sys.modules.setdefault("typer_kr", _pkg)
 
 from typer_kr import giongo as G
 from typer_kr import giongo_dict as GD
+from typer_kr import giongo_fav as FAV
 from typer_kr import giongo_warp as WP
 from typer_kr import giongo_nodes as ND
 from typer_kr import userfonts as UF
@@ -296,6 +297,7 @@ check("path data uses absolute commands only",
 check("standalone svg framed to the drawing",
       abs(float(root.get("width")) - (sc.bounds.width() + 8)) < 2)
 from typer_kr._qt import QTransform      # noqa: E402
+from typer_kr._qt import QApplication as _QApp   # noqa: E402
 page = R.to_svg(sc, QTransform.fromTranslate(500, 400), 1000, 800)
 proot = ET.fromstring(page)
 check("page svg has the canvas size", (proot.get("width"),
@@ -335,8 +337,69 @@ check("no sound is in there twice",
       len({e["kana"] for e in _all}) == len(_all))
 check("every sound says what it means, in both languages",
       all(e["en"] and e["de"] for e in _all))
-check("the kana are kana, not romaji",
-      all(max(e["kana"]) > "\u3000" for e in _all))
+check("the kana entries are kana, not romaji",
+      all(max(e["kana"]) > "\u3000"
+          for e in _all if not GD.is_latin(e)))
+check("the Latin entries are written in Latin letters",
+      all(e["kana"].upper() == e["kana"]
+          for e in _all if GD.is_latin(e)))
+_groups = GD.groups()
+check("the sounds come in named groups, Latin first",
+      len(_groups) >= 16 and _groups[0][0] == "latin"
+      and any(g[0] == "ja" for g in _groups))
+check("every sound is in exactly one group",
+      sum(len(items) for _s, _t, items in _groups) == len(_all))
+check("there are enough of them to letter a chapter with",
+      len(_all) >= 150)
+
+# --- favourites: a look without the words ----------------------------------
+
+_fp = G.default_params("impact")
+_fp["caption"] = "a caption"
+G.set_letter_edit(_fp, 0, 0, dx=5)
+_look = FAV.look_of(_fp)
+check("a favourite is the look, not the words",
+      "caption" not in _look and "caption_pos" not in _look)
+check("...nor what was done to one particular shape",
+      not any(k in _look for k in FAV.SHAPE_KEYS))
+check("...but it is the type and the drawing", _look["type"] == "impact")
+
+_favs = FAV.add([], "my impact", _fp)
+check("a favourite is saved under its name", FAV.names(_favs) == ["my impact"])
+_favs = FAV.add(_favs, "my impact", G.default_params("cute"))
+check("saving the same name again replaces it",
+      FAV.names(_favs) == ["my impact"]
+      and _favs[0]["look"]["type"] == "cute")
+_favs = FAV.add(_favs, "second", G.default_params("slash"))
+check("...and a different name is added", len(_favs) == 2)
+check("a favourite can be found by name",
+      FAV.find(_favs, "second")["look"]["type"] == "slash")
+check("an unknown name finds nothing", FAV.find(_favs, "nope") is None)
+
+_other = G.default_params("rumble")
+_other["caption"] = "keep me"
+G.set_letter_edit(_other, 0, 1, dx=9)
+_applied = FAV.apply(_other, FAV.find(_favs, "second"))
+check("applying a favourite takes its look", _applied["type"] == "slash")
+check("...and leaves the words alone", _applied["caption"] == "keep me")
+check("...and leaves the shape alone",
+      "0:1" in (_applied.get("letters") or {}))
+check("applying nothing changes nothing",
+      FAV.apply(_other, None) == G.sanitize(_other))
+
+check("favourites survive the settings file",
+      FAV.names(FAV.from_json(FAV.to_json(_favs))) == FAV.names(_favs))
+check("rubbish in the settings file is no favourites",
+      FAV.from_json("not json") == [] and FAV.from_json(None) == []
+      and FAV.from_json('{"a": 1}') == [])
+check("an entry without a name or a look is dropped",
+      FAV.from_json('[{"name": "x"}, {"look": {}}, {"name": " "}]') == [])
+_many = []
+for _i in range(FAV.MAX + 6):
+    _many = FAV.add(_many, "f%d" % _i, _fp)
+check("the list stops at a length you can still look at",
+      len(_many) == FAV.MAX and FAV.names(_many)[-1] == "f%d" % (FAV.MAX + 5))
+
 
 check("searching the reading finds the sound",
       GD.find("dokaan")[0]["kana"] == "\u30c9\u30ab\u30fc\u30f3")
@@ -772,9 +835,17 @@ panel.on_gacha()
 check("gacha shows a sheet of options",
       panel.options_box.isVisibleTo(panel) and len(panel._options) == 6 and
       not panel._option_btns[0].icon().isNull())
+check("...where the canvas was, not beside it",
+      not panel.preview.isVisibleTo(panel))
+panel._hide_options()
+check("and the way back is the canvas itself",
+      panel.preview.isVisibleTo(panel)
+      and not panel.options_box.isVisibleTo(panel))
+panel.on_gacha()
 chosen = panel._options[3]
 panel.on_pick(3)
 check("picking an option adopts it", panel.params() == G.sanitize(chosen))
+check("...and puts the canvas back", panel.preview.isVisibleTo(panel))
 panel.on_mutate()
 check("mutate fills the sheet", len(panel._options) == 6)
 seed = panel.params()["seed"]
@@ -821,7 +892,7 @@ lang[0] = "de"
 panel.retranslate()
 check("German labels", panel.insert_vec_btn.text() == "Einfügen (Vektor)")
 check("an & in a section title is shown, not eaten as a shortcut",
-      panel.sec_fill.btn.text() == "Füllung && Konturen")
+      panel.sec_shadow.btn.text() == "Schatten && Bewegung")
 lang[0] = "en"
 panel.retranslate()
 
@@ -2040,7 +2111,7 @@ panel._load_into_widgets()
 panel._refresh_preview()
 panel._history = []
 check("the brush is off to begin with", not panel.liquify_armed())
-panel.liq_chk.setChecked(True)
+panel.set_tool("liquify")
 check("...and the preview shows it once it is on",
       panel.liquify_armed() and panel.preview._brush_r > 0)
 
@@ -2078,7 +2149,7 @@ check("the brush ring follows its slider",
 
 panel.on_reset_warps()
 check("reset takes every warp off", not WP.has_warp(panel.params()))
-panel.liq_chk.setChecked(False)
+panel.set_tool("move")
 check("switching the brush off hides its ring", panel.preview._brush_r == 0)
 panel._params = G.sanitize(dict(G.DEFAULTS))
 panel._load_into_widgets()
@@ -2092,8 +2163,8 @@ panel.text_edit.setPlainText("\u30c9\u30f3")
 panel._load_into_widgets()
 panel._refresh_preview()
 panel._history = []
-panel.liq_chk.setChecked(True)
-panel.pts_chk.setChecked(True)
+panel.set_tool("liquify")
+panel.set_tool("points")
 check("the brush and the points are not both on at once",
       panel.points_armed() and not panel.liquify_armed())
 
@@ -2224,7 +2295,7 @@ panel.set_point_selection([])
 panel.on_reset_points()
 check("reset gives every letter the font's outline back",
       not ND.has_nodes(panel.params()))
-panel.pts_chk.setChecked(False)
+panel.set_tool("move")
 panel._params = G.sanitize(dict(G.DEFAULTS))
 panel._load_into_widgets()
 panel._history = []
@@ -2522,13 +2593,17 @@ check("the button that is down is the tool that is on",
       [k for k, b in panel.tool_btns.items() if b.isChecked()] == ["erase"])
 check("the line under the canvas says what this tool does",
       panel.legend_lbl.text() == panel._t("gi_legend_erase"))
-panel.liq_chk.setChecked(True)
-check("the switch in the section and the button say the same thing",
+panel.pick_liquify("pinch")
+check("picking a brush puts the brush in hand",
       panel.tool() == "liquify"
-      and panel.tool_btns["liquify"].isChecked())
-panel.liq_chk.setChecked(False)
-check("...and switching it off goes back to moving letters",
-      panel.tool() == "move")
+      and panel.tool_btns["liquify"].isChecked()
+      and panel.params()["liquify_mode"] == "pinch"
+      and panel.liq_chips["pinch"].isChecked())
+check("the brush settings are only there while the brush is",
+      panel.liq_box.isVisibleTo(panel))
+panel.set_tool("move")
+check("...and are gone again with the tool",
+      not panel.liq_box.isVisibleTo(panel) and panel.tool() == "move")
 
 # wiping parts away
 panel.set_tool("erase")
@@ -2758,6 +2833,63 @@ check("...and the report carries it",
       "the font went away" in RP.build({"TypeR": "test"}))
 RP.clear()
 panel._refresh_preview()
+
+
+# --- favourites, handles, the clipboard, a sheet ---------------------------
+
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel._load_into_widgets()
+panel.save_favourite("loud")
+check("the panel saves a favourite",
+      [f["name"] for f in panel.favourites()] == ["loud"])
+check("...and writes it to the settings file",
+      "loud" in store.get("giongoFavs", ""))
+check("...and puts a button there for it", panel.fav_flow.count() == 1)
+panel._params = G.apply_type(panel._params, "cute")
+panel._params["caption"] = "stays"
+panel._load_into_widgets()
+panel.use_favourite("loud")
+check("using it brings the look back",
+      panel.params()["type"] == "impact"
+      and panel.params()["caption"] == "stays")
+panel.forget_favourite("loud")
+check("forgetting it empties the row",
+      panel.favourites() == [] and panel.fav_flow.count() == 0)
+check("...and the panel says so instead", panel.fav_none.isVisibleTo(panel))
+
+check("the handles are on to begin with", panel.preview._show_handles)
+panel.handles_chk.setChecked(False)
+check("the switch takes them off", not panel.preview._show_handles
+      and store.get("giongoHandles") == "false")
+panel.handles_chk.setChecked(True)
+check("...and puts them back", panel.preview._show_handles)
+
+panel._params = G.apply_type(panel._params, "slash")
+panel.on_copy_settings()
+_clip = _QApp.clipboard()
+check("the settings go to the clipboard as text",
+      _clip is not None and '"type"' in _clip.text())
+panel._params = G.apply_type(panel._params, "cute")
+panel._load_into_widgets()
+panel.on_paste_settings()
+check("...and come back from it", panel.params()["type"] == "slash")
+_clip.setText("hello")
+panel.on_paste_settings()
+check("...and anything else is said, not swallowed",
+      panel.params()["type"] == "slash"
+      and panel.status_lbl.text() == panel._t("gi_paste_bad"))
+
+_cat = GD.groups()[0][2]
+_sheet = panel.sheet_image(_cat, cols=4, cell_w=120)
+check("a category draws as one sheet",
+      _sheet.width() == 480
+      and _sheet.height() == 72 * ((len(_cat) + 3) // 4))
+check("...and there is something on it",
+      any(_sheet.pixelColor(x, y).alpha() > 0
+          for x in range(0, _sheet.width(), 7)
+          for y in range(0, _sheet.height(), 7)))
+check("an empty category is no sheet at all",
+      panel.save_category([], "impact") is False)
 
 
 print("\npassed %d, failed %d" % (_pass, _fail))

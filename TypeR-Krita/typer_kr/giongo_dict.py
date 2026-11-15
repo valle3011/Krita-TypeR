@@ -153,8 +153,165 @@ SOUNDS = [
      "Klingel, Kasse, Mikrowelle"),
     ("ジリリリ", "jiririri", "machine", "an alarm ringing",
      "schrillender Wecker"),
-]
+    # --- more, by the same types ------------------------------------------
+    ("ドカン", "dokan", "impact", "an explosion", "Explosion"),
+    ("ズガーン", "zugaan", "impact", "a shattering blast",
+     "zerschmetternde Detonation"),
+    ("バリーン", "bariin", "impact", "glass breaking",
+     "Glas zerspringt"),
+    ("ベキッ", "beki", "impact", "something snapping",
+     "etwas knackt durch"),
+    ("メキメキ", "mekimeki", "impact",
+     "wood or bone giving way", "Holz oder Knochen gibt nach"),
+    ("パリン", "parin", "impact", "something small breaking",
+     "etwas Kleines zerbricht"),
+    ("ドゴォォン", "dogoon", "impact",
+     "a huge, deep crash", "riesiger dumpfer Einschlag"),
+    ("ガッシャン", "gasshan", "impact",
+     "a heavy metal clatter", "schweres Metallscheppern"),
+    ("ザンッ", "zan", "slash", "a decisive cut",
+     "entscheidender Hieb"),
+    ("ダッシュ", "dasshu", "slash", "a dash",
+     "Spurt"),
+    ("バッ", "ba", "slash", "a sudden move",
+     "plötzliche Bewegung"),
+    ("ズザッ", "zuza", "slash", "skidding to a stop",
+     "schlitternder Halt"),
+    ("ビュン", "byun", "slash", "something flying past",
+     "etwas saust vorbei"),
+    ("ゾゾゾ", "zozozo", "rumble", "dread creeping up",
+     "Grauen kriecht hoch"),
+    ("ゴオオ", "gooo", "rumble", "a roar in the distance",
+     "fernes Dröhnen"),
+    ("ドッドッ", "doddo", "rumble", "pounding footfalls",
+     "stampfende Schritte"),
+    ("ズーン", "zuun", "glare", "a heavy, sinking mood",
+     "bleierne Stimmung"),
+    ("ドキッ", "doki", "glare", "a single startled heartbeat",
+     "ein erschrockener Herzschlag"),
+    ("ギクッ", "giku", "glare", "being caught out",
+     "ertappt"),
+    ("ゾクッ", "zoku", "glare", "a shiver down the back",
+     "Schauer über den Rücken"),
+    ("ハッ", "ha", "glare", "a sudden realisation",
+     "plötzliche Erkenntnis"),
+    ("ガビーン", "gabiin", "glare", "comic despair",
+     "komische Verzweiflung"),
+    ("しーん", "shiin", "glare", "silence, nobody says a word",
+     "Stille, keiner sagt ein Wort"),
+    ("ポツン", "potsun", "glare", "left alone",
+     "allein zurückgelassen"),
+    ("きらっ", "kira", "cute", "one small sparkle",
+     "ein kleines Funkeln"),
+    ("ふわっ", "fuwa", "cute", "something light and soft",
+     "etwas Leichtes, Weiches"),
+    ("ぴかっ", "pika", "cute", "a bright flash",
+     "heller Blitz"),
+    ("ほわわ", "howawa", "cute", "going dreamy",
+     "ins Träumen geraten"),
+    ("ドボーン", "doboon", "drops", "falling into water",
+     "Sturz ins Wasser"),
+    ("ザバァ", "zabaa", "drops", "water surging",
+     "Wasser schwappt"),
+    ("ビシャッ", "bisha", "drops", "a wet splat",
+     "nasser Klatscher"),
+    ("ばしゃっ", "basha", "drops", "a splash underfoot",
+     "Platschen unter den Füßen"),
+    ("じゃぶじゃぶ", "jabujabu", "drops",
+     "wading about", "Waten im Wasser"),
+    ("ぽちゃん", "pochan", "drops", "a small plop",
+     "kleines Platsch"),
+    ("ポタッ", "pota", "drops", "a single drip",
+     "einzelner Tropfen"),
+    ("ストン", "suton", "small", "something set down lightly",
+     "etwas wird leicht abgesetzt"),
+    ("パタン", "patan", "small", "a door closing",
+     "Tür schließt"),
+    ("バタン", "batan", "small", "a door slammed",
+     "Tür knallt zu"),
+    ("ピンポーン", "pinpoon", "small", "a doorbell",
+     "Türklingel"),
+    ("もぐもぐ", "mogumogu", "small", "chewing",
+     "Kauen"),
+    ("ゴクッ", "goku", "small", "a gulp",
+     "Schluck"),
+    ("パクッ", "paku", "small", "a bite",
+     "Bissen"),
+    ("バリバリ", "baribari", "small", "crunching",
+     "Knuspern"),
+    ("ドーン", "doon", "pop", "a dramatic reveal",
+     "dramatischer Auftritt"),
+    ("バーン", "baan", "pop", "a loud entrance",
+     "lauter Auftritt"),
+    ("ジャーン", "jaan", "pop", "ta-da",
+     "Tadä"),
+    ("ズコー", "zukoo", "pop", "falling over at a bad joke",
+     "Umfallen bei einem schlechten Witz"),
+    ("ピコーン", "pikoon", "pop", "an idea arriving",
+     "ein Einfall"),
+    ("ガシャン", "gashan", "machine", "machinery clanking",
+     "Maschine scheppert"),
+    ("カチャカチャ", "kachakacha", "machine",
+     "keys or a keyboard", "Tasten oder Schlüssel"),
 
+    # --- the Latin half ----------------------------------------------------
+    # What a scanlation actually sets. The reading is the word itself, so
+    # the search finds them the same way.
+    ("BOOM!", "boom", "impact", "a huge impact", "gewaltiger Einschlag"),
+    ("BAM!", "bam", "impact", "a hard hit", "harter Treffer"),
+    ("WHAM!", "wham", "impact", "a heavy blow", "schwerer Schlag"),
+    ("POW!", "pow", "impact", "a punch landing", "ein Treffer"),
+    ("THUD!", "thud", "impact", "a dull drop", "dumpfer Aufprall"),
+    ("BANG!", "bang", "impact", "a bang or a shot", "Knall oder Schuss"),
+    ("CRASH!", "crash", "impact", "something coming down",
+     "etwas stürzt ein"),
+    ("SMASH!", "smash", "impact", "something broken apart",
+     "etwas zerschlägt"),
+    ("KRAK!", "krak", "impact", "a sharp break", "scharfer Bruch"),
+    ("KABOOM!", "kaboom", "impact", "an explosion", "Explosion"),
+    ("WHOOSH", "whoosh", "slash", "rushing past", "sausend vorbei"),
+    ("SWOOSH", "swoosh", "slash", "a sweeping move",
+     "schwungvolle Bewegung"),
+    ("SLASH", "slash", "slash", "a cut", "Schnitt"),
+    ("SHING!", "shing", "slash", "a blade drawn", "Klinge gezogen"),
+    ("ZIP", "zip", "slash", "darting away", "wegflitzen"),
+    ("RUMBLE", "rumble", "rumble", "a low, long roll",
+     "tiefes langes Grollen"),
+    ("GRRRR", "grrrr", "rumble", "a growl", "Knurren"),
+    ("DOOM", "doom", "rumble", "dread closing in", "nahendes Unheil"),
+    ("ROAR", "roar", "rumble", "a roar", "Brüllen"),
+    ("SPLASH!", "splash", "drops", "hitting water", "Aufschlag im Wasser"),
+    ("SPLOOSH!", "sploosh", "drops", "a bigger splash",
+     "größerer Spritzer"),
+    ("DRIP", "drip", "drops", "a single drop", "einzelner Tropfen"),
+    ("PLOP", "plop", "drops", "something small falling in",
+     "etwas Kleines fällt hinein"),
+    ("SPARKLE", "sparkle", "cute", "glittering", "Funkeln"),
+    ("TWINKLE", "twinkle", "cute", "a small twinkle", "kleines Blinken"),
+    ("BOING", "boing", "cute", "a bounce", "Sprungfeder"),
+    ("POP!", "pop", "cute", "a small pop", "kleines Plopp"),
+    ("KNOCK", "knock", "small", "knocking", "Klopfen"),
+    ("CLICK", "click", "small", "a switch or a latch",
+     "Schalter oder Riegel"),
+    ("TAP", "tap", "small", "a light touch", "leichtes Tippen"),
+    ("CREAK", "creak", "small", "something old giving",
+     "etwas Altes ächzt"),
+    ("BEEP", "beep", "machine", "an electronic beep",
+     "elektronischer Piepser"),
+    ("VROOM", "vroom", "machine", "an engine", "Motor"),
+    ("BZZT", "bzzt", "machine", "electricity arcing",
+     "Stromschlag"),
+    ("CLANK", "clank", "machine", "metal on metal",
+     "Metall auf Metall"),
+    ("GASP!", "gasp", "glare", "a sharp intake of breath",
+     "scharfes Luftholen"),
+    ("GULP...", "gulp", "glare", "swallowing hard",
+     "schweres Schlucken"),
+    ("THUMP", "thump", "glare", "a heartbeat", "Herzschlag"),
+    ("TA-DA!", "tada", "pop", "a reveal", "Enthüllung"),
+    ("HUH?!", "huh", "pop", "not following", "versteht nichts"),
+    ("WHAT?!", "what", "pop", "disbelief", "Unglaube"),
+]
 #: long vowels in romaji, so "dokan" finds "dokaan"
 _VOWELS = "aeiou"
 
@@ -224,3 +381,39 @@ def by_type():
     for e in entries():
         groups.setdefault(e["type"], []).append(e)
     return groups
+
+def is_latin(entry):
+    """Is this one of the Latin entries?
+
+    Read off the sound itself rather than stored: a sound written in
+    plain ASCII is the Latin one. A kana entry never is.
+    """
+    text = entry["kana"] if isinstance(entry, dict) else entry
+    try:
+        text.encode("ascii")
+    except (UnicodeEncodeError, AttributeError):
+        return False
+    return True
+
+
+def groups(lang="en"):
+    """[(script, type, [entry, ...])] - Latin first, then the kana.
+
+    What the panel shows: the sounds in named groups rather than one
+    long list, which is the only way a hundred of them can be looked
+    through at all.
+    """
+    out = []
+    for latin in (True, False):
+        seen = []
+        for e in entries():
+            if is_latin(e) is not latin:
+                continue
+            for script, tid, items in seen:
+                if tid == e["type"]:
+                    items.append(e)
+                    break
+            else:
+                seen.append(("latin" if latin else "ja", e["type"], [e]))
+        out.extend(seen)
+    return out

@@ -32,13 +32,14 @@ from ._qt import (
     QLineEdit,
     QComboBox, QCheckBox, QSlider, QSpinBox, QPlainTextEdit, QToolButton,
     QColorDialog, QFileDialog, QSizePolicy, QDoubleSpinBox, QDialog,
-    QScrollArea, QFrame, QApplication, QShortcut,
-    QListWidget, QListWidgetItem,
+    QScrollArea, QFrame, QApplication, QShortcut, QLayout,
+    QListWidget, QListWidgetItem, QInputDialog,
 )
-from ._qt import QGuiApplication, QPoint
+from ._qt import QGuiApplication, QPoint, QRect
 
 from . import giongo as G
 from . import giongo_dict as GD
+from . import giongo_fav as FAV
 from . import giongo_warp as W
 from . import giongo_nodes as N
 from . import giongo_brush as BR
@@ -54,6 +55,8 @@ _EN = {
                  "擬音ジェネレーター (Oyasumi Game Dev)."),
     "gi_text_ph": "e.g. ドーーン！ or BOOM!",
     "gi_type": "Type:",
+    "gi_type_top": "\u2605 The best fit for what you typed",
+    "gi_type_fits": "Would also suit what you typed",
     "gi_auto": "✨ Auto",
     "gi_auto_tip": ("Picks the type from how the sound is built (゛, ッ, ー, "
                     "ン, repeats) with a fixed rule table — no AI."),
@@ -116,7 +119,33 @@ _EN = {
     "gi_back_tip": "Back to the settings before the last Auto/Gacha/pick",
     "gi_pick_tip": "Use option {n}: {k}",
     "gi_close": "✕",
-    "gi_macro": "Power / Roughness / Momentum",
+    "gi_opts": "Gacha picks",
+    "gi_opts_hint": "Click one to keep it",
+    "gi_opts_back": "✕ Back to editing",
+    "gi_sec_more": "Favourites & more",
+    "gi_fav_save": "★ Save as favourite",
+    "gi_fav_save_tip": ("Keeps everything but the words — the "
+                        "caption and whatever you did to this one "
+                        "shape stay where they are."),
+    "gi_fav_name": "A name for this look:",
+    "gi_fav_none": "Nothing saved yet.",
+    "gi_fav_forget": "✕",
+    "gi_fav_forget_tip": "Forget “{n}”",
+    "gi_fav_use_tip": "Draw what is on the canvas the way “{n}” does",
+    "gi_fav_saved": "Saved as “{n}”",
+    "gi_fav_used": "“{n}” applied",
+    "gi_handles": "Handles",
+    "gi_handles_tip": ("The ring, the arrows and the dots on the "
+                       "path. Off while you are looking at the result."),
+    "gi_copy_set": "Copy settings",
+    "gi_copy_set_tip": ("The whole look as text, to paste into a "
+                        "message or a file. A docker has no link to "
+                        "give anybody."),
+    "gi_paste_set": "Paste settings",
+    "gi_copied_set": "The settings are on the clipboard.",
+    "gi_pasted_set": "Settings taken from the clipboard.",
+    "gi_paste_bad": "There are no settings on the clipboard.",
+    "gi_macro": "Three at once \u2014 the single settings below follow them.",
     "gi_power": "Power",
     "gi_power_tip": "Thickness, size progression and outlines together",
     "gi_rough": "Roughness",
@@ -144,8 +173,13 @@ _EN = {
     "gi_pen_dry": "Dry gaps",
     "gi_pen_missing": "{n} character(s) have no stroke lines: {chars}",
     "gi_sec_layout": "Layout",
-    "gi_sec_var": "Variation",
-    "gi_sec_fill": "Fill & outlines",
+    "gi_sec_text": "Text",
+    "gi_sec_style": "Letter style",
+    "gi_sec_var": "Intensity",
+    "gi_sec_fill": "Fill",
+    "gi_sec_out": "Outline",
+    "gi_sec_save": "Save",
+    "gi_sec_gacha": "Gacha",
     "gi_sec_shadow": "Shadow & motion",
     "gi_nothing_there": "Nothing under the brush there.",
     "gi_tool_move": "\u2725 Move",
@@ -263,6 +297,12 @@ _EN = {
     "gi_neg_pad": "Area around",
     "gi_dict": "\U0001f4d6",
     "gi_dict_tip": "Known sound effects to pick from (sets the type too)",
+    "gi_dict_latin": "Latin",
+    "gi_dict_sheet_tip": ("Draw this whole group in the look you have "
+                          "now and save it as one sheet"),
+    "gi_sheet_saved": "{n} sounds written to {p}",
+    "gi_dict_ja": "Japanese SFX",
+    "gi_dict_find": "🔍 Search…",
     "gi_dict_title": "Sound effects",
     "gi_dict_search": "Search: kana, reading or meaning",
     "gi_dict_hint": "Double-click a sound to use it",
@@ -354,6 +394,8 @@ _DE = {
                  "MIYADAIKUs 擬音ジェネレーター (Oyasumi Game Dev)."),
     "gi_text_ph": "z. B. ドーーン！ oder BUMM!",
     "gi_type": "Art:",
+    "gi_type_top": "\u2605 Passt am besten zu dem, was du getippt hast",
+    "gi_type_fits": "W\u00fcrde auch zu dem passen, was du getippt hast",
     "gi_auto": "✨ Automatisch",
     "gi_auto_tip": ("Wählt die Art daran, wie der Laut gebaut ist (゛, ッ, ー, "
                     "ン, Wiederholungen) – feste Regeltabelle, keine KI."),
@@ -420,7 +462,33 @@ _DE = {
                     "Automatisch/Gacha/Übernehmen"),
     "gi_pick_tip": "Vorschlag {n} übernehmen: {k}",
     "gi_close": "✕",
-    "gi_macro": "Wucht / Rauheit / Schwung",
+    "gi_opts": "Gacha-Auswahl",
+    "gi_opts_hint": "Klick eine an, um sie zu behalten",
+    "gi_opts_back": "✕ Zurück zum Bearbeiten",
+    "gi_sec_more": "Favoriten & mehr",
+    "gi_fav_save": "★ Als Favorit speichern",
+    "gi_fav_save_tip": ("Behält alles außer den Worten — die "
+                        "Bildunterschrift und alles, was du an dieser "
+                        "einen Form gemacht hast, bleiben."),
+    "gi_fav_name": "Ein Name für diesen Look:",
+    "gi_fav_none": "Noch nichts gespeichert.",
+    "gi_fav_forget": "✕",
+    "gi_fav_forget_tip": "„{n}“ vergessen",
+    "gi_fav_use_tip": "Das auf der Leinwand so zeichnen wie „{n}“",
+    "gi_fav_saved": "Als „{n}“ gespeichert",
+    "gi_fav_used": "„{n}“ angewendet",
+    "gi_handles": "Griffe",
+    "gi_handles_tip": ("Der Ring, die Pfeile und die Punkte auf dem "
+                       "Pfad. Aus, wenn du dir das Ergebnis ansiehst."),
+    "gi_copy_set": "Einstellungen kopieren",
+    "gi_copy_set_tip": ("Der ganze Look als Text, zum Einfügen in "
+                        "eine Nachricht oder eine Datei. Ein Docker "
+                        "hat keinen Link zu verschenken."),
+    "gi_paste_set": "Einstellungen einfügen",
+    "gi_copied_set": "Die Einstellungen sind in der Zwischenablage.",
+    "gi_pasted_set": "Einstellungen aus der Zwischenablage übernommen.",
+    "gi_paste_bad": "In der Zwischenablage stehen keine Einstellungen.",
+    "gi_macro": "Drei auf einmal \u2014 die Einzelwerte darunter ziehen mit.",
     "gi_power": "Wucht",
     "gi_power_tip": "Dicke, Größenverlauf und Konturen zusammen",
     "gi_rough": "Rauheit",
@@ -448,8 +516,13 @@ _DE = {
     "gi_pen_dry": "Trockenlücken",
     "gi_pen_missing": "{n} Zeichen haben keine Strichlinien: {chars}",
     "gi_sec_layout": "Anordnung",
-    "gi_sec_var": "Streuung",
-    "gi_sec_fill": "Füllung & Konturen",
+    "gi_sec_text": "Text",
+    "gi_sec_style": "Schriftbild",
+    "gi_sec_var": "Stärke",
+    "gi_sec_fill": "Füllung",
+    "gi_sec_out": "Kontur",
+    "gi_sec_save": "Speichern",
+    "gi_sec_gacha": "Gacha",
     "gi_sec_shadow": "Schatten & Bewegung",
     "gi_nothing_there": "Dort ist nichts unter dem Pinsel.",
     "gi_tool_move": "\u2725 Bewegen",
@@ -577,6 +650,12 @@ _DE = {
     "gi_dict": "\U0001f4d6",
     "gi_dict_tip": ("Bekannte Lauteffekte zum Ausw\u00e4hlen (setzt auch "
                     "die Art)"),
+    "gi_dict_latin": "Lateinisch",
+    "gi_dict_sheet_tip": ("Diese ganze Gruppe im aktuellen Look "
+                          "zeichnen und als ein Blatt speichern"),
+    "gi_sheet_saved": "{n} Laute nach {p} geschrieben",
+    "gi_dict_ja": "Japanische Lauteffekte",
+    "gi_dict_find": "🔍 Suchen…",
     "gi_dict_title": "Lauteffekte",
     "gi_dict_search": "Suche: Kana, Lesung oder Bedeutung",
     "gi_dict_hint": "Doppelklick auf einen Laut \u00fcbernimmt ihn",
@@ -949,6 +1028,7 @@ class GiongoPreview(QLabel):
         self._places = []
         self._path = []
         self._sel = None        # (group, index) of the selected letter
+        self._show_handles = True
         self._drag = None       # what is being dragged
         self._brush_r = 0.0     # liquify brush, in scene units
         self._points = False    # point editing: nodes instead of handles
@@ -975,6 +1055,11 @@ class GiongoPreview(QLabel):
 
     def clear_selection(self):
         self._sel = None
+        self.update()
+
+    def set_handles(self, on):
+        """Show or hide the ring, the arrows and the path dots."""
+        self._show_handles = bool(on)
         self.update()
 
     def set_points(self, on):
@@ -1359,10 +1444,11 @@ class GiongoPreview(QLabel):
                                 2 * m[1] - (a[1] + b[1]) / 2.0),
                         QPointF(*b))
             p.drawPath(path)
-            p.setPen(QPen(QColor(70, 140, 220)))
-            p.setBrush(QColor(255, 255, 255))
-            for pt in (m, b):
-                p.drawEllipse(QPointF(*pt), self.HANDLE, self.HANDLE)
+            if self._show_handles:
+                p.setPen(QPen(QColor(70, 140, 220)))
+                p.setBrush(QColor(255, 255, 255))
+                for pt in (m, b):
+                    p.drawEllipse(QPointF(*pt), self.HANDLE, self.HANDLE)
         pl = self._find(self._sel) if self._sel else None
         if pl is not None:
             r = max(10.0, min(1e5, pl["size"] * 0.5 * self._k))
@@ -1378,7 +1464,8 @@ class GiongoPreview(QLabel):
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.setPen(QPen(QColor(0, 170, 215), 1, Qt.PenStyle.DashLine))
                 p.drawRect(QRectF(cx - r, cy - r, 2 * r, 2 * r))
-            self._draw_gizmo(p, cx, cy, r)
+            if self._show_handles:
+                self._draw_gizmo(p, cx, cy, r)
         p.end()
 
 
@@ -1396,6 +1483,87 @@ _R_OUTLINES = 7
 
 #: the tool in hand, said loudly enough to see at a glance. A checked
 #: QPushButton is nearly invisible in a dark theme.
+class _Flow(QLayout):
+    """Items in a row, wrapping to the next one when the row is full.
+
+    A grid cannot do this: the type names are of very different lengths,
+    and the panel is anything from a narrow docker to half a screen wide.
+    """
+
+    def __init__(self, parent=None, spacing=4):
+        super().__init__(parent)
+        self._items = []
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setSpacing(spacing)
+
+    def addItem(self, item):                            # noqa: N802 (Qt API)
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):                                # noqa: N802
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):                                # noqa: N802
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):                      # noqa: N802
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):                        # noqa: N802
+        return True
+
+    def heightForWidth(self, w):                        # noqa: N802
+        return self._lay(QRect(0, 0, w, 0), test=True)
+
+    def setGeometry(self, rect):                        # noqa: N802
+        super().setGeometry(rect)
+        self._lay(rect, test=False)
+
+    def sizeHint(self):                                 # noqa: N802
+        """What it wants: one row. Given less, it wraps instead."""
+        w = 0
+        h = 0
+        for i, it in enumerate(self._items):
+            hint = it.sizeHint()
+            w += hint.width() + (self.spacing() if i else 0)
+            h = max(h, hint.height())
+        return QSize(w, h)
+
+    def minimumSize(self):                              # noqa: N802
+        size = QSize(0, 0)
+        for it in self._items:
+            size = size.expandedTo(it.minimumSize())
+        return size
+
+    def _lay(self, rect, test):
+        """Place the items (or, for `test`, only measure the height)."""
+        x = rect.x()
+        y = rect.y()
+        line = 0
+        sp = self.spacing()
+        for it in self._items:
+            hint = it.sizeHint()
+            if line > 0 and x + hint.width() > rect.right() + 1:
+                x = rect.x()
+                y += line + sp
+                line = 0
+            if not test:
+                it.setGeometry(QRect(QPoint(x, y), hint))
+            x += hint.width() + sp
+            line = max(line, hint.height())
+        return y + line - rect.y()
+
+
+_CHIP_ON = ("QPushButton { border: 1px solid #1e90ff; border-radius: 9px; "
+            "padding: 2px 9px; background: rgba(30, 144, 255, 70); "
+            "font-weight: bold; }")
+_CHIP_OFF = ("QPushButton { border: 1px solid #556; border-radius: 9px; "
+             "padding: 2px 9px; font-weight: normal; }")
+_CHIP_FIT = ("QPushButton { border: 1px solid #c8a000; border-radius: 9px; "
+             "padding: 2px 9px; font-weight: normal; }")
+
 _TOOL_ON = ("QPushButton { border: 2px solid #1e90ff; "
             "background: rgba(30, 144, 255, 60); font-weight: bold; }")
 _TOOL_OFF = "QPushButton { font-weight: normal; }"
@@ -1432,6 +1600,8 @@ class GiongoPanel(QWidget):
         self._drag_open = False     # a drag in the preview is one step
         self._blocks = []           # the groups the grid arranges
         self._canvas_block = None   # the one with the canvas in it
+        self._span_block = None     # the type, across both settings columns
+        self._prefs = []            # per block: which settings column
         self._cols = 0              # how many columns they sit in now
         self._home = None           # the layout to go back to
         self._window = None
@@ -1537,21 +1707,26 @@ class GiongoPanel(QWidget):
 
     # --- building ----------------------------------------------------------
 
-    def _new_block(self):
+    def _new_block(self, pref=0, span=False):
         """Start a new group. Everything added after this lands in it.
 
-        The build code below keeps writing to `lay` as it always did; only
-        where a new group begins does `lay` come to point at a fresh one.
+        `pref` says which settings column the group belongs in - 0 left,
+        1 right - which is how the split ends up the one the web tool
+        uses rather than whatever halving the count happens to give.
+        `span` marks the one group that runs across both of them.
         """
         box = QWidget()
         inner = QVBoxLayout(box)
         inner.setContentsMargins(0, 0, 0, 0)
         inner.setSpacing(6)
-        if not self._blocks:
-            # the first block holds the canvas: it takes what it is given
+        if len(self._blocks) == 1:
+            # the stage: it takes whatever height it is given
             box.setSizePolicy(QSizePolicy.Policy.Preferred,
                               QSizePolicy.Policy.Expanding)
         self._blocks.append(box)
+        self._prefs.append(pref)
+        if span:
+            self._span_block = box
         return inner
 
     def _build(self):
@@ -1582,25 +1757,213 @@ class GiongoPanel(QWidget):
         lay.addWidget(self.tab_only)
         # everything below is the work itself, and the work happens in the
         # window: in the tab only this first group is shown
+        # --- the stage --------------------------------------------------
+        # the canvas with its bars: everything that acts on what is drawn
+        # is within reach of it, and only the canvas gives up height when
+        # a row below it appears
         lay = self._new_block()
+        self._canvas_block = self._blocks[-1]
 
+        bar1 = QHBoxLayout()
+        self.tool_btns = {}
+        bar1.addWidget(self._chip_strip(self.TOOLS, self.set_tool,
+                                        self.tool_btns))
+        self.tool_btns["move"].setChecked(True)
+        bar1.addSpacing(10)
+        self.letter_lbl = QLabel()
+        bar1.addWidget(self.letter_lbl)
+        self.letter_spin = NoScrollSpinBox()
+        self.letter_spin.setRange(*G.RANGES["letter_px"])
+        self.letter_spin.valueChanged.connect(
+            lambda v: self._set_param("letter_px", v))
+        bar1.addWidget(self.letter_spin)
+        bar1.addStretch(1)
+        lay.addLayout(bar1)
+
+        bar2 = QHBoxLayout()
+        self.back_btn = QPushButton()
+        self.back_btn.clicked.connect(self.on_back)
+        self.back_btn.setEnabled(False)
+        bar2.addWidget(self.back_btn)
+        self.fwd_btn = QPushButton()
+        self.fwd_btn.clicked.connect(self.on_forward)
+        self.fwd_btn.setEnabled(False)
+        bar2.addWidget(self.fwd_btn)
+        bar2.addSpacing(10)
+        self.bg_lbl = QLabel()
+        bar2.addWidget(self.bg_lbl)
+        self.bg_combo = NoScrollComboBox()
+        for val, _k in _BACKGROUNDS:
+            self.bg_combo.addItem("", val)
+        bg = self._get("giongoBg", "check")
+        self.bg_combo.setCurrentIndex(max(0, self.bg_combo.findData(bg)))
+        self.bg_combo.currentIndexChanged.connect(self._on_bg)
+        bar2.addWidget(self.bg_combo)
+        self.handles_chk = QCheckBox()
+        self.handles_chk.setChecked(
+            self._get("giongoHandles", "true") == "true")
+        self.handles_chk.toggled.connect(self._on_handles)
+        bar2.addWidget(self.handles_chk)
+        bar2.addStretch(1)
+        self.size_lbl = QLabel()
+        self.size_lbl.setStyleSheet("color: gray;")
+        bar2.addWidget(self.size_lbl)
+        lay.addLayout(bar2)
+
+        self.preview = GiongoPreview(self)
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setMinimumHeight(200)
+        self.preview.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                   QSizePolicy.Policy.Expanding)
+        self.preview.setStyleSheet("border: 1px solid #888;")
+        lay.addWidget(self.preview, 1)
+
+        # what a roll put on the table. It takes the canvas while it is
+        # up: it is the thing being looked at, and the canvas behind it
+        # is showing exactly what the roll is meant to replace
+        self.options_box = QWidget()
+        ov = QVBoxLayout(self.options_box)
+        ov.setContentsMargins(0, 0, 0, 0)
+        ov.setSpacing(4)
+        orow = QHBoxLayout()
+        self.opts_lbl = QLabel()
+        self.opts_lbl.setStyleSheet("font-weight: bold;")
+        orow.addWidget(self.opts_lbl)
+        self.opts_hint = QLabel()
+        self.opts_hint.setStyleSheet("color: gray;")
+        orow.addWidget(self.opts_hint)
+        orow.addStretch(1)
+        self.close_opts_btn = QPushButton()
+        self.close_opts_btn.clicked.connect(lambda *_a: self._hide_options())
+        orow.addWidget(self.close_opts_btn)
+        ov.addLayout(orow)
+        og = QGridLayout()
+        og.setContentsMargins(0, 0, 0, 0)
+        og.setSpacing(4)
+        self._option_btns = []
+        for i in range(_N_OPTIONS):
+            b = QToolButton()
+            b.setIconSize(QSize(150, 84))
+            b.setAutoRaise(True)
+            b.setSizePolicy(QSizePolicy.Policy.Expanding,
+                            QSizePolicy.Policy.Expanding)
+            b.clicked.connect(lambda *_a, n=i: self.on_pick(n))
+            og.addWidget(b, i // 3, i % 3)
+            self._option_btns.append(b)
+        ov.addLayout(og, 1)
+        self.options_box.setVisible(False)
+        lay.addWidget(self.options_box, 1)
+
+        # the brush lives where the brush is used, and is only on screen
+        # while the brush is the tool in hand. The combo is still what
+        # holds the mode; it is simply not shown
+        self.liq_box = QWidget()
+        lv = QVBoxLayout(self.liq_box)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.setSpacing(2)
+        self.liq_tool = NoScrollComboBox()
+        for m in W.MODES:
+            self.liq_tool.addItem("", m)
+        self.liq_tool.currentIndexChanged.connect(
+            lambda _i: self._set_param("liquify_mode",
+                                       self.liq_tool.currentData()))
+        self.liq_tool.setVisible(False)
+        self.liq_chips = {}
+        lv.addWidget(self._chip_strip(W.MODES, self.pick_liquify,
+                                      self.liq_chips))
+        lv.addWidget(self._slider_strip(
+            [("liquify_size", "gi_liq_size", 5, 200, 1),
+             ("liquify_force", "gi_liq_force", 1, 100, 1),
+             ("liquify_hard", "gi_liq_hard", 0, 95, 1)]))
+        self.liq_box.setVisible(False)
+        lay.addWidget(self.liq_box)
+
+        arow = QHBoxLayout()
+        self.act_btns = {}
+        for _key, _slot in (("del", self.points_delete_chosen),
+                            ("smooth", self.points_smooth_chosen),
+                            ("reset_letter", self.reset_points_letter),
+                            ("reset_pts", self.on_reset_points),
+                            ("reset_warp", self.on_reset_warps),
+                            ("reset_moves", self.reset_letters)):
+            _b = QPushButton()
+            _b.clicked.connect(lambda _c=False, s=_slot: s())
+            arow.addWidget(_b)
+            self.act_btns[_key] = _b
+        self.act_count = QLabel()
+        self.act_count.setStyleSheet("color: gray;")
+        arow.addWidget(self.act_count)
+        arow.addStretch(1)
+        lay.addLayout(arow)
+
+        # the row that is always there: a new shape, a type that fits,
+        # and the two ways onto the page
+        foot = QHBoxLayout()
+        self.reroll_btn = QPushButton()
+        self.reroll_btn.clicked.connect(self.on_reroll)
+        foot.addWidget(self.reroll_btn)
+        self.auto_btn = QPushButton()
+        self.auto_btn.clicked.connect(self.on_auto)
+        foot.addWidget(self.auto_btn)
+        foot.addStretch(1)
+        self.insert_vec_btn = QPushButton()
+        self.insert_vec_btn.clicked.connect(
+            lambda *_a: self.insert(raster=False))
+        foot.addWidget(self.insert_vec_btn)
+        self.insert_px_btn = QPushButton()
+        self.insert_px_btn.clicked.connect(
+            lambda *_a: self.insert(raster=True))
+        foot.addWidget(self.insert_px_btn)
+        lay.addLayout(foot)
+
+        self.legend_lbl = QLabel()
+        self.legend_lbl.setWordWrap(True)
+        self.legend_lbl.setStyleSheet("color: gray; font-size: 10px;")
+        lay.addWidget(self.legend_lbl)
+
+        self.status_lbl = QLabel()
+        self.status_lbl.setWordWrap(True)
+        self.status_lbl.setStyleSheet("color: gray;")
+        lay.addWidget(self.status_lbl)
+
+        # --- the settings ---------------------------------------------
+        # the type runs across the top of both settings columns: every
+        # type on the table, the ones that suit what is typed marked
+        lay = self._new_block(span=True)
+        self.type_lbl = QLabel()
+        self.type_combo = NoScrollComboBox()
+        for tid in G.TYPE_IDS:
+            self.type_combo.addItem("", tid)
+        self.type_combo.currentIndexChanged.connect(self._on_type)
+        self.type_combo.setVisible(False)
+        self.type_lbl.setVisible(False)
+        self.type_chips = {}
+        self.type_strip = self._chip_strip(G.TYPE_IDS, self.pick_type,
+                                           self.type_chips)
+        lay.addWidget(self.type_strip)
+
+        # --- Text ------------------------------------------------------
+        lay = self._new_block(0)
+        self.sec_text = _Section("text", self._open.get("text", True),
+                                 self._on_section)
+        g = self.sec_text.grid
         self.text_edit = QPlainTextEdit()
         self.text_edit.setFixedHeight(58)
-        self.text_edit.setPlainText(self._get("giongoText", "ドーーン！"))
+        self.text_edit.setPlainText(self._get("giongoText", "\u30c9\u30fc"
+                                              "\u30fc\u30f3\uff01"))
         self.text_edit.textChanged.connect(self._on_text)
         trow = QHBoxLayout()
         trow.addWidget(self.text_edit, 1)
         self.dict_btn = QPushButton()
         self.dict_btn.setFixedWidth(34)
-        self.dict_btn.clicked.connect(self.on_dictionary)
+        self.dict_btn.clicked.connect(self.toggle_dict)
         trow.addWidget(self.dict_btn, 0, Qt.AlignmentFlag.AlignTop)
         self.dakuten_btn = QPushButton()
         self.dakuten_btn.setFixedWidth(34)
         self.dakuten_btn.clicked.connect(self.on_dakuten)
-        trow.addWidget(self.dakuten_btn, 0,
-                       Qt.AlignmentFlag.AlignTop)
-        lay.addLayout(trow)
-
+        trow.addWidget(self.dakuten_btn, 0, Qt.AlignmentFlag.AlignTop)
+        g.addLayout(trow, 0, 0, 1, 3)
+        g.addWidget(self._build_dict(), 1, 0, 1, 3)
         crow = QHBoxLayout()
         self.caption_lbl = QLabel()
         crow.addWidget(self.caption_lbl)
@@ -1615,25 +1978,15 @@ class GiongoPanel(QWidget):
             lambda _i: self._set_param("caption_pos",
                                        self.caption_pos.currentData()))
         crow.addWidget(self.caption_pos)
-        lay.addLayout(crow)
-        cgrid = QGridLayout()
-        self._add_slider(cgrid, 0, "caption_size", "gi_caption_size",
-                         8, 120, 1)
-        lay.addLayout(cgrid)
+        g.addLayout(crow, 2, 0, 1, 3)
+        self._add_slider(g, 3, "caption_size", "gi_caption_size", 8, 120, 1)
+        lay.addWidget(self.sec_text)
 
-        row = QHBoxLayout()
-        self.type_lbl = QLabel()
-        row.addWidget(self.type_lbl)
-        self.type_combo = NoScrollComboBox()
-        for tid in G.TYPE_IDS:
-            self.type_combo.addItem("", tid)
-        self.type_combo.currentIndexChanged.connect(self._on_type)
-        row.addWidget(self.type_combo, 1)
-        self.auto_btn = QPushButton()
-        self.auto_btn.clicked.connect(self.on_auto)
-        row.addWidget(self.auto_btn)
-        lay.addLayout(row)
-
+        # --- Letter style ----------------------------------------------
+        lay = self._new_block(0)
+        self.sec_style = _Section("style", self._open.get("style", True),
+                                  self._on_section)
+        g = self.sec_style.grid
         row = QHBoxLayout()
         self.font_lbl = QLabel()
         row.addWidget(self.font_lbl)
@@ -1659,7 +2012,7 @@ class GiongoPanel(QWidget):
         self.bold_chk = QCheckBox()
         self.bold_chk.toggled.connect(lambda on: self._set_param("bold", on))
         row.addWidget(self.bold_chk)
-        lay.addLayout(row)
+        g.addLayout(row, 0, 0, 1, 3)
         srow = QHBoxLayout()
         self.set_lbl = QLabel()
         srow.addWidget(self.set_lbl)
@@ -1672,195 +2025,101 @@ class GiongoPanel(QWidget):
         self.set_import_btn = QPushButton()
         self.set_import_btn.clicked.connect(self.on_import_lettering)
         srow.addWidget(self.set_import_btn)
-        lay.addLayout(srow)
+        g.addLayout(srow, 1, 0, 1, 3)
         self.font_hint = QLabel()
         self.font_hint.setWordWrap(True)
         self.font_hint.setStyleSheet("color: gray; font-size: 10px;")
-        lay.addWidget(self.font_hint)
-
-        tbar = QHBoxLayout()
-        self.tool_btns = {}
-        for _key in ("move", "liquify", "points", "erase"):
-            _b = QPushButton()
-            _b.setCheckable(True)
-            _b.clicked.connect(lambda _c=False, k=_key: self.set_tool(k))
-            tbar.addWidget(_b)
-            self.tool_btns[_key] = _b
-        self.tool_btns["move"].setChecked(True)
-        tbar.addStretch(1)
-        self.bg_lbl = QLabel()
-        tbar.addWidget(self.bg_lbl)
-        self.bg_combo = NoScrollComboBox()
-        for val, _k in _BACKGROUNDS:
-            self.bg_combo.addItem("", val)
-        bg = self._get("giongoBg", "check")
-        self.bg_combo.setCurrentIndex(max(0, self.bg_combo.findData(bg)))
-        self.bg_combo.currentIndexChanged.connect(self._on_bg)
-        tbar.addWidget(self.bg_combo)
-        self.back_btn = QPushButton()
-        self.back_btn.clicked.connect(self.on_back)
-        self.back_btn.setEnabled(False)
-        tbar.addWidget(self.back_btn)
-        self.fwd_btn = QPushButton()
-        self.fwd_btn.clicked.connect(self.on_forward)
-        self.fwd_btn.setEnabled(False)
-        tbar.addWidget(self.fwd_btn)
-        self.size_lbl = QLabel()
-        self.size_lbl.setStyleSheet("color: gray;")
-        tbar.addWidget(self.size_lbl)
-        lay.addLayout(tbar)
-
-        self._canvas_block = self._blocks[-1]
-        self.preview = GiongoPreview(self)
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumHeight(200)
-        self.preview.setSizePolicy(QSizePolicy.Policy.Ignored,
-                                   QSizePolicy.Policy.Expanding)
-        self.preview.setStyleSheet("border: 1px solid #888;")
-        lay.addWidget(self.preview, 1)
-
-        self.legend_lbl = QLabel()
-        self.legend_lbl.setWordWrap(True)
-        self.legend_lbl.setStyleSheet("color: gray; font-size: 10px;")
-        lay.addWidget(self.legend_lbl)
-
-        arow = QHBoxLayout()
-        self.act_btns = {}
-        for _key, _slot in (("del", self.points_delete_chosen),
-                            ("smooth", self.points_smooth_chosen),
-                            ("reset_letter", self.reset_points_letter),
-                            ("reset_pts", self.on_reset_points),
-                            ("reset_warp", self.on_reset_warps),
-                            ("reset_moves", self.reset_letters)):
-            _b = QPushButton()
-            _b.clicked.connect(lambda _c=False, s=_slot: s())
-            arow.addWidget(_b)
-            self.act_btns[_key] = _b
-        self.act_count = QLabel()
-        self.act_count.setStyleSheet("color: gray;")
-        arow.addWidget(self.act_count)
-        arow.addStretch(1)
-        lay.addLayout(arow)
-
-        # the gacha and the macros are their own group: the canvas column
-        # is as tall as the window, and anything put after the canvas can
-        # only be reached by scrolling past it
-        lay = self._new_block()
-
-        row = QHBoxLayout()
-        self.reroll_btn = QPushButton()
-        self.reroll_btn.clicked.connect(self.on_reroll)
-        row.addWidget(self.reroll_btn)
-        self.gacha_btn = QPushButton()
-        self.gacha_btn.clicked.connect(lambda *_a: self.on_gacha())
-        row.addWidget(self.gacha_btn)
-        self.mutate_btn = QPushButton()
-        self.mutate_btn.clicked.connect(lambda *_a: self.on_mutate())
-        row.addWidget(self.mutate_btn)
-        self.wild_chk = QCheckBox()
-        row.addWidget(self.wild_chk)
-        lay.addLayout(row)
-
-        # the sheet of options (hidden until rolled)
-        self.options_box = QWidget()
-        og = QGridLayout()
-        og.setContentsMargins(0, 0, 0, 0)
-        og.setSpacing(4)
-        self.options_box.setLayout(og)
-        self._option_btns = []
-        for i in range(_N_OPTIONS):
-            b = QToolButton()
-            b.setIconSize(QSize(150, 84))
-            b.setAutoRaise(True)
-            b.clicked.connect(lambda *_a, n=i: self.on_pick(n))
-            og.addWidget(b, i // 2, i % 2)
-            self._option_btns.append(b)
-        self.close_opts_btn = QToolButton()
-        self.close_opts_btn.clicked.connect(
-            lambda *_a: self.options_box.setVisible(False))
-        og.addWidget(self.close_opts_btn, 0, 2,
-                     Qt.AlignmentFlag.AlignTop)
-        self.options_box.setVisible(False)
-        lay.addWidget(self.options_box)
-
-        # macro sliders
-        self.macro_lbl = QLabel()
-        self.macro_lbl.setStyleSheet("font-weight: bold;")
-        lay.addWidget(self.macro_lbl)
-        mg = QGridLayout()
-        mg.setContentsMargins(10, 0, 0, 0)
-        mg.setVerticalSpacing(2)
-        for r, (key, lk) in enumerate(_MACROS):
-            self._add_slider(mg, r, key, lk, -100, 100, 1)
-        lay.addLayout(mg)
-
-        # individual settings
-        self.sec_layout = _Section("layout", self._open.get("layout", False),
-                                   self._on_section)
-        g = self.sec_layout.grid
-        self.letter_lbl = QLabel()
-        g.addWidget(self.letter_lbl, 0, 0)
-        self.letter_spin = NoScrollSpinBox()
-        self.letter_spin.setRange(*G.RANGES["letter_px"])
-        self.letter_spin.valueChanged.connect(
-            lambda v: self._set_param("letter_px", v))
-        g.addWidget(self.letter_spin, 0, 1, 1, 2)
-        self.vertical_chk = QCheckBox()
-        self.vertical_chk.toggled.connect(
-            lambda on: self._set_param("vertical", on))
-        g.addWidget(self.vertical_chk, 1, 0, 1, 3)
-        self.bars_chk = QCheckBox()
-        self.bars_chk.toggled.connect(
-            lambda on: self._set_param("merge_bars", on))
-        g.addWidget(self.bars_chk, 2, 0, 1, 3)
-        for r, spec in enumerate(_LAYOUT_SLIDERS, start=3):
-            self._add_slider(g, r, *spec)
-        lay = self._new_block()
-        lay.addWidget(self.sec_layout)
-
-        self.sec_var = _Section("var", self._open.get("var", False),
-                                self._on_section)
-        g = self.sec_var.grid
-        for r, spec in enumerate(_VAR_SLIDERS):
-            self._add_slider(g, r, *spec)
-        self.seed_lbl = QLabel()
-        g.addWidget(self.seed_lbl, len(_VAR_SLIDERS), 0)
-        self.seed_spin = NoScrollSpinBox()
-        self.seed_spin.setRange(*G.RANGES["seed"])
-        self.seed_spin.valueChanged.connect(
-            lambda v: self._set_param("seed", v))
-        g.addWidget(self.seed_spin, len(_VAR_SLIDERS), 1, 1, 2)
-        lay = self._new_block()
-        self.sec_pen = _Section("pen", self._open.get("pen", True),
-                                self._on_section)
-        g = self.sec_pen.grid
+        g.addWidget(self.font_hint, 2, 0, 1, 3)
+        prow = QHBoxLayout()
         self.pen_lbl = QLabel()
-        g.addWidget(self.pen_lbl, 0, 0)
+        prow.addWidget(self.pen_lbl)
         self.pen_combo = NoScrollComboBox()
         for name in G.PENS:
             self.pen_combo.addItem("", name)
         self.pen_combo.currentIndexChanged.connect(
             lambda *_a: self._set_param("pen",
                                         self.pen_combo.currentData() or "off"))
-        g.addWidget(self.pen_combo, 0, 1, 1, 2)
+        prow.addWidget(self.pen_combo, 1)
+        g.addLayout(prow, 3, 0, 1, 3)
         self.pen_hint = QLabel()
         self.pen_hint.setWordWrap(True)
         self.pen_hint.setStyleSheet("color: #a07000;")
         self.pen_hint.setVisible(False)
-        g.addWidget(self.pen_hint, 1, 0, 1, 3)
-        for r, (key, lk) in enumerate(
-                (("pen_width", "gi_pen_width"),
-                 ("pen_taper", "gi_pen_taper"),
-                 ("pen_wobble", "gi_pen_wobble"),
-                 ("pen_angle", "gi_pen_angle"),
-                 ("pen_dry", "gi_pen_dry"))):
-            lo, hi = G.RANGES[key]
-            self._add_slider(g, r + 2, key, lk, lo, hi, 1)
-        lay.addWidget(self.sec_pen)
+        g.addWidget(self.pen_hint, 4, 0, 1, 3)
+        g.addWidget(self._slider_strip(
+            [(k, lk) + tuple(G.RANGES[k]) + (1,)
+             for k, lk in (("pen_width", "gi_pen_width"),
+                           ("pen_taper", "gi_pen_taper"),
+                           ("pen_wobble", "gi_pen_wobble"),
+                           ("pen_angle", "gi_pen_angle"),
+                           ("pen_dry", "gi_pen_dry"))]), 5, 0, 1, 3)
+        lay.addWidget(self.sec_style)
 
-        lay = self._new_block()
+        # --- Layout -----------------------------------------------------
+        lay = self._new_block(0)
+        self.sec_layout = _Section("layout", self._open.get("layout", True),
+                                   self._on_section)
+        g = self.sec_layout.grid
+        self.vertical_chk = QCheckBox()
+        self.vertical_chk.toggled.connect(
+            lambda on: self._set_param("vertical", on))
+        g.addWidget(self.vertical_chk, 0, 0)
+        self.bars_chk = QCheckBox()
+        self.bars_chk.toggled.connect(
+            lambda on: self._set_param("merge_bars", on))
+        g.addWidget(self.bars_chk, 0, 1, 1, 2)
+        g.addWidget(self._slider_strip(_LAYOUT_SLIDERS), 1, 0, 1, 3)
+        lay.addWidget(self.sec_layout)
+
+        # --- Favourites & more ------------------------------------------
+        lay = self._new_block(0)
+        self.sec_more = _Section("more", self._open.get("more", True),
+                                 self._on_section)
+        g = self.sec_more.grid
+        self.fav_save_btn = QPushButton()
+        self.fav_save_btn.clicked.connect(self.on_save_favourite)
+        g.addWidget(self.fav_save_btn, 0, 0, 1, 3)
+        self.fav_host = QWidget()
+        self.fav_flow = _Flow(self.fav_host, spacing=4)
+        self.fav_host.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                    QSizePolicy.Policy.Minimum)
+        _pol = self.fav_host.sizePolicy()
+        _pol.setHeightForWidth(True)
+        self.fav_host.setSizePolicy(_pol)
+        g.addWidget(self.fav_host, 1, 0, 1, 3)
+        self.fav_none = QLabel()
+        self.fav_none.setStyleSheet("color: gray;")
+        g.addWidget(self.fav_none, 2, 0, 1, 3)
+        self.reset_btn = QPushButton()
+        self.reset_btn.clicked.connect(self.on_reset)
+        g.addWidget(self.reset_btn, 3, 0, 1, 3)
+        lay.addWidget(self.sec_more)
+        self._favs = FAV.from_json(self._get("giongoFavs", "[]"))
+        self._refresh_favs()
+
+        # --- Intensity --------------------------------------------------
+        lay = self._new_block(1)
+        self.sec_var = _Section("var", self._open.get("var", True),
+                                self._on_section)
+        g = self.sec_var.grid
+        g.addWidget(self._slider_strip(
+            [(k, lk, -100, 100, 1) for k, lk in _MACROS]), 0, 0, 1, 3)
+        self.macro_lbl = QLabel()
+        self.macro_lbl.setStyleSheet("color: gray; font-size: 10px;")
+        self.macro_lbl.setWordWrap(True)
+        g.addWidget(self.macro_lbl, 1, 0, 1, 3)
+        g.addWidget(self._slider_strip(_VAR_SLIDERS), 2, 0, 1, 3)
+        self.seed_lbl = QLabel()
+        g.addWidget(self.seed_lbl, 3, 0)
+        self.seed_spin = NoScrollSpinBox()
+        self.seed_spin.setRange(*G.RANGES["seed"])
+        self.seed_spin.valueChanged.connect(
+            lambda v: self._set_param("seed", v))
+        g.addWidget(self.seed_spin, 3, 1, 1, 2)
         lay.addWidget(self.sec_var)
 
+        # --- Fill -------------------------------------------------------
+        lay = self._new_block(1)
         self.sec_fill = _Section("fill", self._open.get("fill", True),
                                  self._on_section)
         g = self.sec_fill.grid
@@ -1885,8 +2144,8 @@ class GiongoPanel(QWidget):
                                                                     c)))
         frow.addWidget(self.fill2_btn)
         g.addLayout(frow, 0, 1, 1, 2)
-        self._add_slider(g, _R_TONE, "tone_dot", "gi_tone_dot",
-                         3, 60, 1)
+        g.setColumnStretch(1, 1)
+        g.setColumnStretch(2, 1)
         prow = QHBoxLayout()
         self.pattern_btn = QPushButton()
         self.pattern_btn.clicked.connect(self.on_pick_pattern)
@@ -1894,20 +2153,26 @@ class GiongoPanel(QWidget):
         self.pattern_lbl = QLabel()
         self.pattern_lbl.setStyleSheet("color: gray;")
         prow.addWidget(self.pattern_lbl, 1)
-        g.addLayout(prow, _R_PATTERN, 0, 1, 3)
-        self._add_slider(g, _R_NEG, "neg_pad", "gi_neg_pad", 0, 120, 1)
-        self._add_slider(g, _R_LINEW, "fill_line_w", "gi_fill_line_w",
-                         1, 40, 1)
-        self._add_slider(g, _R_PATSCALE, "fill_pattern_scale",
-                         "gi_pattern_scale", 10, 400, 1)
+        g.addLayout(prow, 1, 0, 1, 3)
+        g.addWidget(self._slider_strip(
+            [("tone_dot", "gi_tone_dot", 3, 60, 1),
+             ("fill_pattern_scale", "gi_pattern_scale", 10, 400, 1),
+             ("neg_pad", "gi_neg_pad", 0, 120, 1),
+             ("fill_line_w", "gi_fill_line_w", 1, 40, 1)]), 2, 0, 1, 3)
+        lay.addWidget(self.sec_fill)
 
-        self._add_slider(g, _R_THICKEN, "thicken", "gi_thicken",
-                         0, 12, 4)
+        # --- Outline ----------------------------------------------------
+        lay = self._new_block(1)
+        self.sec_out = _Section("out", self._open.get("out", True),
+                                self._on_section)
+        g = self.sec_out.grid
+        g.addWidget(self._slider_strip(
+            [("thicken", "gi_thicken", 0, 12, 4)], cols=1), 0, 0, 1, 3)
         self._outline_rows = []
         for i in range(G.MAX_OUTLINES):
             chk = QCheckBox()
             chk.toggled.connect(self._on_outlines)
-            g.addWidget(chk, _R_OUTLINES + i, 0)
+            g.addWidget(chk, 1 + i, 0)
             orow = QHBoxLayout()
             btn = QPushButton()
             btn.setFixedWidth(42)
@@ -1920,9 +2185,9 @@ class GiongoPanel(QWidget):
             spin.setSuffix(" %")
             spin.valueChanged.connect(self._on_outlines)
             orow.addWidget(spin, 1)
-            g.addLayout(orow, _R_OUTLINES + i, 1, 1, 2)
+            g.addLayout(orow, 1 + i, 1, 1, 2)
             self._outline_rows.append((chk, btn, spin))
-        r = _R_OUTLINES + G.MAX_OUTLINES
+        r = 1 + G.MAX_OUTLINES
         self.omode_lbl = QLabel()
         g.addWidget(self.omode_lbl, r, 0)
         self.omode_combo = NoScrollComboBox()
@@ -1932,123 +2197,60 @@ class GiongoPanel(QWidget):
             lambda _i: self._set_param("outline_mode",
                                        self.omode_combo.currentData()))
         g.addWidget(self.omode_combo, r, 1, 1, 2)
-        lay = self._new_block()
-        lay.addWidget(self.sec_fill)
+        lay.addWidget(self.sec_out)
 
+        # --- Shadow & motion --------------------------------------------
+        lay = self._new_block(1)
         self.sec_shadow = _Section("shadow", self._open.get("shadow", False),
                                    self._on_section)
         g = self.sec_shadow.grid
-        for r, spec in enumerate(_SHADOW_SLIDERS):
-            self._add_slider(g, r, *spec)
+        g.addWidget(self._slider_strip(_SHADOW_SLIDERS), 0, 0, 1, 3)
+        nrow = QHBoxLayout()
         self.noise_style_lbl = QLabel()
-        g.addWidget(self.noise_style_lbl, len(_SHADOW_SLIDERS), 0)
+        nrow.addWidget(self.noise_style_lbl)
         self.noise_style = NoScrollComboBox()
         for st in G.NOISE_STYLES:
             self.noise_style.addItem("", st)
         self.noise_style.currentIndexChanged.connect(
             lambda _i: self._set_param("noise_style",
                                        self.noise_style.currentData()))
-        g.addWidget(self.noise_style, len(_SHADOW_SLIDERS), 1, 1, 2)
+        nrow.addWidget(self.noise_style, 1)
         self.shadow_lbl = QLabel()
-        g.addWidget(self.shadow_lbl, len(_SHADOW_SLIDERS) + 1, 0)
+        nrow.addWidget(self.shadow_lbl)
         self.shadow_btn = self._color_button(
             lambda b: self._pick_color(
                 b, lambda c: self._set_param("shadow_color", c)))
-        g.addWidget(self.shadow_btn, len(_SHADOW_SLIDERS) + 1, 1)
-        lay = self._new_block()
-        lay.addWidget(self.sec_shadow)
-
-        self.sec_liquify = _Section("liquify",
-                                    self._open.get("liquify", False),
-                                    self._on_section)
-        g = self.sec_liquify.grid
-        self.liq_chk = QCheckBox()
-        self.liq_chk.toggled.connect(self._on_liquify_armed)
-        g.addWidget(self.liq_chk, 0, 0, 1, 3)
-        self.liq_tool_lbl = QLabel()
-        g.addWidget(self.liq_tool_lbl, 1, 0)
-        self.liq_tool = NoScrollComboBox()
-        for m in W.MODES:
-            self.liq_tool.addItem("", m)
-        self.liq_tool.currentIndexChanged.connect(
-            lambda _i: self._set_param("liquify_mode",
-                                       self.liq_tool.currentData()))
-        g.addWidget(self.liq_tool, 1, 1, 1, 2)
-        self._add_slider(g, 2, "liquify_size", "gi_liq_size", 5, 200, 1)
-        self._add_slider(g, 3, "liquify_force", "gi_liq_force", 1, 100, 1)
-        self._add_slider(g, 4, "liquify_hard", "gi_liq_hard", 0, 95, 1)
-        self.liq_reset_btn = QPushButton()
-        self.liq_reset_btn.clicked.connect(self.on_reset_warps)
-        g.addWidget(self.liq_reset_btn, 5, 0, 1, 3)
-        lay = self._new_block()
-        lay.addWidget(self.sec_liquify)
-
-        self.sec_points = _Section("points",
-                                   self._open.get("points", False),
-                                   self._on_section)
-        g = self.sec_points.grid
-        self.pts_chk = QCheckBox()
-        self.pts_chk.toggled.connect(self._on_points_armed)
-        g.addWidget(self.pts_chk, 0, 0, 1, 3)
-        self.pts_hint = QLabel()
-        self.pts_hint.setWordWrap(True)
-        self.pts_hint.setStyleSheet("color: gray;")
-        g.addWidget(self.pts_hint, 1, 0, 1, 3)
-        self.pts_reset_btn = QPushButton()
-        self.pts_reset_btn.clicked.connect(self.on_reset_points)
-        g.addWidget(self.pts_reset_btn, 2, 0, 1, 3)
-        lay = self._new_block()
-        lay.addWidget(self.sec_points)
-
-        self.sec_deco = _Section("deco", self._open.get("deco", False),
-                                 self._on_section)
-        g = self.sec_deco.grid
+        nrow.addWidget(self.shadow_btn)
+        g.addLayout(nrow, 1, 0, 1, 3)
+        drow = QHBoxLayout()
         self.deco_lbl = QLabel()
-        g.addWidget(self.deco_lbl, 0, 0)
+        drow.addWidget(self.deco_lbl)
         self.deco_combo = NoScrollComboBox()
         for d in G.DECOS:
             self.deco_combo.addItem("", d)
         self.deco_combo.currentIndexChanged.connect(
             lambda _i: self._set_param("deco", self.deco_combo.currentData()))
-        g.addWidget(self.deco_combo, 0, 1, 1, 2)
-        self._add_slider(g, 1, "deco_n", "gi_deco_n", 0, 60, 1)
-        self._add_slider(g, 2, "deco_size", "gi_deco_size", 1, 100, 1)
-        self._add_slider(g, 3, "deco_dist", "gi_deco_dist", 0, 150, 1)
-        lay = self._new_block()
-        lay.addWidget(self.sec_deco)
+        drow.addWidget(self.deco_combo, 1)
+        g.addLayout(drow, 2, 0, 1, 3)
+        g.addWidget(self._slider_strip(
+            [("deco_n", "gi_deco_n", 0, 60, 1),
+             ("deco_size", "gi_deco_size", 1, 100, 1),
+             ("deco_dist", "gi_deco_dist", 0, 150, 1)]), 3, 0, 1, 3)
+        lay.addWidget(self.sec_shadow)
 
-        # output
-        lay = self._new_block()
+        # --- Save --------------------------------------------------------
+        lay = self._new_block(1)
+        self.sec_save = _Section("save", self._open.get("save", True),
+                                 self._on_section)
+        g = self.sec_save.grid
         self.fit_chk = QCheckBox()
         self.fit_chk.setChecked(self._get("giongoFit", "true") == "true")
         self.fit_chk.toggled.connect(
             lambda on: self._set("giongoFit", "true" if on else "false"))
-        lay.addWidget(self.fit_chk)
-        row = QHBoxLayout()
-        self.insert_vec_btn = QPushButton()
-        self.insert_vec_btn.clicked.connect(
-            lambda *_a: self.insert(raster=False))
-        row.addWidget(self.insert_vec_btn)
-        self.insert_px_btn = QPushButton()
-        self.insert_px_btn.clicked.connect(
-            lambda *_a: self.insert(raster=True))
-        row.addWidget(self.insert_px_btn)
-        lay.addLayout(row)
-        row = QHBoxLayout()
-        self.save_png_btn = QPushButton()
-        self.save_png_btn.clicked.connect(lambda *_a: self.on_save("png"))
-        row.addWidget(self.save_png_btn)
-        self.save_svg_btn = QPushButton()
-        self.save_svg_btn.clicked.connect(lambda *_a: self.on_save("svg"))
-        row.addWidget(self.save_svg_btn)
-        self.save_zip_btn = QPushButton()
-        self.save_zip_btn.clicked.connect(lambda *_a: self.on_save("zip"))
-        row.addWidget(self.save_zip_btn)
-        self.save_psd_btn = QPushButton()
-        self.save_psd_btn.clicked.connect(lambda *_a: self.on_save("psd"))
-        row.addWidget(self.save_psd_btn)
+        g.addWidget(self.fit_chk, 0, 0, 1, 2)
+        srow = QHBoxLayout()
         self.scale_lbl = QLabel()
-        row.addWidget(self.scale_lbl)
+        srow.addWidget(self.scale_lbl)
         self.scale_combo = NoScrollComboBox()
         for _k in (1, 2, 3, 4):
             self.scale_combo.addItem("%d\u00d7" % _k, _k)
@@ -2061,34 +2263,364 @@ class GiongoPanel(QWidget):
         self.scale_combo.currentIndexChanged.connect(
             lambda _i: self._set("giongoScale",
                                  str(self.scale_combo.currentData() or 1)))
-        row.addWidget(self.scale_combo)
-        lay.addLayout(row)
-        self.reset_btn = QPushButton()
-        self.reset_btn.clicked.connect(self.on_reset)
-        row.addWidget(self.reset_btn)
-        lay.addLayout(row)
+        srow.addWidget(self.scale_combo)
+        srow.addStretch(1)
+        g.addLayout(srow, 0, 2)
+        brow = QHBoxLayout()
+        self.save_png_btn = QPushButton()
+        self.save_png_btn.clicked.connect(lambda *_a: self.on_save("png"))
+        brow.addWidget(self.save_png_btn)
+        self.save_svg_btn = QPushButton()
+        self.save_svg_btn.clicked.connect(lambda *_a: self.on_save("svg"))
+        brow.addWidget(self.save_svg_btn)
+        self.save_zip_btn = QPushButton()
+        self.save_zip_btn.clicked.connect(lambda *_a: self.on_save("zip"))
+        brow.addWidget(self.save_zip_btn)
+        self.save_psd_btn = QPushButton()
+        self.save_psd_btn.clicked.connect(lambda *_a: self.on_save("psd"))
+        brow.addWidget(self.save_psd_btn)
+        g.addLayout(brow, 1, 0, 1, 3)
+        crow = QHBoxLayout()
+        self.copy_set_btn = QPushButton()
+        self.copy_set_btn.clicked.connect(self.on_copy_settings)
+        crow.addWidget(self.copy_set_btn)
+        self.paste_set_btn = QPushButton()
+        self.paste_set_btn.clicked.connect(self.on_paste_settings)
+        crow.addWidget(self.paste_set_btn)
+        crow.addStretch(1)
+        g.addLayout(crow, 2, 0, 1, 3)
+        lay.addWidget(self.sec_save)
 
-        self.status_lbl = QLabel()
-        self.status_lbl.setWordWrap(True)
-        self.status_lbl.setStyleSheet("color: gray;")
-        lay.addWidget(self.status_lbl)
+        # --- Gacha --------------------------------------------------------
+        lay = self._new_block(1)
+        self.sec_gacha = _Section("gacha", self._open.get("gacha", True),
+                                  self._on_section)
+        g = self.sec_gacha.grid
+        row = QHBoxLayout()
+        self.gacha_btn = QPushButton()
+        self.gacha_btn.clicked.connect(lambda *_a: self.on_gacha())
+        row.addWidget(self.gacha_btn)
+        self.mutate_btn = QPushButton()
+        self.mutate_btn.clicked.connect(lambda *_a: self.on_mutate())
+        row.addWidget(self.mutate_btn)
+        self.wild_chk = QCheckBox()
+        row.addWidget(self.wild_chk)
+        row.addStretch(1)
+        g.addLayout(row, 0, 0, 1, 3)
+        lay.addWidget(self.sec_gacha)
         lay.addStretch(1)
         self._place_blocks(1)
 
-    def _add_slider(self, grid, row, key, label_key, lo, hi, steps):
+    def _build_dict(self):
+        """The sound list, grouped, under the text field.
+
+        Built once: a hundred and fifty buttons are not free, but they
+        are built while the panel is, not every time the list is opened.
+        """
+        self.dict_box = QScrollArea()
+        self.dict_box.setWidgetResizable(True)
+        self.dict_box.setMaximumHeight(220)
+        self.dict_box.setFrameShape(QFrame.Shape.StyledPanel)
+        inner = QWidget()
+        col = QVBoxLayout(inner)
+        col.setContentsMargins(4, 2, 4, 4)
+        col.setSpacing(2)
+        self._dict_heads = []       # (label, what to put in it)
+        self._dict_sheets = []      # the one button per group
+        script = None
+        for scr, tid, items in GD.groups():
+            if scr != script:
+                script = scr
+                head = QLabel()
+                head.setStyleSheet("color: gray; font-size: 10px;")
+                col.addWidget(head)
+                self._dict_heads.append((head, "gi_dict_" + scr))
+            hrow = QWidget()
+            hl = QHBoxLayout(hrow)
+            hl.setContentsMargins(0, 0, 0, 0)
+            hl.setSpacing(4)
+            name = QLabel()
+            name.setStyleSheet("font-weight: bold;")
+            hl.addWidget(name)
+            sheet = QPushButton("\u25a6")
+            sheet.setFixedWidth(22)
+            sheet.setStyleSheet(_CHIP_OFF)
+            sheet.clicked.connect(
+                lambda _c=False, it=list(items), k=tid:
+                self.save_category(it, k))
+            hl.addWidget(sheet)
+            hl.addStretch(1)
+            col.addWidget(hrow)
+            self._dict_heads.append((name, "gi_type_" + tid))
+            self._dict_sheets.append(sheet)
+            row = QWidget()
+            flow = _Flow(row, spacing=3)
+            for e in items:
+                b = QPushButton(e["kana"])
+                b.setStyleSheet(_CHIP_OFF)
+                b.setToolTip("%s \u2014 %s" % (e["romaji"],
+                                                GD.gloss(e, "en")))
+                b.clicked.connect(lambda _c=False, en=e: self.take_sound(en))
+                flow.addWidget(b)
+            row.setSizePolicy(QSizePolicy.Policy.Preferred,
+                              QSizePolicy.Policy.Minimum)
+            pol = row.sizePolicy()
+            pol.setHeightForWidth(True)
+            row.setSizePolicy(pol)
+            col.addWidget(row)
+        srow = QHBoxLayout()
+        srow.addStretch(1)
+        self.dict_find_btn = QPushButton()
+        self.dict_find_btn.clicked.connect(self.on_dictionary)
+        srow.addWidget(self.dict_find_btn)
+        col.addLayout(srow)
+        self.dict_box.setWidget(inner)
+        self.dict_box.setVisible(self._get("giongoDict", "false") == "true")
+        return self.dict_box
+
+    def sheet_image(self, entries, cols=4, cell_w=260):
+        """Every sound in `entries`, drawn in the look in play, on a grid.
+
+        One image rather than one file each: a sheet is something you
+        open once and pull from, and a folder of forty PNGs is not.
+        """
+        cell_h = max(60, int(cell_w * 0.6))
+        rows = max(1, (len(entries) + cols - 1) // cols)
+        img = QImage(cols * cell_w, rows * cell_h,
+                     QImage.Format.Format_ARGB32)
+        img.fill(0)
+        p = QPainter(img)
+        fams = self.families()
+        font = G.resolve_font(self._params, fams)
+        for i, e in enumerate(entries):
+            try:
+                scene = R.build_scene(e["kana"], self._params, font)
+                tile = R.render_thumb(scene, cell_w - 10, cell_h - 10,
+                                      background=None)
+            except Exception as exc:        # noqa: BLE001
+                RP.record("sheet", exc, e.get("kana", ""))
+                continue
+            p.drawImage((i % cols) * cell_w + 5,
+                        (i // cols) * cell_h + 5, tile)
+        p.end()
+        return img
+
+    def save_category(self, entries, tid):
+        """Write one group of the dictionary out as a sheet."""
+        if not entries:
+            return False
+        img = self.sheet_image(entries)
+        name = (self._t("gi_type_" + tid) or tid).split(" ")[0]
+        start = os.path.join(self._get("giongoSaveDir", ""), name + ".png")
+        path, _f = QFileDialog.getSaveFileName(self, "", start,
+                                               "PNG (*.png)")
+        if not path:
+            return False
+        if not path.lower().endswith(".png"):
+            path += ".png"
+        ok = bool(img.save(path))
+        if ok:
+            self._set("giongoSaveDir", os.path.dirname(path))
+        self._status(self._t("gi_sheet_saved", n=len(entries), p=path) if ok
+                     else self._t("gi_save_fail", p=path))
+        return ok
+
+    def toggle_dict(self, *_a):
+        """Open or close the list under the text field."""
+        on = not self.dict_box.isVisible()
+        self.dict_box.setVisible(on)
+        self._set("giongoDict", "true" if on else "false")
+
+    # --- favourites -------------------------------------------------
+
+    def favourites(self):
+        """The saved looks, as the store has them."""
+        return list(self._favs)
+
+    def _save_favs(self):
+        self._set("giongoFavs", FAV.to_json(self._favs))
+        self._refresh_favs()
+
+    def _refresh_favs(self):
+        """(Re)build the row of saved looks."""
+        while self.fav_flow.count():
+            item = self.fav_flow.takeAt(0)
+            w = item.widget() if item is not None else None
+            if w is not None:
+                w.setParent(None)
+        t = self._t
+        for fav in self._favs:
+            name = fav.get("name", "")
+            box = QWidget()
+            row = QHBoxLayout(box)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(0)
+            use = QPushButton(name)
+            use.setStyleSheet(_CHIP_OFF)
+            use.setToolTip(t("gi_fav_use_tip", n=name))
+            use.clicked.connect(lambda _c=False, n=name: self.use_favourite(n))
+            row.addWidget(use)
+            drop = QPushButton(t("gi_fav_forget"))
+            drop.setFixedWidth(22)
+            drop.setStyleSheet(_CHIP_OFF)
+            drop.setToolTip(t("gi_fav_forget_tip", n=name))
+            drop.clicked.connect(
+                lambda _c=False, n=name: self.forget_favourite(n))
+            row.addWidget(drop)
+            self.fav_flow.addWidget(box)
+        self.fav_none.setVisible(not self._favs)
+        self.fav_host.setVisible(bool(self._favs))
+        self.fav_host.updateGeometry()
+
+    def save_favourite(self, name):
+        """Save the look in play under `name`."""
+        self._favs = FAV.add(self._favs, name, self._params)
+        self._save_favs()
+        self._status(self._t("gi_fav_saved", n=name))
+
+    def on_save_favourite(self, *_a):
+        name, ok = QInputDialog.getText(self, self._t("gi_fav_save"),
+                                        self._t("gi_fav_name"))
+        if ok and (name or "").strip():
+            self.save_favourite(name.strip())
+
+    def use_favourite(self, name):
+        """Draw what is on the canvas the way this favourite says."""
+        fav = FAV.find(self._favs, name)
+        if not fav:
+            return
+        self._push_history()
+        self._params = FAV.apply(self._params, fav)
+        self._load_into_widgets()
+        self._schedule()
+        self._status(self._t("gi_fav_used", n=name))
+
+    def forget_favourite(self, name):
+        self._favs = FAV.remove(self._favs, name)
+        self._save_favs()
+
+    # --- the settings as text -----------------------------------------
+
+    def on_copy_settings(self, *_a):
+        """The look as text: the docker has no URL to share."""
+        cb = QApplication.clipboard()
+        if cb is None:
+            return
+        cb.setText(G.to_json(self._params))
+        self._status(self._t("gi_copied_set"))
+
+    def on_paste_settings(self, *_a):
+        cb = QApplication.clipboard()
+        text = cb.text() if cb is not None else ""
+        if not (text or "").strip().startswith("{"):
+            self._status(self._t("gi_paste_bad"))
+            return
+        self._push_history()
+        self._params = G.from_json(text)
+        self._load_into_widgets()
+        self._schedule()
+        self._status(self._t("gi_pasted_set"))
+
+    def _on_handles(self, on):
+        self._set("giongoHandles", "true" if on else "false")
+        self.preview.set_handles(on)
+
+    def _chip_strip(self, keys, on_pick, store):
+        """A row of checkable chips that wraps, one per key."""
+        box = QWidget()
+        flow = _Flow(box, spacing=4)
+        for k in keys:
+            b = QPushButton()
+            b.setCheckable(True)
+            b.clicked.connect(lambda _c=False, key=k: on_pick(key))
+            flow.addWidget(b)
+            store[k] = b
+        box.setSizePolicy(QSizePolicy.Policy.Preferred,
+                          QSizePolicy.Policy.Minimum)
+        pol = box.sizePolicy()
+        pol.setHeightForWidth(True)
+        box.setSizePolicy(pol)
+        return box
+
+    def pick_type(self, tid):
+        """A chip was clicked: the combo is still what holds the type."""
+        i = self.type_combo.findData(tid)
+        if i >= 0 and i != self.type_combo.currentIndex():
+            self.type_combo.setCurrentIndex(i)
+        self._refresh_type_chips()
+
+    def _refresh_type_chips(self):
+        """Which chip is on, and which ones would suit what is typed."""
+        if not getattr(self, "type_chips", None):
+            return
+        cur = self._params.get("type", "")
+        try:
+            top, others = G.omakase(self.text())
+        except Exception:
+            top, others = "", ()
+        fits = set(others or ())
+        t = self._t
+        for tid, b in self.type_chips.items():
+            name = t("gi_type_" + tid)
+            b.setChecked(tid == cur)
+            b.setText(("\u2605 " + name) if tid == top else name)
+            if tid == cur:
+                b.setStyleSheet(_CHIP_ON)
+            elif tid == top or tid in fits:
+                b.setStyleSheet(_CHIP_FIT)
+            else:
+                b.setStyleSheet(_CHIP_OFF)
+            b.setToolTip(t("gi_type_top") if tid == top else
+                         (t("gi_type_fits") if tid in fits else ""))
+
+    def _slider_cell(self, key, label_key, lo, hi, steps):
+        """One slider as a cell: name and value on a line, rail under it.
+
+        Half the width of the old label/rail/number row and barely taller,
+        so three of them stand side by side where one used to lie.
+        """
+        cell = QWidget()
+        col = QVBoxLayout(cell)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(4)
         lbl = QLabel()
-        grid.addWidget(lbl, row, 0)
-        sl = NoScrollSlider(Qt.Orientation.Horizontal)
-        sl.setRange(int(lo * steps), int(hi * steps))
-        sl.valueChanged.connect(
-            lambda v, k=key, s=steps: self._on_slider(k, v, s))
-        grid.addWidget(sl, row, 1)
+        head.addWidget(lbl)
+        head.addStretch(1)
         val = QLabel()
-        val.setMinimumWidth(34)
         val.setAlignment(Qt.AlignmentFlag.AlignRight |
                          Qt.AlignmentFlag.AlignVCenter)
-        grid.addWidget(val, row, 2)
+        val.setStyleSheet("color: gray;")
+        head.addWidget(val)
+        col.addLayout(head)
+        sl = NoScrollSlider(Qt.Orientation.Horizontal)
+        sl.setRange(int(lo * steps), int(hi * steps))
+        sl.setMaximumHeight(18)
+        sl.valueChanged.connect(
+            lambda v, k=key, s=steps: self._on_slider(k, v, s))
+        col.addWidget(sl)
         self._sliders[key] = (sl, val, lbl, steps, label_key)
+        return cell
+
+    def _slider_strip(self, specs, cols=3):
+        """A block of sliders, `cols` of them to a row, as one widget."""
+        box = QWidget()
+        g = QGridLayout(box)
+        g.setContentsMargins(0, 0, 0, 0)
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(2)
+        for i, spec in enumerate(specs):
+            g.addWidget(self._slider_cell(*spec), i // cols, i % cols)
+        for c in range(cols):
+            g.setColumnStretch(c, 1)
+        return box
+
+    def _add_slider(self, grid, row, key, label_key, lo, hi, steps):
+        """One slider on a row of its own, in a grid that holds other rows."""
+        grid.addWidget(self._slider_cell(key, label_key, lo, hi, steps),
+                       row, 0, 1, 3)
 
     # --- language ----------------------------------------------------------
 
@@ -2102,6 +2634,7 @@ class GiongoPanel(QWidget):
                 i, t("gi_type_" + self.type_combo.itemData(i)))
         self.auto_btn.setText(t("gi_auto"))
         self.auto_btn.setToolTip(t("gi_auto_tip"))
+        self._refresh_type_chips()
         self.font_lbl.setText(t("gi_font"))
         self.bold_chk.setText(t("gi_bold"))
         self.bg_lbl.setText(t("gi_bg"))
@@ -2119,7 +2652,9 @@ class GiongoPanel(QWidget):
         self.mutate_btn.setToolTip(t("gi_mutate_tip"))
         self.wild_chk.setText(t("gi_wild"))
         self.wild_chk.setToolTip(t("gi_wild_tip"))
-        self.close_opts_btn.setText(t("gi_close"))
+        self.close_opts_btn.setText(t("gi_opts_back"))
+        self.opts_lbl.setText(t("gi_opts"))
+        self.opts_hint.setText(t("gi_opts_hint"))
         self.macro_lbl.setText(t("gi_macro"))
         for key, (_sl, _val, lbl, _st, lk) in self._sliders.items():
             lbl.setText(t(lk))
@@ -2128,13 +2663,16 @@ class GiongoPanel(QWidget):
             lbl.setToolTip(tip)
             _sl.setToolTip(tip)
         # "&" would turn into a shortcut underline on a button
-        for sec, key in ((self.sec_layout, "gi_sec_layout"),
+        for sec, key in ((self.sec_text, "gi_sec_text"),
+                         (self.sec_style, "gi_sec_style"),
+                         (self.sec_layout, "gi_sec_layout"),
+                         (self.sec_more, "gi_sec_more"),
                          (self.sec_var, "gi_sec_var"),
                          (self.sec_fill, "gi_sec_fill"),
+                         (self.sec_out, "gi_sec_out"),
                          (self.sec_shadow, "gi_sec_shadow"),
-                         (self.sec_deco, "gi_sec_deco"),
-                         (self.sec_liquify, "gi_sec_liquify"),
-                         (self.sec_points, "gi_sec_points")):
+                         (self.sec_save, "gi_sec_save"),
+                         (self.sec_gacha, "gi_sec_gacha")):
             sec.btn.setText(t(key).replace("&", "&&"))
         self.deco_lbl.setText(t("gi_deco"))
         for _k, _b in self.act_btns.items():
@@ -2147,16 +2685,9 @@ class GiongoPanel(QWidget):
         self.tool_btns["erase"].setToolTip(t("gi_tool_erase_tip"))
         self._refresh_legend()
         self._refresh_action_bar()
-        self.pts_chk.setText(t("gi_pts_on"))
-        self.pts_chk.setToolTip(t("gi_pts_on_tip"))
-        self.pts_hint.setText(t("gi_pts_on_tip"))
-        self.pts_reset_btn.setText(t("gi_pts_reset"))
-        self.liq_chk.setText(t("gi_liq_on"))
-        self.liq_chk.setToolTip(t("gi_liq_on_tip"))
-        self.liq_tool_lbl.setText(t("gi_liq_tool"))
-        self.liq_reset_btn.setText(t("gi_liq_reset"))
         for i, m in enumerate(W.MODES):
             self.liq_tool.setItemText(i, t("gi_liq_" + m))
+        self._refresh_liq_chips()
         self.noise_style_lbl.setText(t("gi_noise_style"))
         for i, st in enumerate(G.NOISE_STYLES):
             self.noise_style.setItemText(i, t("gi_noise_" + st))
@@ -2199,8 +2730,22 @@ class GiongoPanel(QWidget):
             self.pen_combo.setItemText(i, t("gi_pen_" + name))
         self._refresh_pen_hint()
         self.reset_btn.setText(t("gi_reset"))
+        self.fav_save_btn.setText(t("gi_fav_save"))
+        self.fav_save_btn.setToolTip(t("gi_fav_save_tip"))
+        self.fav_none.setText(t("gi_fav_none"))
+        self.handles_chk.setText(t("gi_handles"))
+        self.handles_chk.setToolTip(t("gi_handles_tip"))
+        self.copy_set_btn.setText(t("gi_copy_set"))
+        self.copy_set_btn.setToolTip(t("gi_copy_set_tip"))
+        self.paste_set_btn.setText(t("gi_paste_set"))
+        self._refresh_favs()
         self.dict_btn.setText(t("gi_dict"))
         self.dict_btn.setToolTip(t("gi_dict_tip"))
+        self.dict_find_btn.setText(t("gi_dict_find"))
+        for _b in self._dict_sheets:
+            _b.setToolTip(t("gi_dict_sheet_tip"))
+        for _lbl, _key in self._dict_heads:
+            _lbl.setText(t(_key))
         self.dakuten_btn.setText(t("gi_dakuten"))
         self.caption_lbl.setText(t("gi_caption"))
         self.caption_edit.setPlaceholderText(t("gi_caption_ph"))
@@ -2263,6 +2808,8 @@ class GiongoPanel(QWidget):
             self._refresh_enabled()
             self._refresh_font_ui()
             self._refresh_sets()
+            self._refresh_type_chips()
+            self._refresh_liq_chips()
         finally:
             self._loading = False
 
@@ -2428,6 +2975,8 @@ class GiongoPanel(QWidget):
         self.text_edit.setTextCursor(cur)
 
     def _on_text(self):
+        # what is typed decides which types are marked as fitting it
+        self._refresh_type_chips()
         self._schedule()
 
     def _on_type(self, _i):
@@ -2621,18 +3170,26 @@ class GiongoPanel(QWidget):
 
     def liquify_armed(self):
         """Is the brush on? The preview asks before it moves a letter."""
-        return bool(self.liq_chk.isChecked())
+        return self.tool() == "liquify"
 
-    def _on_liquify_armed(self, on):
-        if on:
+    def pick_liquify(self, mode):
+        """A brush chip was clicked: the combo still holds the mode."""
+        i = self.liq_tool.findData(mode)
+        if i >= 0 and i != self.liq_tool.currentIndex():
+            self.liq_tool.setCurrentIndex(i)
+        if self.tool() != "liquify":
             self.set_tool("liquify")
+        self._refresh_liq_chips()
+
+    def _refresh_liq_chips(self):
+        """Which brush is in hand."""
+        if not getattr(self, "liq_chips", None):
             return
-        if self.tool() == "liquify":
-            self.set_tool("move")
-            return
-        self.preview.set_brush(W.radius_for(self._params["liquify_size"])
-                               if on else 0.0)
-        self._status(self._t("gi_liq_on_tip") if on else "")
+        cur = self._params.get("liquify_mode", "push")
+        for mode, b in self.liq_chips.items():
+            b.setChecked(mode == cur)
+            b.setText(self._t("gi_liq_" + mode))
+            b.setStyleSheet(_CHIP_ON if mode == cur else _CHIP_OFF)
 
     def _touches_ink(self, pl, scene):
         """Is there any of this letter under the brush, where it is?
@@ -2714,6 +3271,8 @@ class GiongoPanel(QWidget):
         want = self.TOOL_ACTIONS.get(self.tool(), ())
         for key, btn in self.act_btns.items():
             btn.setVisible(key in want)
+        if hasattr(self, "liq_box"):
+            self.liq_box.setVisible(self.tool() == "liquify")
         chosen = len(self.point_selection())
         for key in ("del", "smooth"):
             if key in self.act_btns:
@@ -2766,12 +3325,6 @@ class GiongoPanel(QWidget):
         for k, b in self.tool_btns.items():
             b.setChecked(k == key)
             b.setStyleSheet(_TOOL_ON if k == key else _TOOL_OFF)
-        self.liq_chk.blockSignals(True)
-        self.liq_chk.setChecked(key == "liquify")
-        self.liq_chk.blockSignals(False)
-        self.pts_chk.blockSignals(True)
-        self.pts_chk.setChecked(key == "points")
-        self.pts_chk.blockSignals(False)
         self.preview.set_points(key == "points")
         self.preview.set_brush(
             W.radius_for(self._params["liquify_size"])
@@ -2833,17 +3386,7 @@ class GiongoPanel(QWidget):
         self._status(self._t("gi_erased"))
 
     def points_armed(self):
-        return bool(self.pts_chk.isChecked())
-
-    def _on_points_armed(self, on):
-        if on:
-            self.set_tool("points")
-            return
-        if self.tool() == "points":
-            self.set_tool("move")
-            return
-        self.preview.set_points(on)
-        self._status(self._t("gi_pts_on_tip") if on else "")
+        return self.tool() == "points"
 
     def _letter_space(self, key):
         """(placement, scene -> em transform) for one letter, or None."""
@@ -3303,45 +3846,39 @@ class GiongoPanel(QWidget):
     def _split_blocks(self, cols):
         """Which block goes in which column, in reading order.
 
-        The first block holds the text and the preview and is what the eye
-        goes to, so it keeps a column of its own as soon as there are two.
-        """
-        blocks = [b for b in self._blocks if b is not None]
-        if not blocks:
-            return []
-        if cols <= 1:
-            return [blocks]
-        if cols == 2:
-            return [[blocks[0]], blocks[1:]]
-        rest = blocks[1:]
-        half = (len(rest) + 1) // 2
-        return [[blocks[0]], rest[:half], rest[half:]]
-
-    def _split_blocks(self, cols):
-        """Which block goes in which column, in reading order.
-
         The block with the canvas in it keeps a column of its own as soon
-        as there are two; the heading goes with the settings.
+        as there are two; the type strip is placed on its own, across the
+        settings columns, so it is left out here.
         """
         blocks = [b for b in self._blocks if b is not None]
         if not blocks:
             return []
         canvas = self._canvas_block if self._canvas_block in blocks \
             else blocks[0]
-        rest = [b for b in blocks if b is not canvas]
+        head = blocks[0]
+        rest = [(b, self._prefs[self._blocks.index(b)]) for b in blocks
+                if b not in (canvas, self._span_block, head)]
         if cols <= 1:
-            return [[canvas] + rest if canvas is blocks[0] else blocks]
+            # the heading is what the tab shows, so it comes first
+            return [[head, canvas] + [b for b, _p in rest]]
+        # in a window the heading is hidden; leaving it in a column would
+        # still cost that column a row
         if cols == 2:
-            return [[canvas], rest]
-        half = (len(rest) + 1) // 2
-        return [[canvas], rest[:half], rest[half:]]
+            return [[canvas], [b for b, _p in rest]]
+        return [[canvas],
+                [b for b, p in rest if p == 0],
+                [b for b, p in rest if p != 0]]
 
     def _apply_docked_view(self):
-        """In the tab: the heading and the button, nothing else."""
+        """In the tab the heading, in the window everything but it.
+
+        The window has a title bar and closing it docks the panel back,
+        so the heading would only be taking up a column there.
+        """
         for b in self._blocks:
             if b is None:
                 continue
-            b.setVisible(self._popped or b is self._blocks[0])
+            b.setVisible(self._popped is not (b is self._blocks[0]))
         if hasattr(self, "tab_only"):
             self.tab_only.setVisible(not self._popped)
 
@@ -3359,7 +3896,9 @@ class GiongoPanel(QWidget):
         # the height is re-read even when the columns did not change: the
         # window can be resized without the count ever moving
         if cols > 1:
-            room = max(260, self.height() - 400)
+            # the stage column is the two bars, the canvas, the tool row,
+            # the foot and the legend: about 240 px of it is not canvas
+            room = max(260, self.height() - 240)
             self.preview.setMinimumHeight(min(int(self.height() * 0.45),
                                               room))
             self.preview.setMaximumHeight(room)
@@ -3376,32 +3915,50 @@ class GiongoPanel(QWidget):
             if w is not None:
                 w.setParent(None)       # self._blocks still holds it
         columns = self._split_blocks(cols)
+        # the type strip first: across the settings columns, or at the top
+        # of the one column there is
+        row0 = 0
+        if self._span_block is not None:
+            if cols <= 1:
+                grid.addWidget(self._span_block, 0, 0)
+            else:
+                grid.addWidget(self._span_block, 0, 1, 1,
+                               max(1, len(columns) - 1))
+            self._span_block.setParent(self)
+            self._span_block.show()
+            row0 = 1
         rows = 0
         for c, column in enumerate(columns):
             if c > 0 or cols <= 1:
                 for r, block in enumerate(column):
-                    grid.addWidget(block, r, c)
+                    # a grid shares row heights across columns, so without
+                    # this a tall pane on the left pulls the panes on the
+                    # right apart. Not the stage, though: the canvas asks
+                    # for little and takes what it is given, and pinning
+                    # it to its size hint squeezes the rows under it
+                    if block is self._canvas_block:
+                        grid.addWidget(block, row0 + r, c)
+                    else:
+                        grid.addWidget(block, row0 + r, c,
+                                       Qt.AlignmentFlag.AlignTop)
                     block.setParent(self)
                     block.show()
                 rows = max(rows, len(column))
-            # the first column carries the preview, so it may take more room
+            # the first column carries the canvas, so it may take more room
             grid.setColumnStretch(c, 3 if c == 0 else 2)
         for c in range(len(columns), 4):
             grid.setColumnStretch(c, 0)
         if cols > 1 and columns and columns[0]:
             # the canvas column spans every row there is, the stretch row
-            # included, so the preview fills the height of the window
+            # included, so the canvas fills the height of the window
             block = columns[0][0]
-            grid.addWidget(block, 0, 0, max(1, rows) + 1, 1)
+            grid.addWidget(block, 0, 0, row0 + max(1, rows) + 1, 1)
             block.setParent(self)
             block.show()
         self._apply_docked_view()
-        for r in range(rows):
+        for r in range(row0 + rows):
             grid.setRowStretch(r, 0)
-        grid.setRowStretch(rows, 1)
-        # in a window the canvas is the point of the thing: it gets most
-        # of the height outright, rather than whatever the other widgets
-        # in its column leave over
+        grid.setRowStretch(row0 + rows, 1)
 
     # --- tab or window ------------------------------------------------------
 
@@ -3719,14 +4276,26 @@ class GiongoPanel(QWidget):
 
     def _show_options(self, sets):
         self._options = sets
+        # the sheet has the whole canvas to itself, so the thumbnails are
+        # as big as the three columns allow rather than a fixed stamp
+        room = self.preview.width() or self.options_box.width() or 480
+        tw = max(140, (room - 30) // 3)
+        th = max(80, int(tw * 0.56))
         for btn, p in zip(self._option_btns, sets):
+            btn.setIconSize(QSize(tw, th))
             try:
-                img = self._framed(self.scene(p), 150, 84)
+                img = self._framed(self.scene(p), tw, th)
                 btn.setIcon(QIcon(QPixmap.fromImage(img)))
             except Exception:           # noqa: BLE001
                 btn.setIcon(QIcon())
         self._refresh_option_tips()
         self.options_box.setVisible(True)
+        self.preview.setVisible(False)
+
+    def _hide_options(self):
+        """Back to the canvas."""
+        self.options_box.setVisible(False)
+        self.preview.setVisible(True)
 
     def _refresh_option_tips(self):
         for i, btn in enumerate(self._option_btns):
@@ -3737,6 +4306,7 @@ class GiongoPanel(QWidget):
     def on_pick(self, n):
         if n >= len(self._options):
             return
+        self._hide_options()
         self._push_history()
         self._params = G.sanitize(self._options[n])
         self._load_into_widgets()

@@ -13,6 +13,74 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.3", {
+        "en": [
+            "The Giongo tab is laid out the way the web tool it is "
+            "modelled on is laid out. The canvas has a column of its "
+            "own, with the tool in hand and the letter size above it "
+            "and that tool’s own settings, the actions and the legend "
+            "under it. The settings are nine named panes in two columns "
+            "- Text, Letter style, Layout, Favourites, Intensity, Fill, "
+            "Outline, Shadow & motion, Save, Gacha - with every type on "
+            "a strip across the top of them, the one that best suits "
+            "what you typed starred. A slider is now a short name over "
+            "a rail, three side by side, which is why all of that fits "
+            "in a window at once.",
+            "Liquify and Points no longer have a section each in the "
+            "settings: the tool is the switch, and the brush sits under "
+            "the canvas while the brush is in hand. A gacha roll fills "
+            "the canvas instead of six thumbnails in a corner, and says "
+            "how to get back.",
+            "The sound dictionary opens under the text field rather "
+            "than in a window over the panel, grouped and scrolling, "
+            "and it has grown from 65 sounds to 156 - explosions, "
+            "dread, shock and silence, water, eating, everyday small "
+            "sounds, and a Latin half, because a scanlation sets BOOM "
+            "and not ドーン. ▦ beside a group draws the whole group in the "
+            "look you have now and saves it as one sheet.",
+            "New: favourites. Save a look under a name and drop it onto "
+            "the next sound - the words and whatever you did to that "
+            "one shape stay where they are. New: a switch for the "
+            "handles, so the ring and the arrows are out of the way "
+            "while you look at the result. New: the settings to and "
+            "from the clipboard as text, which is what a docker can "
+            "offer instead of a share link.",
+        ],
+        "de": [
+            "Der Giongo-Tab ist so angeordnet wie das Web-Werkzeug, "
+            "nach dem er gebaut ist. Die Leinwand hat eine eigene "
+            "Spalte, mit dem Werkzeug in der Hand und der "
+            "Buchstabengröße darüber und den Einstellungen dieses "
+            "Werkzeugs, den Aktionen und der Legende darunter. Die "
+            "Einstellungen sind neun benannte Bereiche in zwei Spalten "
+            "- Text, Schriftbild, Anordnung, Favoriten, Stärke, "
+            "Füllung, Kontur, Schatten & Bewegung, Speichern, Gacha - "
+            "mit allen Arten auf einem Streifen darüber, die am besten "
+            "passende mit Stern. Ein Regler ist jetzt ein kurzer Name "
+            "über einer Schiene, drei nebeneinander; deshalb passt das "
+            "alles auf einmal in ein Fenster.",
+            "Verflüssigen und Punkte haben keine eigenen Abschnitte "
+            "mehr: das Werkzeug ist der Schalter, und der Pinsel sitzt "
+            "unter der Leinwand, solange der Pinsel in der Hand ist. "
+            "Ein Gacha-Wurf füllt die Leinwand statt sechs Briefmarken "
+            "in einer Ecke und sagt, wie man zurückkommt.",
+            "Das Laut-Verzeichnis öffnet sich unter dem Textfeld statt "
+            "in einem Fenster über dem Panel, gruppiert und scrollend, "
+            "und ist von 65 auf 156 Laute gewachsen - Explosionen, "
+            "Grauen, Schock und Stille, Wasser, Essen, Alltagsgeräusche "
+            "und eine lateinische Hälfte, denn eine Scanlation setzt "
+            "BOOM und nicht ドーン. ▦ neben einer Gruppe zeichnet die "
+            "ganze Gruppe im aktuellen Look und speichert sie als ein "
+            "Blatt.",
+            "Neu: Favoriten. Einen Look unter einem Namen speichern und "
+            "auf den nächsten Laut werfen - die Worte und alles, was du "
+            "an dieser einen Form gemacht hast, bleiben. Neu: ein "
+            "Schalter für die Griffe, damit Ring und Pfeile beim "
+            "Anschauen nicht im Weg sind. Neu: die Einstellungen als "
+            "Text in die Zwischenablage und zurück - das ist, was ein "
+            "Docker statt eines Share-Links anbieten kann.",
+        ],
+    }),
     ("1.22.2", {
         "en": [
             "“Report a problem…” now brings the errors with it. The "

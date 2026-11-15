@@ -1407,6 +1407,100 @@ and the line underneath says how many are still hidden.
 The docker tab says in one line that this works best in its own window,
 beside the button that opens it.
 
+### Laid out like the tool it is modelled on
+
+The web tool (MIYADAIKU's 擬音ジェネレーター)
+is easy to understand at a glance and ours was not, although it had the
+same settings in it. The arrangement was the difference, so the
+arrangement was rebuilt - measured off the live page, never copied from
+it. **No code, markup or styling of theirs is in here. Only the idea and
+the arrangement.**
+
+**A slider is a cell, not a row.** Name and value on one short line, the
+rail under it, three cells side by side (`_slider_cell`,
+`_slider_strip`). That one change is why nine panes of settings now fit
+in the height of a window; the old label / rail / number row needed a
+column of its own and a lot of scrolling.
+
+**The stage is a column of its own.** The tool in hand and the letter
+size above the canvas, what it is drawn on under that; below the canvas
+the tool's own settings, then the actions, then the row that is always
+there (a new shape, Auto, Insert), then the legend. Only the canvas
+gives up height when a row appears, so nothing jumps.
+
+**The tool is the switch.** Liquify and Points had a section each in the
+settings column with a "turn it on" checkbox, far from the thing they
+act on. The brush now lives under the canvas and is only there while the
+brush is in hand; `liquify_armed()` and `points_armed()` simply ask which
+tool it is.
+
+**Every type on the table.** A strip of chips instead of a drop-down,
+with the one that best suits what is typed starred and the others that
+would fit marked (`_refresh_type_chips` asks `G.omakase`). The combo is
+still where the type is kept - it is just not on screen, so `_on_type`,
+`_load_into_widgets` and the saved settings carry on unchanged.
+
+**Eight named panes in two columns**, in the web tool's order: Text,
+Letter style, Layout on the left; Intensity, Fill, Outline, Shadow &
+motion, Save, Gacha on the right, with the type strip across the top of
+both. Each block says which column it belongs in (`_new_block(pref)`), so
+the split is that one and not whatever halving the count gives. A narrow
+docker stacks them all in one column, as before.
+
+**A roll takes the canvas.** The sheet of options used to appear in the
+settings column, six thumbnails in a third of the width, while the canvas
+beside it showed the very thing the roll was meant to replace. It now
+fills the canvas, three across, with "Gacha picks" and a way back.
+
+**The dictionary opens under the text field** rather than in a window
+over the panel: grouped, scrolling, one click to use a sound. The window
+is still there for searching a hundred and fifty of them by reading or
+meaning, and is reached from inside the list.
+
+**156 sounds in both scripts.** `giongo_dict.py` grew the groups that
+kept being missing - explosions and breaking, dread, shock and silence,
+water, eating, everyday small sounds - and a Latin half, because a
+scanlation sets BOOM and not ドーン. Which script an entry is
+in is read off the entry (`is_latin`): a sound written in plain ASCII is
+the Latin one, so the table kept the shape it always had.
+
+### Favourites, handles, the clipboard and the category sheet
+
+The rest of what the web tool has and we did not, except the two noted
+at the end.
+
+**Favourites** (`giongo_fav.py`, Qt-free and tested). A look you spent an
+afternoon on, saved under a name and dropped onto the next sound.
+`look_of` takes out the words (`caption`, `caption_pos`) and whatever was
+done to *that* one shape (`letters`, `warps`, `nodes`), so a favourite is
+usable on any text; `apply` puts the look on and leaves those alone. The
+list is capped at `MAX = 24` - past that it stops being something you can
+look at - and `from_json` drops anything that is not a name and a look,
+because it comes back out of a settings file people edit.
+
+**The handles switch** beside the preview background. The ring, the
+arrows and the dots on the path are the point while you are moving
+letters and in the way while you are looking at the result. The selection
+outline stays either way: it says *which* letter, which is not a handle.
+
+**The settings on the clipboard.** The web tool has a share link; a Krita
+docker has no URL to give anybody, so the honest equivalent is the look
+as text, to paste into a message or a file. `G.to_json` / `G.from_json`
+were already there for it. Pasting something that is not settings says
+so rather than quietly doing nothing.
+
+**A category as one sheet.** The ▦ beside a group in the dictionary draws
+every sound in it in the look that is in play and writes them out as a
+single PNG (`sheet_image`, `save_category`). One image rather than forty
+files: a sheet is something you open once and pull from while lettering a
+chapter.
+
+**Not rebuilt, on purpose.** The web tool's *page mode* (several SFX
+placed on one page, clicked to edit) and its *assets shelf* are its way
+of being a page editor. Krita already is one: every insert is a layer,
+moved and stacked with Krita's own tools, which is better than anything
+a docker could rebuild inside a preview.
+
 ### Reporting a problem
 
 A bug report is only useful if it says which version, which Krita, which
