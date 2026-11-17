@@ -2488,6 +2488,52 @@ if os.path.isdir(_UPSTREAM_DIR):
           not _drift)
 
 
+# --- where nothing on offer fills the bubble ------------------------------
+# A whole panel selected with the size left where it sits for speech
+# bubbles: every candidate fills a few per cent of it. The size term is
+# 1 for all of them (the cap binds), the fill term sits in its dead tail
+# for all of them, and the line-count charge used to be clipped flat, so
+# the only terms still speaking paid a two-line stack for an absence -
+# two lines are trivially balanced and have no step to be ragged.
+
+check("in a box the text does fill, the judgement is unchanged",
+      LO.score_arrangement(_arr(40, "aaaa", "aaaa"), _measurer, 100, 60)
+      > LO.score_arrangement(_arr(40, "aaaa", "aa", "aa", "aa"),
+                             _measurer, 100, 60))
+
+check("a term with nothing to judge is not worth full marks",
+      LO._NO_EVIDENCE < 1.0)
+def _line_charge(d2):
+    """The charge the scorer puts on being d2 away from the ideal count."""
+    import math as _m
+    if d2 <= LO._LINE_PEN_MAX:
+        return d2
+    return LO._LINE_PEN_MAX + LO._LINE_PEN_MAX * (
+        1.0 - _m.exp(-(d2 - LO._LINE_PEN_MAX) / LO._LINE_PEN_KNEE))
+
+
+check("below its old ceiling the line-count charge is untouched",
+      _line_charge(0.1) == 0.1 and _line_charge(0.5) == 0.5)
+check("past the ceiling it keeps its order instead of stopping",
+      _line_charge(9.0) > _line_charge(3.0) > _line_charge(1.0))
+check("...and stays small enough never to be a veto",
+      _line_charge(1e6) <= 2.0 * LO._LINE_PEN_MAX)
+
+# the real one, from the screenshot that started this
+_sv = LO.shape_candidates(
+    "That's why the Tetra fans were getting so hyped.",
+    _measurer, 1043, 1537, 52, 8, 0.12, mode="balanced", limit=6)
+check("a panel-sized selection still offers something",
+      len(_sv) >= 3)
+check("...and does not recommend two long lines lost in the middle of it",
+      _sv[0]["k"] >= 3)
+_sv_two = [c for c in _sv if c["k"] <= 2]
+check("...the two-line shape is offered but ranked below the taller one",
+      not _sv_two or _sv_two[0]["score"] < _sv[0]["score"])
+check("...and the one it does recommend is the box's own shape",
+      abs(_sv[0]["k"] - 5) <= 1)
+
+
 # --- the bin for deleted presets -----------------------------------------
 # A preset used to go for good the moment it was clicked away. Everything
 # that leaves the table is now compared out of it and kept for a while.

@@ -1305,6 +1305,47 @@ _PROFILES = {
 _LINE_SPREAD = 1.6
 _LINE_PEN_MAX = 0.55
 
+#: Past `_LINE_PEN_MAX` the line-count charge bends instead of stopping.
+#: `min(cap, d*d)` meant that in a selection whose proportions ask for
+#: 6.7 lines, one line and five lines were charged exactly the same, so
+#: the term that most plainly says "this is nothing like the right
+#: number of lines" fell silent precisely where it was needed. Below the
+#: old ceiling the charge is untouched - that is where nearly every real
+#: candidate sits, and softening it there cost 1.6 points of agreement
+#: with 786 finished blocks. Above it the charge creeps towards twice
+#: the ceiling, which keeps the order without ever becoming a veto: it
+#: stays small against the ~3 points the shape terms carry.
+_LINE_PEN_KNEE = 4.0
+
+#: Geometry says how many lines of this height the box's proportions
+#: imply. A letterer breaks for sense as well, and breaking for sense
+#: almost always means more, shorter lines than the geometry alone
+#: asks for - so the ideal leans by half a line.
+#:
+#: Measured against 1238 finished blocks from eighteen lettered
+#: chapters (`bench/`), as the share where the letterer's own line
+#: breaking came first / in the top three:
+#:
+#:   +0.00  37.9 %  83.8 %      +1.00  43.0 %  85.0 %
+#:   +0.25  42.8 %  86.3 %      +1.50  33.4 %  75.8 %
+#:   +0.50  45.9 %  86.6 %      +2.50  34.7 %  74.6 %
+#:   +0.75  46.3 %  87.1 %
+#:
+#: It peaks and falls away on both sides, which is what says the lean
+#: is real rather than an artefact of the benchmark - a box built from
+#: the letterer's own block is as tall as their line count, so a purely
+#: circular measurement would keep climbing. The peak sits at 0.75 and
+#: the value here is 0.5: that box still flatters counts near theirs,
+#: so the more cautious number is the honest one, and it keeps nearly
+#: all of the gain.
+_SENSE_LEAN = 0.5
+
+#: What a term that has nothing to judge is worth. A two-line stack has
+#: no step between neighbours to be ragged, and a one-line block has no
+#: balance; handing those full marks pays a short stack 1.4 points for
+#: an absence. The number is what a middling real stack earns.
+_NO_EVIDENCE = 0.72
+
 
 def profile_for(mode):
     """The scoring profile for a shaper mode (unknown modes -> balanced)."""
@@ -1554,6 +1595,16 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
               else list(line_ws))
     rel_max = max(rel_ws) if rel_ws else 0.0
 
+    # How much the fill term can still tell candidates apart. Where the
+    # text cannot come near filling the selection - the size cap binds
+    # long before the box is used - every candidate sits in the dead
+    # tail of the fill curve and `fill` ranks nothing at all. The shape
+    # of the block against the shape of the box is then the only bulk
+    # judgement left, so it takes the weight fill is not using. At and
+    # above `_STARVED_FILL` this is 0 and nothing changes.
+    starve = max(0.0, min(1.0, (_STARVED_FILL - fill) / _STARVED_FILL))
+    aspect_w = 1.1 + 1.9 * starve
+
     block_aspect = block_w / block_h if block_h > 0 else 0.0
     box_aspect = usable_w / usable_h
     if block_aspect > 0 and box_aspect > 0:
@@ -1566,7 +1617,7 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
         rag = (sum((w - avg) ** 2 for w in rel_ws) / k) ** 0.5 / rel_max
         balance_term = math.exp(-(rag / 0.42) ** 2)
     else:
-        balance_term = 1.0
+        balance_term = _NO_EVIDENCE   # one line is not "perfectly even"
 
     # Line-to-line smoothness. Global variance alone cannot see a block that
     # tapers away line by line (a triangle scored 0.71 where an even stack
@@ -1578,7 +1629,7 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
         step_rms = (sum(s * s for s in steps) / len(steps)) ** 0.5
         step_term = math.exp(-(step_rms / 0.34) ** 2)
     else:
-        step_term = 1.0
+        step_term = _NO_EVIDENCE      # two lines have no step to be ragged
 
     last_term = 1.0
     if k >= 2 and rel_max > 0:
@@ -1634,9 +1685,17 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
                                  max_fit=usable_h / line_h if line_h else None)
         # the mode leans within what the geometry allows, it does not overrule it
         lean = prof["line_target"] - _PROFILES["balanced"]["line_target"]
-        ideal = max(prof["lines"][0], min(prof["lines"][1], ideal + 0.5 * lean))
+        ideal = max(prof["lines"][0],
+                    min(prof["lines"][1],
+                        ideal + 0.5 * lean + _SENSE_LEAN))
         d = (k - ideal) / _LINE_SPREAD
-        target_pen = min(_LINE_PEN_MAX, d * d) / _LINE_TARGET_WEIGHT
+        d2 = d * d
+        if d2 <= _LINE_PEN_MAX:
+            charge = d2                 # exactly as it always was
+        else:
+            charge = _LINE_PEN_MAX + _LINE_PEN_MAX * (
+                1.0 - math.exp(-(d2 - _LINE_PEN_MAX) / _LINE_PEN_KNEE))
+        target_pen = charge / _LINE_TARGET_WEIGHT
 
     # hyphenation is a last resort: a line broken mid-word (ending in '-') reads
     # worse than the same shape without the split, so each such line is penalised
@@ -1663,7 +1722,7 @@ def score_arrangement(cand, measurer, usable_w, usable_h, px_ref=None,
     # then is it big.
     quality = (1.0 * size_term
                + 1.15 * fill_term
-               + 1.1 * aspect_term
+               + aspect_w * aspect_term
                + 0.8 * balance_term
                + 0.6 * step_term
                + 0.5 * punct_term) * last_term * first_term

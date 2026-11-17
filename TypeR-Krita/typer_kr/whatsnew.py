@@ -13,6 +13,80 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.5", {
+        "en": [
+            "TextShapR recommends a better shape, and this time it was "
+            "measured rather than judged by eye. 1238 lettered blocks "
+            "out of eleven finished chapters were handed back to the "
+            "shaper, and the question asked of each was: where does the "
+            "arrangement the letterer actually chose come out in the "
+            "ranking? First for 36.1 % of them before this version, "
+            "45.9 % after; in the top three for 81.3 % before and 86.6 "
+            "% after.",
+            "The one thing those pages said that no amount of looking "
+            "at bubbles would have: the shaper wanted one line too few. "
+            "Of the blocks where it disagreed, 86 % were an argument "
+            "about the number of lines rather than where to break them, "
+            "and nearly always it had picked exactly one line fewer. "
+            "Geometry says how many lines of this height a bubble's "
+            "proportions imply; a letterer also breaks for sense, and "
+            "that almost always means more, shorter lines. The ideal "
+            "leans half a line that way now.",
+            "Fixed: where nothing on offer could fill the selection - a "
+            "whole panel selected with the size left where it sits for "
+            "speech bubbles - it recommended two long lines lost in the "
+            "middle of it. Four of the judgements stop telling "
+            "candidates apart at once in that case, and what was left "
+            "paid a two-line stack for an absence, since two lines are "
+            "trivially even and have no step between them to be ragged. "
+            "A judgement with nothing to judge is no longer worth full "
+            "marks, the line-count charge keeps its order past the "
+            "point where it used to stop, and the shape of the block "
+            "takes the weight the fill cannot use. None of it can touch "
+            "a bubble the text does fill.",
+            "The size is still the real answer for a selection that "
+            "big: at 52 px nothing fills a whole panel, and the shaper "
+            "is only picking the best of a bad set.",
+        ],
+        "de": [
+            "TextShapR schlägt eine bessere Form vor — und diesmal ist "
+            "das gemessen und nicht nach Augenmaß beurteilt. 1238 "
+            "gesetzte Textblöcke aus elf fertigen Kapiteln sind an den "
+            "Shaper zurückgegeben worden, mit der Frage: auf welchem "
+            "Platz landet die Anordnung, die der Letterer tatsächlich "
+            "gewählt hat? Vor dieser Version bei 36,1 % auf Platz eins, "
+            "danach bei 45,9 %; unter den ersten drei vorher 81,3 %, "
+            "danach 86,6 %.",
+            "Das eine, was diese Seiten verraten haben und kein Blick "
+            "auf Sprechblasen: dem Shaper fehlte eine Zeile. Von den "
+            "Blöcken, bei denen er widersprach, ging es in 86 % um die "
+            "*Anzahl* der Zeilen und nicht darum, wo umgebrochen wird — "
+            "und fast immer hatte er genau eine Zeile weniger gewählt. "
+            "Die Geometrie sagt, wie viele Zeilen dieser Höhe die "
+            "Proportionen einer Blase verlangen; ein Letterer bricht "
+            "aber auch nach Sinn um, und das heißt fast immer mehr und "
+            "kürzere Zeilen. Das Ideal neigt sich jetzt um eine halbe "
+            "Zeile in diese Richtung.",
+            "Behoben: wo nichts die Auswahl füllen konnte — ein ganzes "
+            "Panel markiert, die Größe aber auf dem Wert für "
+            "Sprechblasen — empfahl er zwei lange Zeilen, verloren in "
+            "der Mitte. Vier der Bewertungen hören in dem Fall "
+            "gleichzeitig auf zu unterscheiden, und was übrig blieb, "
+            "bezahlte einen Zweizeiler für eine Abwesenheit: zwei "
+            "Zeilen sind trivial ausgewogen und haben keinen "
+            "Zeilensprung, der ungleichmäßig sein könnte. Eine "
+            "Bewertung ohne Beweislage bekommt keine Bestnote mehr, die "
+            "Zeilenzahl-Strafe behält ihre Reihenfolge über den Punkt "
+            "hinaus, an dem sie früher stehenblieb, und die Form des "
+            "Blocks übernimmt das Gewicht, das die Füllung nicht nutzen "
+            "kann. Nichts davon kann eine Blase anfassen, die der Text "
+            "füllt.",
+            "Die Größe bleibt trotzdem die eigentliche Antwort bei so "
+            "einer Auswahl: bei 52 px füllt nichts ein ganzes Panel, "
+            "und der Shaper wählt nur das Beste aus einem schlechten "
+            "Satz.",
+        ],
+    }),
     ("1.22.4", {
         "en": [
             "Nothing is deleted for good any more. Deleting a preset "

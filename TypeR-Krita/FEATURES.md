@@ -1501,6 +1501,91 @@ of being a page editor. Krita already is one: every insert is a layer,
 moved and stacked with Krita's own tools, which is better than anything
 a docker could rebuild inside a preview.
 
+### When nothing fills the bubble
+
+A whole panel selected, the size left where it sits for speech bubbles:
+1043 x 1537 px of selection and a 52 px cap. The shaper recommended two
+long lines lost in the middle of it, which is nothing like what a
+letterer would set.
+
+Measured, not guessed. Four of the terms stop telling the candidates
+apart at the same moment:
+
+    k  px  score | size  fill  aspect  bal  step | phr  tgt
+    2  52   1.85 | 1.00  0.01   0.001  0.98  1.00 | 0.00 2.20
+    3  52   1.54 | 1.00  0.01   0.035  0.97  0.94 | 0.00 2.20
+    4  52   0.95 | 1.00  0.01   0.173  0.89  0.64 | 2.00 2.20
+
+`size` is 1.00 for every candidate because the cap binds for all of
+them. `fill` is 0.01 for every candidate because the curve's lower tail
+is numerically dead - a block covering 7.5 % of the bubble scores the
+same as one covering 3.9 %. The line-count charge was clipped flat, so
+k=1 through k=5 were all charged the same 0.55 although the bubble's
+proportions ask for 6.7 lines. And what was left paid a two-line stack
+1.4 points for an absence: two lines are trivially balanced and have no
+step between them to be ragged.
+
+Three changes, none of which can touch a bubble the text can fill:
+
+- **A term with nothing to judge is not worth full marks.**
+  `_NO_EVIDENCE` is what a middling real stack earns, and that is what
+  balance and smoothness are given where there is nothing to measure.
+- **The line-count charge bends past its ceiling instead of stopping.**
+  Below the old ceiling it is untouched, which is where nearly every
+  real candidate sits; above it, it creeps towards twice the ceiling, so
+  a block with nothing like the right number of lines is charged more
+  than one that is merely off. It is still far too small to be a veto.
+  The first attempt softened the charge from zero instead, which also
+  made it ~15 % smaller for candidates near the ideal - and that cost
+  1.6 points of agreement with 786 finished blocks. Hence the knee.
+- **The block's shape takes the weight the fill term is not using.**
+  The aspect weight rises from 1.1 as fill falls below `_STARVED_FILL`,
+  reaching 3.0 where fill tells nothing apart at all. At and above that
+  threshold the factor is zero and nothing changes.
+
+The recommendation for that selection is now a six-line stack - the
+bubble's proportions ask for 6.7 - with the five-line one the user had
+picked by hand right behind it, and the rankings at sizes where the text
+does fill the bubble are unchanged.
+
+**It was measured against finished pages, not against an opinion.** 1238
+dialogue blocks from eleven lettered chapters (`bench/`): the
+letterer's own line breaking came out first 36.1 % of the time before
+this change and 37.9 % after, and in the top three 81.3 % before and
+83.8 % after.
+
+### One line too few
+
+The same pages said something the bubbles never would have. Of the
+blocks where the letterer's own shape missed the top three, **86 % were
+a disagreement about the number of lines**, and in 134 of them the
+shaper's pick had exactly one line fewer than the person had used.
+
+Geometry says how many lines of this height the box's proportions imply.
+A letterer also breaks for sense, and breaking for sense almost always
+means more, shorter lines - so the ideal leans by half a line
+(`_SENSE_LEAN`). Against the same 1238 blocks that is worth eight points
+of exact agreement: 37.9 % -> 45.9 % first, 83.8 % -> 86.6 % in the top
+three.
+
+The sweep is in the constant's comment, with its caveat: a box built
+from the letterer's own block is as tall as their line count, so the
+measurement flatters counts near theirs. What says the lean is real is
+that the sweep peaks at +0.75 and collapses by +1.5 - a circular
+measurement would keep climbing. The value is the more cautious 0.5.
+
+And then it was checked against pages that had no say in it. Chapters
+78-84 are lettered from before TypeR named its layers, so the extractor
+could not see them while the number was being chosen; 859 blocks of
+held-out work. Without the lean: 34.6 % first, 74.2 % in the top three.
+With it: 40.2 % and 77.1 %. The gain survives out of sample.
+
+**The size is still the real answer for a selection that big.** At 52 px
+nothing can fill 1043 x 1537, and the shaper is being asked to pick the
+best of a bad set. The sweep: 52 px and 90 px starve, 140 px gives the
+five-line stack with 0.36 fill, 200 px gives seven lines with the bubble
+full.
+
 ### Recently deleted
 
 Deleting a preset was one click with no question and no way back: the
