@@ -198,6 +198,26 @@ def _resample_xy(pts, step):
     return out
 
 
+#: how many points a contour is walked at before the brush is applied.
+#: A budget rather than a step: a long outline is not walked more
+#: finely than a short one, and - the point of it - the number does not
+#: depend on the brush. It used to, and a big brush therefore gave the
+#: coarsest outline, which is the one case where it matters most.
+WARP_POINTS = 256
+
+#: and the step that budget may not go outside, in em units
+WARP_STEP = (1.5, 6.0)
+
+
+def _perimeter(pts):
+    total = 0.0
+    for i in range(len(pts)):
+        ax, ay = pts[i - 1]
+        bx, by = pts[i]
+        total += math.hypot(bx - ax, by - ay)
+    return total
+
+
 def warp_path(path, dabs):
     """`path` pushed about by the brush. Both are in the glyph's own em.
 
@@ -207,13 +227,14 @@ def warp_path(path, dabs):
     """
     if not dabs:
         return path
-    # fine enough that a strong dab cannot pull the outline into
-    # visible straight runs, coarse enough to stay cheap
-    smallest = min(d[3] for d in dabs)
-    step = max(2.0, min(smallest / 8.0, 15.0))
     out = QPainterPath()
     for poly in path.toSubpathPolygons(QTransform.fromScale(2.0, 2.0)):
-        pts = _resample_xy([(q.x() / 2.0, q.y() / 2.0) for q in poly], step)
+        raw = [(q.x() / 2.0, q.y() / 2.0) for q in poly]
+        if len(raw) < 3:
+            continue
+        lo, hi = WARP_STEP
+        step = min(hi, max(lo, _perimeter(raw) / WARP_POINTS))
+        pts = _resample_xy(raw, step)
         if len(pts) < 3:
             continue
         pts = W.warp_points(pts, dabs)
@@ -293,9 +314,93 @@ def nodes_from_path(path):
                 and abs(ring[-1][1] - ring[0][1]) < 0.01:
             last = ring.pop()
             ring[0][2], ring[0][3] = last[2], last[3]
+        ring = _thin_ring(ring)
         if len(ring) >= 2:
             out.append(ring)
     return out
+
+
+#: how far the thinned outline may sit off the one it came from, in em
+#: units. A third of a per cent of the em: a quarter of a pixel at the
+#: sizes anyone letters at, and enough to take a finely walked polygon
+#: back to something a person can edit.
+THIN_TOL = 0.7
+
+#: and a floor, so a contour is never thinned away to nothing
+THIN_MIN = 8
+
+
+def _off_line(ax, ay, bx, by, cx, cy):
+    """How far (bx, by) sits off the line from (ax, ay) to (cx, cy)."""
+    dx, dy = cx - ax, cy - ay
+    span = math.hypot(dx, dy)
+    if span < 1e-9:
+        return math.hypot(bx - ax, by - ay)
+    return abs(dx * (ay - by) - dy * (ax - bx)) / span
+
+
+def _dp_keep(pts, lo, hi, tol, keep):
+    """Douglas-Peucker: mark the points between lo and hi worth keeping.
+
+    The distance is measured against the chord of the piece as it is in
+    the outline that came in, not against whatever is left after other
+    points have gone - which is what makes `tol` a real bound.
+    """
+    if hi <= lo + 1:
+        return
+    ax, ay = pts[lo]
+    cx, cy = pts[hi]
+    worst = -1.0
+    at = -1
+    for i in range(lo + 1, hi):
+        d = _off_line(ax, ay, pts[i][0], pts[i][1], cx, cy)
+        if d > worst:
+            worst, at = d, i
+    if worst <= tol or at < 0:
+        return
+    keep[at] = True
+    _dp_keep(pts, lo, at, tol, keep)
+    _dp_keep(pts, at, hi, tol, keep)
+
+
+def _thin_ring(ring, tol=THIN_TOL):
+    """Drop the corners that are not telling us anything.
+
+    Only corners: a node with a handle on it is a curve the font drew,
+    and dropping one would change the shape rather than the way it is
+    written down. Those are kept, and they also cut the ring into the
+    pieces that are thinned.
+    """
+    n = len(ring)
+    if n <= THIN_MIN:
+        return ring
+    pts = [(node[0], node[1]) for node in ring]
+    keep = [any(node[2:6]) for node in ring]
+    keep[0] = True
+    anchors = [i for i in range(n) if keep[i]]
+    if len(anchors) < 2:
+        # a plain polygon has no anchors of its own: open it at the
+        # point furthest from the first, so the two halves are pieces
+        far = max(range(n), key=lambda i: math.hypot(pts[i][0] - pts[0][0],
+                                                     pts[i][1] - pts[0][1]))
+        if far == 0:
+            return ring
+        keep[far] = True
+        anchors = sorted({0, far})
+    # the ring walked piece by piece between the anchors
+    out_keep = list(keep)
+    for a, b in zip(anchors, anchors[1:]):
+        _dp_keep(pts, a, b, tol, out_keep)
+    # and the piece that wraps round the end
+    last, first = anchors[-1], anchors[0]
+    wrapped = pts[last:] + pts[:first + 1]
+    wk = [False] * len(wrapped)
+    _dp_keep(wrapped, 0, len(wrapped) - 1, tol, wk)
+    for i, on in enumerate(wk):
+        if on:
+            out_keep[(last + i) % n] = True
+    thinned = [node for node, on in zip(ring, out_keep) if on]
+    return thinned if len(thinned) >= THIN_MIN else ring
 
 
 def em_shape(pl, family, bold, pen="off", seed=0, pen_width=100,

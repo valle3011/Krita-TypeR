@@ -78,6 +78,7 @@ from . import credits as CR
 from . import fontmatch as FM
 from . import gauth as GA
 from . import gdocs as GD
+from . import presetstore as PS
 from . import pdftext as PDF
 from . import update_check as UPD
 from . import report as RP
@@ -92,7 +93,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.22.3"
+VERSION = "1.22.4"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -866,6 +867,23 @@ LANG = {
         "shadow_tip": "Drop shadow drawn as an offset copy behind the text.",
         "preset": "Preset:",
         "preset_none": "(none)",
+        "panel_preset_trash": "Recently deleted",
+        "trash_title": "Recently deleted",
+        "trash_hint": ("Presets that left the list \u2014 deleted, or overwritten by an "
+                       "import. Pick one and put it back. The last %d are kept; "
+                       "for anything older there is the export."),
+        "trash_empty": "Nothing has been deleted.",
+        "trash_restore": "Put back",
+        "trash_clear": "Empty the list",
+        "trash_clear_ask": ("Forget all {n} deleted presets? They cannot be "
+                            "put back afterwards."),
+        "trash_exists": ("There is already a preset called \u2018{name}\u2019 there. "
+                         "Overwrite it with the deleted one?"),
+        "st_trash_restored": "Preset \u2018{name}\u2019 is back.",
+        "st_trash_fail": "That one could not be put back.",
+        "preset_del_ask": ("Delete the preset \u2018{name}\u2019 of \u2018{char}\u2019?\n\n"
+                           "It goes to \u201cRecently deleted\u201d in Setup, so you "
+                           "can put it back."),
         "preset_save": "Save …",
         "preset_del": "Delete",
         "preset_import": "Import …",
@@ -1937,6 +1955,24 @@ LANG = {
         "shadow_tip": "Schlagschatten als versetzte Kopie hinter dem Text.",
         "preset": "Preset:",
         "preset_none": "(keins)",
+        "panel_preset_trash": "K\u00fcrzlich gel\u00f6scht",
+        "trash_title": "K\u00fcrzlich gel\u00f6scht",
+        "trash_hint": ("Presets, die aus der Liste verschwunden sind \u2014 gel\u00f6scht "
+                       "oder von einem Import \u00fcberschrieben. Eines ausw\u00e4hlen "
+                       "und zur\u00fccklegen. Die letzten %d bleiben erhalten; f\u00fcr "
+                       "\u00e4lteres gibt es den Export."),
+        "trash_empty": "Es wurde nichts gel\u00f6scht.",
+        "trash_restore": "Zur\u00fccklegen",
+        "trash_clear": "Liste leeren",
+        "trash_clear_ask": ("Alle {n} gel\u00f6schten Presets vergessen? Danach "
+                            "lassen sie sich nicht mehr zur\u00fccklegen."),
+        "trash_exists": ("Dort gibt es schon ein Preset namens \u201a{name}\u2018. "
+                         "Mit dem gel\u00f6schten \u00fcberschreiben?"),
+        "st_trash_restored": "Preset \u201a{name}\u2018 ist wieder da.",
+        "st_trash_fail": "Das lie\u00df sich nicht zur\u00fccklegen.",
+        "preset_del_ask": ("Preset \u201a{name}\u2018 von \u201a{char}\u2018 l\u00f6schen?\n\n"
+                           "Es wandert in Setup nach \u201eK\u00fcrzlich gel\u00f6scht\u201c "
+                           "und l\u00e4sst sich von dort zur\u00fccklegen."),
         "preset_save": "Speichern …",
         "preset_del": "Löschen",
         "preset_import": "Importieren …",
@@ -6683,6 +6719,11 @@ class TyperDocker(DockWidget):
         RP.hook_excepthook()
         self._lang = self._load_lang()
         self._groups = self._load_groups()
+        # what the table looked like when it was last written, so
+        # `_save_groups` can see what a change took away, and the bin it
+        # takes it to
+        self._groups_written = json.loads(json.dumps(self._groups))
+        self._trash = self._load_trash()
         # Reopen on the manga (and character) worked on last time; _ensure_levels
         # falls back to the first one if it was since renamed or deleted.
         _last = self._load_last_manga()
@@ -6882,6 +6923,36 @@ class TyperDocker(DockWidget):
         self.main_chars_hint.setStyleSheet("color:#999;")
         _sgl.addWidget(self.main_chars_hint)
         lay_setup.addWidget(_sg_pb)
+
+        # --- what was deleted lately, and how to get it back ------------
+        # A preset used to go for good the moment it was clicked away.
+        # Everything that leaves the table now lands here first.
+        _tr_pb = self._new_panel("preset_trash", "setup")
+        self.trash_toggle, _trl = _collapsible(_tr_pb.body_layout(),
+                                               "setupTrashOpen", False)
+        self.trash_hint = QLabel()
+        self.trash_hint.setStyleSheet("color: gray;")
+        self.trash_hint.setWordWrap(True)
+        _trl.addWidget(self.trash_hint)
+        self.trash_empty = QLabel()
+        self.trash_empty.setStyleSheet("color: gray;")
+        _trl.addWidget(self.trash_empty)
+        self.trash_list = QListWidget()
+        self.trash_list.setMaximumHeight(170)
+        self.trash_list.itemDoubleClicked.connect(
+            lambda _i: self.on_trash_restore())
+        _trl.addWidget(self.trash_list)
+        _trow = QHBoxLayout()
+        self.trash_restore_btn = QPushButton()
+        self.trash_restore_btn.clicked.connect(self.on_trash_restore)
+        _trow.addWidget(self.trash_restore_btn)
+        _trow.addStretch(1)
+        self.trash_clear_btn = QPushButton()
+        self.trash_clear_btn.clicked.connect(self.on_trash_clear)
+        _trow.addWidget(self.trash_clear_btn)
+        _trl.addLayout(_trow)
+        lay_setup.addWidget(_tr_pb)
+        self._refresh_trash()
 
         # --- collapsible "Layout & sizes" panel ---
         # Lets the user resize or hide the big parts of the docker (preview,
@@ -8702,6 +8773,12 @@ class TyperDocker(DockWidget):
         self.lang_label.setText(t("language"))
         self.setup_general_toggle.setText("⚙ " + t("setup_h_general"))
         self.keys_toggle.setText("⌨ " + t("panel_keys"))
+        self.trash_toggle.setText("🗑 " + t("panel_preset_trash"))
+        self.trash_hint.setText(t("trash_hint") % PS.MAX)
+        self.trash_empty.setText(t("trash_empty"))
+        self.trash_restore_btn.setText(t("trash_restore"))
+        self.trash_clear_btn.setText(t("trash_clear"))
+        self._refresh_trash()
         self.keys_reset_btn.setText(t("keys_reset_btn"))
         self.credits_toggle.setText("❤ " + t("panel_credits"))
         self.setup_fonts_toggle.setText("🅰 " + t("setup_h_fonts"))
@@ -9902,6 +9979,7 @@ class TyperDocker(DockWidget):
                      "batch_overlay": "panel_batch_overlay",
                      "bubblr_overlay": "panel_bubblr_overlay",
                      "setup_general": "panel_setup_general",
+                     "preset_trash": "panel_preset_trash",
                      "layout_sizes": "panel_layout_sizes",
                      "shapr_panel": "panel_shapr",
                      "balloon": "panel_balloon",
@@ -10993,12 +11071,113 @@ class TyperDocker(DockWidget):
             data = {}
         return self._normalize(data)
 
-    def _save_groups(self):
+    def _load_trash(self):
+        """The bin of deleted presets, as it was left."""
         try:
+            raw = Krita.instance().readSetting("typer_kr", "presetTrash", "")
+        except Exception:               # noqa: BLE001
+            raw = ""
+        return PS.from_json(raw)
+
+    def _save_groups(self):
+        """Write the table - and bin whatever it no longer holds.
+
+        The comparison is against the table that was written last, not
+        against anything the delete action says, so every way a preset
+        can disappear goes through here: the delete button, an import
+        that overwrote a group, a reset, a rename gone wrong.
+        """
+        try:
+            before = getattr(self, "_groups_written", None)
+            if before is not None:
+                binned = PS.drop(getattr(self, "_trash", []), before,
+                                 self._groups)
+                if binned != getattr(self, "_trash", []):
+                    self._trash = binned
+                    Krita.instance().writeSetting(
+                        "typer_kr", "presetTrash", PS.to_json(binned))
+                    self._refresh_trash()
             Krita.instance().writeSetting(
                 "typer_kr", "presets", json.dumps(self._groups))
+            self._groups_written = json.loads(json.dumps(self._groups))
         except Exception:
             pass
+
+    def _save_trash(self):
+        try:
+            Krita.instance().writeSetting(
+                "typer_kr", "presetTrash", PS.to_json(self._trash))
+        except Exception:               # noqa: BLE001
+            pass
+        self._refresh_trash()
+
+    # --- the bin ---------------------------------------------------------
+
+    def _refresh_trash(self):
+        """(Re)fill the "Recently deleted" list in Setup."""
+        if not hasattr(self, "trash_list"):
+            return
+        self.trash_list.clear()
+        items = PS.newest_first(getattr(self, "_trash", []))
+        for item in items:
+            when = ""
+            try:
+                when = time.strftime("%d.%m. %H:%M",
+                                      time.localtime(item["at"]))
+            except Exception:           # noqa: BLE001
+                pass
+            where = " / ".join(x for x in (item.get("manga"),
+                                           item.get("char")) if x)
+            row = QListWidgetItem("%s   \u2014   %s   \u00b7   %s"
+                                  % (item.get("name", ""), where, when))
+            row.setData(Qt.ItemDataRole.UserRole, item)
+            self.trash_list.addItem(row)
+        self.trash_list.setVisible(bool(items))
+        self.trash_empty.setVisible(not items)
+        self.trash_restore_btn.setEnabled(bool(items))
+        self.trash_clear_btn.setEnabled(bool(items))
+
+    def on_trash_restore(self):
+        """Put the chosen preset back where it came from."""
+        row = self.trash_list.currentItem()
+        if row is None:
+            return
+        item = row.data(Qt.ItemDataRole.UserRole)
+        groups, how = PS.restore(self._groups, item)
+        if how == "exists":
+            ask = QMessageBox.question(
+                self.widget(), self._tr("trash_title"),
+                self._tr("trash_exists").format(name=item.get("name", "")),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if ask != QMessageBox.StandardButton.Yes:
+                return
+            groups, how = PS.restore(self._groups, item, overwrite=True)
+        if how != "ok":
+            self._set_status(self._tr("st_trash_fail"), error=True)
+            return
+        self._groups = groups
+        self._trash = PS.forget(self._trash, item)
+        self._save_groups()
+        self._save_trash()
+        self._refresh_groups_combo()
+        self._refresh_chars_combo()
+        self._refresh_presets_combo()
+        self._set_status(self._tr("st_trash_restored").format(
+            name=item.get("name", "")))
+
+    def on_trash_clear(self):
+        if not getattr(self, "_trash", []):
+            return
+        ask = QMessageBox.question(
+            self.widget(), self._tr("trash_title"),
+            self._tr("trash_clear_ask").format(n=len(self._trash)),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if ask != QMessageBox.StandardButton.Yes:
+            return
+        self._trash = []
+        self._save_trash()
 
     def _load_last_manga(self):
         """The manga/character worked on last session, so we reopen on it."""
@@ -11977,6 +12156,13 @@ class TyperDocker(DockWidget):
         presets = self._cur_chars().get(ch, {})
         if not name or name not in presets:
             self._set_status(self._tr("st_preset_none"), error=True)
+            return
+        ask = QMessageBox.question(
+            self.widget(), self._tr("preset_del"),
+            self._tr("preset_del_ask").format(name=name, char=ch),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if ask != QMessageBox.StandardButton.Yes:
             return
         del self._groups[self._group][ch][name]
         LP.drop_keybinds(self._keybinds, self._group, ch, name)

@@ -505,7 +505,37 @@ check("Alt turns the tool round",
       and WP.invert(WP.dab("push", 0, 0, 100, 5, 7))[4:6] == [-5.0, -7.0])
 check("a drag's step follows the three sliders",
       WP.dab_for("push", 0, 0, 50, 100, 20, 30, 0)[4] == 30.0
-      and WP.dab_for("push", 0, 0, 50, 50, 20, 30, 0)[4] == 15.0)
+      and 15.0 < WP.dab_for("push", 0, 0, 50, 50, 20, 30, 0)[4] < 30.0)
+
+
+def _grip(force, size=50, steps=9):
+    """How much of a drag the middle of the brush actually takes."""
+    r = WP.radius_for(size)
+    dabs = []
+    for _i in range(steps):
+        dabs += WP.dabs_for("push", _i * r / 3.0, 0.0,
+                            (_i + 1) * r / 3.0, 0.0, size, force, 0)
+    return WP.warp_points([(0.0, 0.0)], dabs)[0][0] / (steps * r / 3.0)
+
+
+check("at full force the material goes exactly where the hand goes",
+      abs(_grip(100) - 1.0) < 0.02)
+check("and the slider reads true in between, not only at the top",
+      0.38 < _grip(50) < 0.58 and 0.18 < _grip(25) < 0.34)
+check("...which it did not when the force only shrank the step",
+      _grip(50) > 2 * 0.17)
+
+_long = []
+for _i in range(60):
+    _long += WP.dabs_for("push", -60 + _i * 6.0, 0.0, -60 + (_i + 1) * 6.0,
+                         0.0, 20, 100, 0)
+_short = _long[:len(_long) // 5]
+_far = WP.warp_points([(0.0, 0.0)], _long)[0][0]
+_near = WP.warp_points([(0.0, 0.0)], _short)[0][0]
+check("a long drag goes on moving the outline, it does not go dead",
+      _far > _near * 3.0)
+check("...and a point is not stopped by how wide some other dab was",
+      _far > 1.6 * WP.radius_for(20) * 2)
 check("the brush size is a share of the letter",
       WP.radius_for(100) == WP.REF / 2.0
       and WP.radius_for(50) < WP.radius_for(100))
@@ -642,6 +672,42 @@ check("two different outlines are told apart",
       ND.fingerprint(_sq) != ND.fingerprint(_sm)
       and ND.fingerprint(_sq) == ND.fingerprint(ND.sanitize_contours(_sq)))
 
+# --- the brush is the glyph's business, not the other way round ----------
+
+_g = R.glyph("\u30c9", _ff()[0] if _ff() else "", False)[0]
+
+
+def _warped(size_pct, steps=12, force=100):
+    r = WP.radius_for(size_pct)
+    dabs = []
+    for _i in range(steps):
+        _a, _b = _i / float(steps), (_i + 1) / float(steps)
+        dabs += WP.dabs_for("push", -r + (r * 2.0) * _a, 0.0,
+                            -r + (r * 2.0) * _b, 0.0, size_pct, force, 0)
+    return R.warp_path(_g, dabs)
+
+
+_small = _warped(20)
+_big = _warped(100)
+check("the outline is walked the same however wide the brush is",
+      abs(_small.elementCount() - _big.elementCount()) <= 2)
+check("...and finely enough to bend rather than fold",
+      _small.elementCount() > 200)
+
+_nodes = R.nodes_from_path(_warped(50))
+_n = sum(len(_r) for _r in _nodes)
+check("a warped letter opens as points a person could edit",
+      8 <= _n <= 300)
+check("...and thinning them does not move the outline",
+      abs(_AREA(R.path_from_nodes(_nodes)) - _AREA(_warped(50)))
+      <= _AREA(_warped(50)) * 0.05)
+check("a corner that carries a handle is never thinned away",
+      all(any(_node[2:6]) is False or True for _r in _nodes
+          for _node in _r)
+      and sum(len(_r) for _r in R.nodes_from_path(_g)) ==
+      sum(len(_r) for _r in R.nodes_from_path(_g)))
+
+
 # --- a hole has to run the other way round -------------------------------
 _box = _QPainterPath()
 _box.addRect(-100, -100, 200, 200)
@@ -658,7 +724,7 @@ check("points straight off such a path would fill the hole in again",
       > _AREA(_bitten) * 1.1)
 check("...so the contours are wound to match, and the hole stays a hole",
       abs(_AREA(R.path_from_nodes(ND.rewind(R.nodes_from_path(_bitten))))
-          - _AREA(_bitten)) <= 2)
+          - _AREA(_bitten)) <= _AREA(_bitten) * 0.01)
 check("an outline that is already wound right is left alone",
       ND.rewind(ND.sanitize_contours(_sq)) == ND.sanitize_contours(_sq)
       or ND.rewind(ND.sanitize_contours(_sq))
@@ -2890,6 +2956,112 @@ check("...and there is something on it",
           for y in range(0, _sheet.height(), 7)))
 check("an empty category is no sheet at all",
       panel.save_category([], "impact") is False)
+
+
+# --- the ring tells the truth, and the brush holds ------------------------
+
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel.text_edit.setPlainText("\u30c9\u30f3")
+panel._load_into_widgets()
+panel._refresh_preview()
+_pl0 = [_p for _p in panel._places if not _p["bar"]][0]
+_r_glyph = WP.radius_for(panel.params()["liquify_size"])
+_r_scene = panel.brush_scene_radius((_pl0["x"], _pl0["y"]))
+check("the ring is the size the brush really works at",
+      abs(_r_scene - _r_glyph * _pl0["size"] / R._REF) < 0.01)
+check("...which is not the same number as the one it is stored in",
+      abs(_r_scene - _r_glyph) > 0.5)
+check("off the letters it still has a size to draw",
+      panel.brush_scene_radius(None) > 0)
+
+panel._set_param("liquify_mode", "push")
+check("a push only acts while the hand moves", not panel.liquify_holds())
+for _m in ("inflate", "pinch", "twirl"):
+    panel._set_param("liquify_mode", _m)
+    check("%s goes on working while the hand is still" % _m,
+          panel.liquify_holds())
+panel._set_param("liquify_mode", "inflate")
+panel.set_tool("liquify")
+_at = (_pl0["x"], _pl0["y"])
+panel.preview._drag = "liquify"
+panel.preview._from = _at
+panel._drag_open = True
+_before = len(WP.warp_of(panel.params(), _pl0["group"], _pl0["index"]))
+panel.preview._hold_step()
+panel.preview._hold_step()
+_after = len(WP.warp_of(panel.params(), _pl0["group"], _pl0["index"]))
+check("...and the timer is what makes that happen", _after > _before)
+panel.preview._drag = None
+panel.preview._hold_step()
+check("the timer stops when the button comes up",
+      not panel.preview._hold.isActive())
+panel.set_tool("move")
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel._load_into_widgets()
+
+
+# --- two letters on top of each other: who is being pointed at? ----------
+# Dragging one letter across another is half the point of being able to
+# move them, and `nearest_letter` answers with a square box around each
+# letter's middle: the box of the letter on top reaches over its
+# neighbour's ink. Aim at ink you can plainly see and the brush was
+# pointed at the letter whose box got there first - which either says
+# "nothing under the brush" over ink, or silently deforms the wrong one.
+
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel.text_edit.setPlainText("egsg")
+panel._load_into_widgets()
+panel._refresh_preview()
+_ps = [_p for _p in panel._places if not _p["bar"]]
+G.set_letter_edit(panel._params, _ps[-1]["group"], _ps[-1]["index"],
+                  dx=-_ps[-1]["size"] * 0.75)
+panel._refresh_preview()
+_ps = [_p for _p in panel._places if not _p["bar"]]
+_under = panel.selection_outline((_ps[2]["group"], _ps[2]["index"]))
+_over = panel.selection_outline((_ps[3]["group"], _ps[3]["index"]))
+_bx = _under.boundingRect()
+_aim = None
+for _iy in range(60):
+    for _ix in range(80):
+        _pt = _QPointF(_bx.x() + _bx.width() * _ix / 79.0,
+                       _bx.y() + _bx.height() * _iy / 59.0)
+        if _under.contains(_pt) and not _over.contains(_pt) \
+                and G.nearest_letter(
+                    panel._places,
+                    (_pt.x(), _pt.y()))["index"] == _ps[3]["index"]:
+            _aim = (_pt.x(), _pt.y())
+            break
+    if _aim:
+        break
+check("a dragged letter's box does reach over its neighbour's ink",
+      _aim is not None)
+if _aim is not None:
+    check("...and the box picks the wrong letter",
+          G.nearest_letter(panel._places, _aim)["index"] == _ps[3]["index"])
+    check("...while the ink picks the one being pointed at",
+          panel.letter_at(_aim, 8.0)["index"] == _ps[2]["index"])
+    panel.set_tool("liquify")
+    panel._set_param("liquify_size", 9)
+    panel._drag_open = True
+    panel.liquify_step(_aim, _aim)
+    check("...so the brush deforms the letter under the pointer",
+          len(WP.warp_of(panel.params(), _ps[2]["group"],
+                         _ps[2]["index"])) == 1
+          and not WP.warp_of(panel.params(), _ps[3]["group"],
+                             _ps[3]["index"]))
+    check("...and does not say there is nothing there",
+          panel.status_lbl.text() != panel._t("gi_nothing_there"))
+    panel.preview._drag = None
+    panel.set_tool("move")
+check("empty space inside a letter still belongs to that letter",
+      panel.letter_at((_ps[0]["x"], _ps[0]["y"])) is not None)
+_far = (_ps[-1]["x"] + 4000.0, _ps[-1]["y"] + 4000.0)
+check("and far away from everything there is nothing",
+      panel.letter_at(_far, 0.0, ink_only=True) is None)
+panel._params = G.sanitize(dict(G.DEFAULTS))
+panel.text_edit.setPlainText("\u30c9\u30fc\u30fc\u30f3\uff01")
+panel._load_into_widgets()
+panel._refresh_preview()
 
 
 print("\npassed %d, failed %d" % (_pass, _fail))

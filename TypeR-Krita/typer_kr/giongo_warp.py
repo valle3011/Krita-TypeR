@@ -149,11 +149,6 @@ def _bounded(ox, oy, limit):
     return ox * k, oy * k
 
 
-#: how far one point may travel in all, as a share of the widest brush
-#: that touched it. Past this a stroke stops being a push and starts
-#: being a tear.
-MAX_TRAVEL = 1.6
-
 #: how much the movement is evened out along the contour. 0 = not at
 #: all; each pass is a [1, 2, 1] average over a point and its two
 #: neighbours.
@@ -202,20 +197,16 @@ def warp_points(points, dabs, smooth=None):
     """
     if not dabs:
         return list(points)
-    cap = MAX_TRAVEL * max(d[3] for d in dabs)
     moves = [displace_seq(x, y, dabs) for x, y in points]
     passes = SMOOTH_PASSES if smooth is None else int(smooth)
     eased = _smooth_ring(moves, passes)
     # a point the brush never reached stays exactly where it was: the
     # evening-out must not carry movement out past the rim
     moves = [e if (m[0] or m[1]) else m for m, e in zip(moves, eased)]
-    out = []
-    for (x, y), (dx, dy) in zip(points, moves):
-        dist = math.hypot(dx, dy)
-        if dist > cap > 0:
-            dx, dy = dx * cap / dist, dy * cap / dist
-        out.append((x + dx, y + dy))
-    return out
+    # no cap on the total: what one dab may do is bounded (MAX_PULL),
+    # and a long stroke is a long stroke. A fold is untangled where it
+    # is drawn, not prevented by refusing to move
+    return [(x + dx, y + dy) for (x, y), (dx, dy) in zip(points, moves)]
 
 
 def reach(dabs):
@@ -235,6 +226,15 @@ def reach(dabs):
     return far
 
 
+#: the slider is the share of the hand's movement the material should
+#: take, and this is what has to be fed to the brush for it to read that
+#: way. The material lags a little behind the brush, and the lag eats
+#: into a low setting much harder than a high one: straight through, the
+#: slider gave 2 / 6 / 17 / 41 / 100 % at 10 / 25 / 50 / 75 / 100, which
+#: is a slider with nothing in its bottom half. Curved, it gives
+#: 14 / 25 / 47 / 82 / 100.
+FORCE_CURVE = 0.35
+
 #: what one step of a drag does at full force, per tool
 STEP_INFLATE = 0.035        # of the radius
 STEP_TWIRL = 4.5            # degrees
@@ -248,13 +248,13 @@ def radius_for(size_pct):
 def dab_for(mode, cx, cy, size_pct, force_pct, hard_pct, dx=0.0, dy=0.0):
     """The dab one step of a drag makes, from the three sliders.
 
-    `dx, dy` is how far the pointer moved since the last step, in the
-    letter's units. Push follows the hand (at full force exactly, below
-    that the material lags behind, which is what the force slider is
-    for); the others work on the spot.
+    `cx, cy` is where the step *started* - see `dabs_for` - and
+    `dx, dy` is how far the pointer moved during it, in the letter's
+    units. Push carries the material by that much times the force; the
+    others work on the spot.
     """
     r = radius_for(size_pct)
-    f = _clamp(float(force_pct), 1.0, 100.0) / 100.0
+    f = (_clamp(float(force_pct), 1.0, 100.0) / 100.0) ** FORCE_CURVE
     hard = _clamp(float(hard_pct), 0.0, 95.0) / 100.0
     if mode == "push":
         return dab("push", cx, cy, r, dx * f, dy * f, hard)
@@ -278,7 +278,11 @@ def dabs_for(mode, x0, y0, x1, y1, size_pct, force_pct, hard_pct):
     n = 1 if dist <= r * SPACING else min(
         MAX_STEPS, int(math.ceil(dist / max(1.0, r * SPACING))))
     out = []
-    for i in range(1, n + 1):
+    for i in range(n):
+        # the dab sits where this sub-step STARTS. The material it is
+        # about to carry is then under the middle of the brush, where
+        # the falloff is 1 - put the dab at the far end instead and the
+        # material is a third of a radius out before it is even touched
         t = i / float(n)
         out.append(dab_for(mode, x0 + dx * t, y0 + dy * t, size_pct,
                            force_pct, hard_pct, dx / n, dy / n))

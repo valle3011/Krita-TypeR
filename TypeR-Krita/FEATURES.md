@@ -1501,6 +1501,136 @@ of being a page editor. Krita already is one: every insert is a layer,
 moved and stacked with Krita's own tools, which is better than anything
 a docker could rebuild inside a preview.
 
+### Recently deleted
+
+Deleting a preset was one click with no question and no way back: the
+entry left the table and `_save_groups` wrote the table to the settings
+file the same instant. Four presets were lost that way, and the only
+reason they came back is that an export happened to exist from three
+weeks earlier.
+
+Two things now stand in the way.
+
+**The delete action asks**, and names the preset and the character it
+belongs to, and says where it is going.
+
+**Everything that leaves the table is kept** (`presetstore.py`,
+Qt-free and tested). Nothing watches the delete button: `_save_groups`
+compares the table it is about to write with the one it wrote last and
+bins whatever is no longer in it, with its settings and the time. One
+hook, so it catches the delete action, an import that overwrote a
+group, a reset, a rename gone wrong, and whatever is added later and
+forgets to tell the bin about itself. A preset whose settings merely
+changed is not a deletion; the same preset deleted twice keeps one
+entry, the newer one.
+
+**Setup → Recently deleted** lists them, newest first, with the manga,
+the character and when they went. Pick one and put it back - where it
+came from, leaving everything else alone. A name that has since been
+taken again is not overwritten without being asked. The last
+`presetstore.MAX` are kept; for anything older there is the export,
+which is the archive.
+
+### Which letter you are pointing at
+
+`nearest_letter` answers with a square box around each letter's middle,
+front to back. That is the right answer while the letters sit in a row,
+and the wrong one the moment two of them overlap - and overlapping them
+is half the point of being able to drag them about.
+
+Drag one letter across its neighbour and the box of the letter on top
+reaches over the neighbour's ink. Aim at ink you can plainly see and the
+brush is pointed at a letter whose ink is somewhere else: either it says
+"Nothing under the brush there" over ink, or - worse, because it is
+silent - it deforms the letter you are not pointing at. Reproduced: four
+letters, the last dragged three quarters of its width to the left; a
+point on the third letter's ink with none of the fourth letter's ink on
+it goes to the fourth letter, and the dab lands there.
+
+`letter_at` asks the outlines instead, in three steps:
+
+1. the topmost letter whose ink the point is **on**
+2. failing that, the topmost letter whose ink is within the brush, so
+   the edge of a stroke can be taken hold of and not only its middle
+3. failing that, the old box - so a click on the empty inside of an O
+   still belongs to the O
+
+The brush, the eraser, picking a letter up, double-clicking one to reset
+it and opening its points all go through it now.
+
+### Why liquify felt dead, and what was done about it
+
+Measured first, then changed. The numbers below are from
+`test_giongo.py` and the probes it grew out of.
+
+**It stopped obeying the hand.** A cap called `MAX_TRAVEL` stopped a
+point once it had moved 1.6 of the widest brush that had ever touched
+the letter. A 20 % brush therefore went dead after 32 em units, having
+been dragged 267 - dragging five times as far and ten times as far gave
+the same picture. The cap was also computed from the *widest* brush in
+the whole set, so one dab with a bigger brush somewhere else on the same
+letter rewrote the warp already there by as much as a quarter of the em.
+It is gone. What it was there to prevent - one dab folding the outline -
+is prevented where it happens, by `MAX_PULL`.
+
+**The force slider had nothing in its bottom half.** The dab sat at the
+*end* of its step, so the material it was carrying was always a third
+of a radius behind the middle of the brush, where the falloff has
+already eaten into it; at low force the point fell further behind with
+every step until it was outside the brush and stopped moving. Measured
+as the share of the drag the middle of the brush takes: 2 / 6 / 17 / 41
+/ 100 % at force 10 / 25 / 50 / 75 / 100. The dab now sits at the
+*start* of its step, which puts the material under the middle of the
+brush, and `FORCE_CURVE` takes out what is left of the lag. It now
+reads 14 / 25 / 47 / 82 / 100, and at full force the material goes
+exactly where the hand goes.
+
+**A big brush shredded the letter.** How finely the outline was walked
+came from the brush: `max(2, min(r/8, 15))`. A 100 % brush walked it
+every 12.5 em units - ten pixels at letter_px 160, wider than the
+strokes of most glyphs - so the two sides of a stroke got wildly
+different movement and the stroke collapsed into a hairline. The brush
+a person reaches for to make a big soft bend was the one that gave the
+coarsest result. It is a budget of points for the contour now
+(`WARP_POINTS`), the same whatever brush is in hand. A frame with a
+100 % brush and 150 dabs on one letter measures 8.4 ms, so this cost
+nothing worth having.
+
+**Opening the points of a warped letter gave sawdust.** With the finer
+walk that is several hundred corners a fraction of a pixel apart. They
+are thinned with Douglas-Peucker (`THIN_TOL`), which measures every
+dropped point against the chord of the piece as it was, so the
+tolerance is a real bound: 377 points become about 150, and the ink
+moves by under 2 %. An earlier attempt dropped points by comparing each
+to its surviving neighbours; the error piled up and moved the ink by
+12 %, which is why it is not that.
+
+**The ring under the pointer was a quarter too big.** The radius is
+kept in the letter's own units - that is what lets a warp turn and
+scale with the letter it belongs to - and the ring was drawn with that
+number as though a letter unit were a scene unit. At letter_px 160 it
+is 0.8 of one, and when a layout gives the letters different sizes it
+was differently wrong on each. `brush_scene_radius` asks the letter
+under the pointer.
+
+**Expand, pinch and the twirls did nothing while the hand was still.**
+A dab was only made when a mouse-move event arrived, so the three
+on-the-spot tools needed the mouse jiggled. There is a timer now
+(`_hold_step`), and it works from the last place the pointer was, so it
+follows a slow hand as well as a still one.
+
+**What is still true of it.** A push thins what it carries - a
+falloff-weighted translation is not area-preserving, and pushing a
+letter further than its own width with a brush its own size will always
+wreck it. Measured, a 100 % brush dragged two and a half radii leaves
+about half the ink. Untangling the result (`simplified()`) and walking
+it more finely were both tried and changed nothing, so the thinning is
+the field and not an artefact. Still missing against the tool this is
+modelled on: push-left and push-right, the twirls as two named
+directions, a brush that works on every letter it covers rather than
+the nearest one, and baking a finished stroke so that a long session
+does not replay the whole gesture history on every frame.
+
 ### Reporting a problem
 
 A bug report is only useful if it says which version, which Krita, which

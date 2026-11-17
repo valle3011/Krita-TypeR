@@ -1035,6 +1035,10 @@ class GiongoPreview(QLabel):
         self._grabbed = None    # which node or handle is being dragged
         self._band = None       # the rectangle being drawn, in widget px
         self._cursor = None     # where it is, in widget pixels
+        self._hold = QTimer(self)
+        self._hold.setInterval(40)
+        self._hold.timeout.connect(self._hold_step)
+        self._hold_alt = False
         self.setMouseTracking(True)
         self._from = (0.0, 0.0)
         self._start = None      # the letter's edit when the drag began
@@ -1219,7 +1223,12 @@ class GiongoPreview(QLabel):
                 return
             self._drag = "liquify"
             self._from = scene
-            self._panel.liquify_step(scene, scene, self._alt(ev))
+            self._hold_alt = self._alt(ev)
+            self._panel.liquify_step(scene, scene, self._hold_alt)
+            if self._panel.liquify_holds():
+                # expand, pinch and the twirls work on the spot: without
+                # this they only act when the hand happens to move
+                self._hold.start()
             return
         if self._panel.erase_armed():
             scene = self._to_scene(pos)
@@ -1262,7 +1271,7 @@ class GiongoPreview(QLabel):
         scene = self._to_scene(pos)
         if scene is None:
             return
-        pl = G.nearest_letter(self._places, scene)
+        pl = self._panel.letter_at(scene)
         if pl is None:
             self._sel = None
             self.update()
@@ -1284,7 +1293,8 @@ class GiongoPreview(QLabel):
         if scene is None:
             return
         if self._drag == "liquify":
-            self._panel.liquify_step(scene, self._from, self._alt(ev))
+            self._hold_alt = self._alt(ev)
+            self._panel.liquify_step(scene, self._from, self._hold_alt)
             self._from = scene
             return
         if self._drag == "point":
@@ -1319,9 +1329,17 @@ class GiongoPreview(QLabel):
                     a[0], a[1], b[0], b[1],
                     bool(ev.modifiers() & Qt.KeyboardModifier.ShiftModifier))
             self.update()
+        self._hold.stop()
         if self._drag is not None:
             self._drag = None
             self._panel.preview_drag_done()
+
+    def _hold_step(self):
+        """One more touch of an on-the-spot brush, where it is resting."""
+        if self._drag != "liquify" or self._from is None:
+            self._hold.stop()
+            return
+        self._panel.liquify_step(self._from, self._from, self._hold_alt)
 
     def mouseDoubleClickEvent(self, ev):                # noqa: N802
         pos = ev.position() if hasattr(ev, "position") else ev.pos()
@@ -1332,7 +1350,7 @@ class GiongoPreview(QLabel):
             self._panel.point_double(scene, self.GRAB, self._k)
             self.update()
             return
-        pl = G.nearest_letter(self._places, scene)
+        pl = self._panel.letter_at(scene)
         if pl is not None:
             self._panel.reset_letter((pl["group"], pl["index"]))
 
@@ -1385,10 +1403,15 @@ class GiongoPreview(QLabel):
                 p.drawRect(QRectF(pt[0] - h, pt[1] - h, 2 * h, 2 * h))
 
     def _draw_brush(self, p):
-        """The liquify brush: a ring the size it really works at."""
+        """The liquify brush: a ring the size it really works at.
+
+        `_brush_r` is in the letter\'s own units; the letter under the
+        pointer says what one of those is worth on screen.
+        """
         if not (self._brush_r and self._cursor):
             return
-        r = self._brush_r * self._k
+        scene = self._to_scene(QPointF(self._cursor[0], self._cursor[1]))
+        r = self._panel.brush_scene_radius(scene) * self._k
         if not (r > 0.5 and r < 1e5):
             return
         x, y = self._cursor
@@ -2901,7 +2924,8 @@ class GiongoPanel(QWidget):
         self._schedule()
 
     def _on_slider(self, key, v, steps):
-        if key == "liquify_size" and self.liquify_armed():
+        if key == "liquify_size" and self.tool() in ("liquify", "erase"):
+            # the eraser is drawn with the same ring, so it follows too
             self.preview.set_brush(W.radius_for(v / float(steps)))
         val = v / float(steps)
         if steps == 1:
@@ -3168,6 +3192,30 @@ class GiongoPanel(QWidget):
             return None
         return thick.translated(pl["x"], pl["y"])
 
+    #: the tools that go on working while the hand is still
+    HOLD_MODES = ("inflate", "pinch", "twirl")
+
+    def liquify_holds(self):
+        """Does the brush in hand work on the spot?"""
+        return self._params.get("liquify_mode", "push") in self.HOLD_MODES
+
+    def brush_scene_radius(self, scene=None):
+        """The brush radius in scene units, for the ring under the pointer.
+
+        The radius is kept in the letter\'s own units so that a warp
+        belongs to the letter; what one of those is worth on screen is
+        the letter\'s own size, and the letters need not be the same
+        size as each other.
+        """
+        r = W.radius_for(self._params["liquify_size"])
+        pl = G.nearest_letter(self._places, scene) if scene else None
+        if pl is None:
+            sizes = [p["size"] for p in self._places if not p["bar"]]
+            size = sum(sizes) / len(sizes) if sizes else R._REF
+        else:
+            size = pl["size"]
+        return r * max(1e-6, float(size)) / R._REF
+
     def liquify_armed(self):
         """Is the brush on? The preview asks before it moves a letter."""
         return self.tool() == "liquify"
@@ -3191,6 +3239,52 @@ class GiongoPanel(QWidget):
             b.setText(self._t("gi_liq_" + mode))
             b.setStyleSheet(_CHIP_ON if mode == cur else _CHIP_OFF)
 
+    def letter_at(self, scene, radius=0.0, ink_only=False):
+        """The letter whose ink is under `scene`, front to back.
+
+        `radius` is the brush, in scene units: a point within that far
+        of the ink counts, so the edge of a stroke can be taken hold of
+        rather than only its middle.
+
+        Falls back to `G.nearest_letter` - the box around the middle -
+        when nothing\'s ink is under the pointer, unless `ink_only`.
+        That keeps a click on the empty inside of an O doing what it
+        always did, while a click on ink now lands on the letter that
+        ink belongs to and not on whichever box reaches furthest.
+        """
+        if not self._places:
+            return None
+        r = max(0.0, float(radius))
+        here = QPointF(scene[0], scene[1])
+        box = QRectF(scene[0] - r, scene[1] - r, 2 * r, 2 * r)
+        shapes = []
+        for pl in reversed(list(self._places)):
+            if pl.get("bar"):
+                continue
+            try:
+                shape = self.selection_outline((pl["group"], pl["index"]))
+            except Exception:           # noqa: BLE001
+                shape = None
+            if shape is not None:
+                shapes.append((pl, shape))
+        # ink the pointer is actually on beats ink that is merely near:
+        # two letters that overlap are both within a brush of each other,
+        # and the one being pointed at is the one under the point
+        for pl, shape in shapes:
+            if shape.contains(here):
+                return pl
+        if r > 0:
+            for pl, shape in shapes:
+                if shape.intersects(box):
+                    return pl
+        if ink_only:
+            return None
+        return G.nearest_letter(self._places, scene)
+
+    def brush_radius_scene(self):
+        """The brush, in scene units, for the letter it is likely on."""
+        return self.brush_scene_radius(None)
+
     def _touches_ink(self, pl, scene):
         """Is there any of this letter under the brush, where it is?
 
@@ -3210,7 +3304,7 @@ class GiongoPanel(QWidget):
 
     def liquify_step(self, scene, prev, alt=False):
         """One step of a drag with the brush, at a point in scene units."""
-        pl = G.nearest_letter(self._places, scene)
+        pl = self.letter_at(scene, self.brush_radius_scene())
         if pl is None:
             # nothing within reach at all, not even a letter to miss
             self._status(self._t("gi_nothing_there"))
@@ -3348,7 +3442,7 @@ class GiongoPanel(QWidget):
         key = self.preview.selected()
         pl = self._placement(key) if key else None
         if pl is None or pl["bar"]:
-            pl = G.nearest_letter(self._places, scene)
+            pl = self.letter_at(scene, self.brush_radius_scene())
             if pl is None or pl["bar"]:
                 return
             key = (pl["group"], pl["index"])
@@ -3585,7 +3679,7 @@ class GiongoPanel(QWidget):
         key = self.preview.selected()
         pl, inv = self._letter_space(key)
         if pl is None or inv is None:
-            pl2 = G.nearest_letter(self._places, scene)
+            pl2 = self.letter_at(scene)
             if pl2 is None or pl2["bar"]:
                 return None
             self.preview.select((pl2["group"], pl2["index"]))

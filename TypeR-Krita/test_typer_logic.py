@@ -2487,5 +2487,84 @@ if os.path.isdir(_UPSTREAM_DIR):
     check("swap: the standalone SwapR has not drifted away from the copy",
           not _drift)
 
+
+# --- the bin for deleted presets -----------------------------------------
+# A preset used to go for good the moment it was clicked away. Everything
+# that leaves the table is now compared out of it and kept for a while.
+
+_psspec = importlib.util.spec_from_file_location(
+    "typer_kr_stub.presetstore",
+    os.path.join(_HERE, "typer_kr", "presetstore.py"))
+PS = importlib.util.module_from_spec(_psspec)
+_psspec.loader.exec_module(PS)
+
+_t_a = {"M": {"C": {"one": {"size": 1}, "two": {"size": 2}}},
+        "N": {"D": {"three": {"size": 3}}}}
+_t_b = {"M": {"C": {"two": {"size": 2}}},
+        "N": {"D": {"three": {"size": 3}}}}
+
+check("presetstore: a table knows how many presets it holds",
+      PS.count(_t_a) == 3 and PS.count({}) == 0)
+check("presetstore: what a change took away is found by comparing",
+      [k for k, _c in PS.removed(_t_a, _t_b)] == [("M", "C", "one")])
+check("presetstore: a preset that only changed is not 'removed'",
+      PS.removed(_t_a, {"M": {"C": {"one": {"size": 9}, "two": {"size": 2}}},
+                        "N": {"D": {"three": {"size": 3}}}}) == [])
+
+_bin = PS.drop([], _t_a, _t_b, at=100.0)
+check("presetstore: the deleted one lands in the bin, with its settings",
+      len(_bin) == 1 and _bin[0]["name"] == "one"
+      and _bin[0]["manga"] == "M" and _bin[0]["char"] == "C"
+      and _bin[0]["data"] == {"size": 1})
+check("presetstore: nothing deleted, nothing binned",
+      PS.drop(_bin, _t_b, _t_b) == _bin)
+
+_back, _how = PS.restore(_t_b, _bin[0])
+check("presetstore: and it goes back where it came from",
+      _how == "ok" and _back["M"]["C"]["one"] == {"size": 1}
+      and PS.count(_back) == 3)
+check("presetstore: putting it back does not touch the rest",
+      _back["M"]["C"]["two"] == {"size": 2}
+      and _back["N"]["D"]["three"] == {"size": 3})
+check("presetstore: a name that is taken again is not overwritten silently",
+      PS.restore(_t_a, _bin[0])[1] == "exists")
+check("presetstore: ...unless that is what was asked for",
+      PS.restore(_t_a, _bin[0], overwrite=True)[1] == "ok")
+check("presetstore: rubbish is refused rather than stored",
+      PS.restore(_t_b, {"name": "x"})[1] == "bad"
+      and PS.restore(_t_b, None)[1] == "bad")
+
+_twice = PS.drop(PS.drop([], _t_a, _t_b, at=100.0), _t_a, _t_b, at=200.0)
+check("presetstore: the same preset deleted twice keeps one entry",
+      len(_twice) == 1 and _twice[0]["at"] == 200.0)
+
+_many = []
+for _i in range(PS.MAX + 5):
+    _src = {"M": {"C": {"p%d" % _i: {"size": _i}}}}
+    _many = PS.drop(_many, _src, {}, at=float(_i))
+check("presetstore: the bin has a floor it does not grow past",
+      len(_many) == PS.MAX and _many[0]["name"] == "p5")
+
+check("presetstore: the newest deletion is shown first",
+      [it["name"] for it in PS.newest_first(_many)][:2]
+      == ["p%d" % (PS.MAX + 4), "p%d" % (PS.MAX + 3)])
+check("presetstore: the bin survives the settings file",
+      [it["name"] for it in PS.from_json(PS.to_json(_bin))]
+      == [it["name"] for it in _bin])
+check("presetstore: and rubbish in that file is dropped, not drawn",
+      PS.from_json("not json") == [] and PS.from_json("{}") == []
+      and PS.from_json('[{"name": ""}, {"data": 3}, 7]') == [])
+check("presetstore: one entry can be forgotten on its own",
+      PS.forget(_bin, _bin[0]) == []
+      and PS.forget(_bin, {"name": "nope"}) == _bin)
+
+# an import that overwrites a whole manga is a deletion too, and the one
+# hook in _save_groups is what makes that true without anyone saying so
+_imp_before = {"M": {"C": {"keep": {"size": 1}, "lost": {"size": 2}}}}
+_imp_after = {"M": {"C": {"keep": {"size": 9}}}}
+check("presetstore: an import that drops a preset bins it as well",
+      [k for k, _c in PS.removed(_imp_before, _imp_after)]
+      == [("M", "C", "lost")])
+
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

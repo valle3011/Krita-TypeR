@@ -13,6 +13,91 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.4", {
+        "en": [
+            "Nothing is deleted for good any more. Deleting a preset "
+            "used to be one click with no question and no way back. It "
+            "asks now - and whatever leaves the preset list is kept "
+            "under “Setup → Recently deleted” with its manga, its "
+            "character and the time it went, to be put back with one "
+            "click. That holds for an import that overwrote a group or "
+            "a reset just as much as for the delete button, because "
+            "what is kept is whatever the list lost, however it lost "
+            "it.",
+            "Liquify follows the hand now. A cap stopped a point once "
+            "it had moved 1.6 brush widths, so a stroke went dead a "
+            "third of the way in - dragging five times as far and ten "
+            "times as far gave the same picture - and using a wider "
+            "brush elsewhere on the same letter silently rewrote the "
+            "warp already there. The cap is gone.",
+            "The force slider reads true. The dab sat at the end of its "
+            "step, so the material was always behind the middle of the "
+            "brush where the brush has least grip; at low force it fell "
+            "out of the brush altogether. Measured as the share of the "
+            "drag the material takes, the slider gave 2 / 6 / 17 / 41 / "
+            "100 % at 10 / 25 / 50 / 75 / 100. It now gives 14 / 25 / "
+            "47 / 82 / 100, and at full force the material goes exactly "
+            "where the hand goes.",
+            "A wide brush no longer shreds the letter. How finely the "
+            "outline was walked came from the brush, so the widest "
+            "brush - the one you reach for to make a soft bend - gave "
+            "the coarsest outline and collapsed thin strokes into "
+            "hairlines. It comes from the letter now. The ring under "
+            "the pointer was also drawn a quarter too big; it is the "
+            "size that really works. And Expand, Pinch and the twirls "
+            "go on working while the hand is still, which they were "
+            "always supposed to do.",
+            "Fixed: pointing at a letter that another letter had been "
+            "dragged across picked the wrong one. The letter was chosen "
+            "by a square around its middle, so the box of the letter on "
+            "top reached over its neighbour's ink - and the brush then "
+            "said “nothing under the brush there” over ink you could "
+            "plainly see, or quietly deformed the letter you were not "
+            "pointing at. The ink decides now.",
+        ],
+        "de": [
+            "Nichts wird mehr endgültig gelöscht. Ein Preset zu löschen "
+            "war ein Klick ohne Nachfrage und ohne Weg zurück. Jetzt "
+            "wird gefragt — und was aus der Preset-Liste verschwindet, "
+            "liegt unter „Setup → Kürzlich gelöscht“ mit Manga, "
+            "Charakter und Zeitpunkt und lässt sich mit einem Klick "
+            "zurücklegen. Das gilt für einen Import, der eine Gruppe "
+            "überschrieben hat, genauso wie für den Löschen-Knopf: "
+            "aufgehoben wird, was die Liste verloren hat, egal wodurch.",
+            "Verflüssigen folgt jetzt der Hand. Eine Grenze stoppte "
+            "einen Punkt, sobald er 1,6 Pinselbreiten gewandert war — "
+            "ein Strich war nach einem Drittel tot, fünfmal und zehnmal "
+            "so weit ziehen ergab dasselbe Bild — und ein breiterer "
+            "Pinsel anderswo am selben Buchstaben schrieb die "
+            "bestehende Verformung stillschweigend um. Die Grenze ist "
+            "weg.",
+            "Der Kraftregler liest sich richtig. Der Pinselabdruck saß "
+            "am Ende seines Schritts, das Material also immer hinter "
+            "der Pinselmitte, wo der Pinsel am wenigsten greift; bei "
+            "kleiner Kraft fiel es ganz aus dem Pinsel. Gemessen am "
+            "Anteil des Zugwegs gab der Regler 2 / 6 / 17 / 41 / 100 % "
+            "bei 10 / 25 / 50 / 75 / 100. Jetzt gibt er 14 / 25 / 47 / "
+            "82 / 100, und bei voller Kraft geht das Material exakt "
+            "dahin, wo die Hand hingeht.",
+            "Ein breiter Pinsel zerfetzt den Buchstaben nicht mehr. Wie "
+            "fein die Kontur abgelaufen wurde, kam vom Pinsel — der "
+            "breiteste Pinsel, den man für eine weiche Biegung nimmt, "
+            "gab also die gröbste Kontur und ließ dünne Striche zu "
+            "Haarlinien zusammenfallen. Das kommt jetzt vom Buchstaben. "
+            "Der Ring unter dem Zeiger war außerdem ein Viertel zu groß "
+            "gezeichnet; er hat jetzt die Größe, die wirklich wirkt. "
+            "Und Aufblasen, Einziehen und die Wirbel arbeiten weiter, "
+            "während die Hand stillsteht — wie vorgesehen.",
+            "Behoben: auf einen Buchstaben zu zeigen, über den ein "
+            "anderer gezogen wurde, traf den falschen. Der Buchstabe "
+            "wurde über ein Quadrat um seine Mitte gesucht, das "
+            "Kästchen des oberen griff also über die Tinte des Nachbarn "
+            "— und der Pinsel meldete dann „nichts unter dem Pinsel“ "
+            "über deutlich sichtbarer Tinte oder verformte "
+            "stillschweigend den Buchstaben, auf den du nicht gezeigt "
+            "hast. Jetzt entscheidet die Tinte.",
+        ],
+    }),
     ("1.22.3", {
         "en": [
             "The Giongo tab is laid out the way the web tool it is "
