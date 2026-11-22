@@ -26,6 +26,7 @@ from ._qt import (
     QListWidget, QListWidgetItem, QPushButton, QDialog, QDialogButtonBox,
     QCheckBox, QInputDialog, QMessageBox, QScrollArea, QMenu,
     QFileDialog, QStyledItemDelegate, QStyle, QSlider, QApplication,
+    QTabWidget,
 )
 
 from .fontfav import FavoritesStore, UNCATEGORIZED
@@ -935,14 +936,45 @@ class _FontChooserDialog(QDialog):
     """
 
     def __init__(self, parent, tr, families, stars=None,
-                 title_key="fav_pick_font", preview=None, on_preview=None):
+                 title_key="fav_pick_font", preview=None, on_preview=None,
+                 panel=None, presets=None, preset_keys=None):
         super().__init__(parent)
         self._tr = tr
         self._stars = set(stars or ())
         self._on_preview = on_preview
+        self._panel = panel
+        self._presets = presets or {}
+        # {(manga, character, preset): "Ctrl+B"} - already spelled the way
+        # this machine spells it, by whoever knows
+        self._preset_keys = preset_keys or {}
         self.setWindowTitle(tr(title_key))
-        self.resize(360, 440)
-        lay = QVBoxLayout(self)
+        self.resize(560 if panel is not None else 360, 560 if panel is not None
+                    else 440)
+        outer = QVBoxLayout(self)
+        # With the Fonts panel to show as well, the list becomes a tab
+        # rather than the whole window. Without one, nothing changes:
+        # `lay` is still the dialog's own layout.
+        self.tabs = None
+        self.preset_list = None
+        if panel is not None or presets:
+            self.tabs = QTabWidget()
+            _searchpage = QWidget()
+            lay = QVBoxLayout(_searchpage)
+            lay.setContentsMargins(0, 6, 0, 0)
+            self.tabs.addTab(_searchpage, tr("fav_tab_search"))
+            # a holder of its own, so the panel is never pulled out of a
+            # layout that is being torn down
+            self.panel_holder = QWidget()
+            _ph = QVBoxLayout(self.panel_holder)
+            _ph.setContentsMargins(0, 0, 0, 0)
+            if panel is not None:
+                self.tabs.addTab(self.panel_holder, tr("fav_tab_fonts"))
+            if presets:
+                self.tabs.addTab(self._build_presets(tr, presets),
+                                 tr("fav_tab_presets"))
+            outer.addWidget(self.tabs, 1)
+        else:
+            lay = outer
         self.search = QLineEdit()
         self.search.setPlaceholderText(tr("fav_search_ph"))
         self.search.setClearButtonEnabled(True)
@@ -970,10 +1002,114 @@ class _FontChooserDialog(QDialog):
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        lay.addWidget(bb)
+        # the buttons belong to the window, not to one of its tabs: OK on
+        # the Fonts tab would be asking which row of a list you are not
+        # looking at should win
+        outer.addWidget(bb)
         if self.list.count():
             self.list.setCurrentRow(0)
         self.search.setFocus()
+
+    def _build_presets(self, tr, presets):
+        """Manga on the left; characters and fonts to the right of it."""
+        page = QWidget()
+        self._preset_page = page
+        row = QHBoxLayout(page)
+        row.setContentsMargins(0, 6, 0, 0)
+
+        self.manga_list = QListWidget()
+        for manga in sorted(presets, key=lambda t: t.lower()):
+            it = QListWidgetItem(manga)
+            it.setData(Qt.ItemDataRole.UserRole, manga)
+            self.manga_list.addItem(it)
+        self.manga_list.currentItemChanged.connect(
+            lambda *_a: self._on_preset_manga())
+        row.addWidget(self.manga_list, 2)
+
+        right = QVBoxLayout()
+        self.char_list = QListWidget()
+        self.char_list.currentItemChanged.connect(
+            lambda *_a: self._on_preset_char())
+        self.char_list.setVisible(False)
+        right.addWidget(self.char_list, 2)
+        self.preset_list = QListWidget()
+        self.preset_list.itemDoubleClicked.connect(lambda *_a: self.accept())
+        right.addWidget(self.preset_list, 3)
+        row.addLayout(right, 3)
+
+        if self.manga_list.count():
+            self.manga_list.setCurrentRow(0)
+        return page
+
+    def _on_preset_manga(self):
+        """A manga was picked: its characters, or straight to its fonts."""
+        it = self.manga_list.currentItem()
+        chars = self._presets.get(it.data(Qt.ItemDataRole.UserRole), {}) \
+            if it is not None else {}
+        self.char_list.blockSignals(True)
+        self.char_list.clear()
+        self.char_list.blockSignals(False)
+        names = sorted(chars, key=lambda t: t.lower())
+        # one character is the bucket a manga without characters keeps its
+        # presets in; a column with one row in it is furniture
+        if len(names) > 1:
+            for name in names:
+                row = QListWidgetItem(name)
+                row.setData(Qt.ItemDataRole.UserRole, name)
+                self.char_list.addItem(row)
+            self.char_list.setVisible(True)
+            self.char_list.setCurrentRow(0)     # fills the fonts below
+        else:
+            self.char_list.setVisible(False)
+            self._fill_preset_fonts(chars.get(names[0], {}) if names else {})
+
+    def _on_preset_char(self):
+        it = self.char_list.currentItem()
+        if it is None:
+            self._fill_preset_fonts({})
+            return
+        manga = self.manga_list.currentItem()
+        chars = self._presets.get(manga.data(Qt.ItemDataRole.UserRole), {}) \
+            if manga is not None else {}
+        self._fill_preset_fonts(
+            chars.get(it.data(Qt.ItemDataRole.UserRole), {}))
+
+    def _fill_preset_fonts(self, table):
+        """The fonts of one character, each with the preset holding it."""
+        self.preset_list.clear()
+        m_it = self.manga_list.currentItem()
+        manga = m_it.data(Qt.ItemDataRole.UserRole) if m_it is not None else ""
+        c_it = self.char_list.currentItem()
+        char = (c_it.data(Qt.ItemDataRole.UserRole)
+                if (c_it is not None and self.char_list.count()) else "")
+        for name in sorted(table or {}, key=lambda t: t.lower()):
+            fam = ((table[name] or {}).get("font") or "").strip()
+            it = QListWidgetItem(("%s \u2014 %s" % (fam, name)) if fam
+                                 else name)
+            if fam:
+                it.setData(_ROLE_FAMILY, fam)
+            else:
+                # nothing to hand back, so nothing to pick
+                it.setFlags(Qt.ItemFlag.NoItemFlags)
+            # a preset saved without a character is bound under "" -
+            # try the character we are under, then that
+            combo = (self._preset_keys.get((manga, char, name))
+                     or self._preset_keys.get((manga, "", name)))
+            it.setToolTip(self._tr("fav_preset_key").format(key=combo)
+                          if combo else self._tr("fav_preset_nokey"))
+            it.setSizeHint(QSize(0, 24))
+            self.preset_list.addItem(it)
+        for i in range(self.preset_list.count()):
+            if self.preset_list.item(i).data(_ROLE_FAMILY):
+                self.preset_list.setCurrentRow(i)
+                break
+
+    def _chosen_list(self):
+        """The list OK is about: whichever tab is in front."""
+        if self.tabs is not None and self.preset_list is not None:
+            if self.tabs.currentWidget() is self._preset_page:
+                return self.preset_list
+        return self.list
 
     def _apply_preview(self, on):
         """Every row in its own face, or all of them in the panel's font."""
@@ -1009,13 +1145,25 @@ class _FontChooserDialog(QDialog):
             if cur is None or cur.isHidden():
                 self.list.setCurrentRow(first)
 
+    def take_panel(self):
+        """Borrow the Fonts panel for as long as this window is open."""
+        if self._panel is None:
+            return
+        self.panel_holder.layout().addWidget(self._panel)
+        self._panel.show()
+
+    def give_panel_back(self):
+        """Hand it back. Called whichever way the window closes."""
+        panel, self._panel = self._panel, None
+        return panel
+
     def run(self):
         if self.exec() != QDialog.DialogCode.Accepted:
             return None, False
-        it = self.list.currentItem()
+        it = self._chosen_list().currentItem()
         if it is None or it.isHidden():
             return None, False
-        return it.data(Qt.ItemDataRole.UserRole), True
+        return it.data(_ROLE_FAMILY), True
 
 
 class _CategoryDialog(QDialog):

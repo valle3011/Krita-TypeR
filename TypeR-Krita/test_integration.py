@@ -1048,6 +1048,36 @@ if imported:
         check("matching still uses Qt's portable spelling",
               "Ctrl+Space" in dict((c, m) for (c, m, _k) in TK.BUILTIN_KEYS))
 
+        # the search over the list: "have I used this key already?"
+        def _shown():
+            return [r for r in range(_th.keys_table.rowCount())
+                    if not _th.keys_table.isRowHidden(r)]
+        _th.keys_search.setText("denji")
+        check("the search finds a key by the character on it",
+              len(_shown()) == 1
+              and _th.keys_table.item(_shown()[0], 1).text()
+              == "Denji · Normal")
+        _th.keys_search.setText("berserk")
+        check("...and by the manga it belongs to", len(_shown()) == 1)
+        _th.keys_search.setText("ctrl")
+        check("...and by the key itself, modifiers included",
+              len(_shown()) == len(TK.BUILTIN_KEYS) + 1)
+        check("...saying how many of how many matched",
+              _th._tr("keys_found").format(n=len(_shown()),
+                                           total=_th.keys_table.rowCount())
+              == _th.keys_hint.text())
+        _th.keys_search.setText("zzz nothing")
+        check("a key nobody has says so, instead of an empty table",
+              _shown() == [] and _th.keys_hint.text() == _th._tr("keys_free"))
+        _th.keys_search.setText("")
+        check("clearing it brings the whole list back",
+              len(_shown()) == _th.keys_table.rowCount())
+        _th.keys_search.setText("guts")
+        _th._refresh_keys_table()
+        check("...and a rebuild keeps the filter that is typed",
+              len(_shown()) == 1)
+        _th.keys_search.setText("")
+
         # rebinding
         class _Field:
             def __init__(self, c):
@@ -2427,9 +2457,25 @@ if imported:
         _kd._char = "Hizashi"
         _kd._refresh_chars_combo(select="Hizashi")
         _kd._refresh_presets_combo(select="Normal Talk")
+        # deleting asks first now; headless there is nobody to answer, so
+        # the seam is what answers. Both ways round, because "No" keeping
+        # the preset is the whole point of asking.
+        # the bin records what the WRITTEN table lost, so the presets this
+        # test poked straight into _groups have to be written once first -
+        # which is what on_preset_save does in real use
+        _kd._save_groups()
+        _kd._confirm = lambda *_a, **_k: False
+        _kd.on_preset_delete()
+        check("saying no to the question keeps the preset",
+              "Normal Talk" in _kd._groups["Serie"]["Hizashi"])
+        _kd._confirm = lambda *_a, **_k: True
         _kd.on_preset_delete()
         check("deleting a preset takes its keybind with it",
               _kd._keybinds.get("Serie", {}) == {})
+        check("...and the preset itself is gone",
+              "Normal Talk" not in _kd._groups["Serie"]["Hizashi"])
+        check("...into the bin, with its settings",
+              any(i["name"] == "Normal Talk" for i in _kd._trash))
 
         # a binding left over from an older session points nowhere: pressing
         # it says so once and cleans itself up
@@ -3502,6 +3548,96 @@ if imported:
         check("what's-new suite ran", False)
         import traceback
         traceback.print_exc()
+
+# --- the font search can show the Fonts tab beside its list ---------------
+# The second tab holds the REAL panel, borrowed while the window is open.
+# A copy would keep its own idea of the categories and the two would
+# drift apart the first time anything was starred. It is borrowed through
+# a holder on each side, so the panel is never pulled out of a layout
+# that is being torn down - the bug that crashed Krita once already.
+
+from typer_kr.fontfav_ui import FontSearchDialog as _FSD       # noqa: E402
+from typer_kr._qt import QWidget as _QW2, QVBoxLayout as _QVL2  # noqa: E402
+from typer_kr.fontfav_ui import _ROLE_FAMILY as _ROLE2   # noqa: E402
+
+_ftr = lambda k, **kw: k                                  # noqa: E731
+_fhome = _QW2()
+_fhl = _QVL2(_fhome)
+_fpanel = _QW2()
+_fhl.addWidget(_fpanel)
+
+check("without a panel the font search is what it always was",
+      _FSD(None, _ftr, ["Arial", "Impact"]).tabs is None)
+
+_fdlg = _FSD(None, _ftr, ["Arial", "Impact"], stars={"arial"}, panel=_fpanel)
+check("with one it has two tabs",
+      _fdlg.tabs is not None and _fdlg.tabs.count() == 2)
+check("...the list first, the Fonts panel second",
+      _fdlg.tabs.tabText(0) == "fav_tab_search"
+      and _fdlg.tabs.tabText(1) == "fav_tab_fonts")
+check("...and the list is still what OK applies to", _fdlg.list.count() == 2)
+
+# the Preset tab: manga, then character, then the font each preset holds.
+# Which font does this character talk in - a question the search tab
+# cannot answer, because it is about a character and not about a name.
+_fpre = {"Houkago": {"Rei": {"Normal": {"font": "Anime Ace 3 BB"},
+                             "Shout": {"font": "Argone"}},
+                     "Sakamoto": {"Talk": {"font": "CCWildWords"}}},
+         "Uesugi": {"Character 1": {"Box": {"font": "CCTallTales"},
+                                    "nameless": {}}}}
+# resting on a preset says how to reach it without the mouse. The
+# spellings come ready-made from the docker: Ctrl here is Strg there,
+# and that is not the dialog's business.
+_fkeys = {("Houkago", "Rei", "Normal"): "Strg+R",
+          ("Uesugi", "", "Box"): "B"}
+_pdlg = _FSD(None, _ftr, ["Arial"], presets=_fpre, preset_keys=_fkeys)
+check("the presets get a tab of their own",
+      _pdlg.tabs is not None
+      and _pdlg.tabs.tabText(_pdlg.tabs.count() - 1) == "fav_tab_presets")
+check("it starts on the first manga, with its characters beside it",
+      _pdlg.manga_list.count() == 2
+      and [_pdlg.char_list.item(i).text()
+           for i in range(_pdlg.char_list.count())] == ["Rei", "Sakamoto"]
+      and _pdlg.char_list.isVisibleTo(_pdlg._preset_page))
+check("...and the first character's fonts under them, preset named",
+      [_pdlg.preset_list.item(i).text()
+       for i in range(_pdlg.preset_list.count())]
+      == ["Anime Ace 3 BB — Normal", "Argone — Shout"])
+_pdlg.char_list.setCurrentRow(1)
+check("picking another character changes the fonts",
+      _pdlg.preset_list.count() == 1
+      and _pdlg.preset_list.item(0).data(_ROLE2) == "CCWildWords")
+_pdlg.manga_list.setCurrentRow(1)
+check("a manga whose presets have no characters skips that column",
+      not _pdlg.char_list.isVisibleTo(_pdlg._preset_page))
+check("...and shows its fonts straight away",
+      _pdlg.preset_list.count() == 2
+      and _pdlg.preset_list.item(0).data(_ROLE2) == "CCTallTales")
+check("a preset naming no font cannot be picked",
+      int(_pdlg.preset_list.item(1).flags()) == 0)
+check("a preset bound without a character still finds its key",
+      _pdlg.preset_list.item(0).toolTip() == "fav_preset_key")
+_pdlg.manga_list.setCurrentRow(0)
+check("resting on a preset shows its hotkey",
+      _pdlg.preset_list.item(0).toolTip() == "fav_preset_key")
+check("...and says so plainly when there is none",
+      _pdlg.preset_list.item(1).toolTip() == "fav_preset_nokey")
+check("OK follows the tab in front",
+      _pdlg._chosen_list() is _pdlg.list)
+_pdlg.tabs.setCurrentIndex(_pdlg.tabs.count() - 1)
+check("...so on the Preset tab it is that list",
+      _pdlg._chosen_list() is _pdlg.preset_list)
+
+_fdlg.take_panel()
+check("the panel moves into the window", _fpanel.parent() is not _fhome)
+_fback = _fdlg.give_panel_back()
+check("...and is handed back, not copied", _fback is _fpanel)
+_fhl.addWidget(_fback)
+check("...to where it came from", _fpanel.parent() is _fhome)
+_fdlg.deleteLater()
+check("the panel outlives the window it was lent to",
+      _fpanel.parent() is _fhome)
+
 
 print("\n%d passed, %d failed" % (_pass, _fail))
 sys.exit(1 if _fail else 0)

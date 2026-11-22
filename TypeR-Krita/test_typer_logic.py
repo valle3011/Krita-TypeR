@@ -2534,6 +2534,36 @@ check("...and the one it does recommend is the box's own shape",
       abs(_sv[0]["k"] - 5) <= 1)
 
 
+# --- TypeR's own hotkeys ---------------------------------------------------
+# typer_kr.py needs Qt and Krita and cannot be imported here, but the key
+# table is a literal and the parts worth guarding are readable as text.
+
+with open(os.path.join(_HERE, "typer_kr", "typer_kr.py"),
+          encoding="utf-8") as _tkf:
+    _tk_src = _tkf.read()
+_keys_block = re.search(r"BUILTIN_KEYS = \((.*?)\n\)", _tk_src, re.S)
+check("the key table is where it is expected", _keys_block is not None)
+_keys = re.findall(r'\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)',
+                   _keys_block.group(1) if _keys_block else "")
+check("there are keys in it, the outlines among them",
+      len(_keys) >= 7
+      and any(m == "toggle_outline" for _c, m, _k in _keys)
+      and any(m == "outline2_narrower" for _c, m, _k in _keys))
+check("every key calls a method that exists",
+      all(("def %s(self)" % m) in _tk_src for _c, m, _k in _keys))
+check("no two keys start on the same combination",
+      len({c for c, _m, _k in _keys}) == len(_keys))
+check("every key is named in English and in German",
+      all(_tk_src.count('"%s": "' % k) >= 2 for _c, _m, k in _keys))
+check("...and so is every message they show",
+      all(_tk_src.count('"%s": "' % k) >= 2
+          for k in ("st_outline_on", "st_outline_off", "st_outline_w",
+                    "st_outline2_off", "st_outline2_w")))
+check("the outline keys carry a modifier, so they cannot eat a preset key",
+      all(("Ctrl" in c or "Alt" in c) for c, m, _k in _keys
+          if "outline" in m))
+
+
 # --- the bin for deleted presets -----------------------------------------
 # A preset used to go for good the moment it was clicked away. Everything
 # that leaves the table is now compared out of it and kept for a while.

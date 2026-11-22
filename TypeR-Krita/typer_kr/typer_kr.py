@@ -93,7 +93,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.22.5"
+VERSION = "1.22.6"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -200,7 +200,23 @@ def key_event_string(ev):
 #: the preset keys, for the same reason: a QShortcut never sees them.
 BUILTIN_KEYS = (
     ("Ctrl+Space", "open_font_search", "key_font_search"),
+    # The outlines, which get switched on and nudged over and over on one
+    # page. Ctrl+Alt because the preset keybinds are bare letters and
+    # combinations of them, so anything simpler would eat one of those.
+    ("Ctrl+Alt+O", "toggle_outline", "key_outline_toggle"),
+    ("Ctrl+Alt+Up", "outline_wider", "key_outline_wider"),
+    ("Ctrl+Alt+Down", "outline_narrower", "key_outline_narrower"),
+    ("Ctrl+Alt+Shift+O", "toggle_outline2", "key_outline2_toggle"),
+    ("Ctrl+Alt+Shift+Up", "outline2_wider", "key_outline2_wider"),
+    ("Ctrl+Alt+Shift+Down", "outline2_narrower", "key_outline2_narrower"),
 )
+
+#: how far one press moves an outline. Outlines live between about 2 and
+#: 12 px, so a pixel a press is the right grain; holding the key repeats.
+OUTLINE_STEP = 1
+
+#: what the second outline is put back to if it never had another width
+OUTLINE2_DEFAULT = 4
 
 
 def key_name(key):
@@ -591,6 +607,9 @@ LANG = {
         "keys_reset_btn": "Default keys",
         "keys_bound": "{key} is bound.",
         "keys_taken": "{key} already belongs to \u201c{what}\u201d ({where}).",
+        "keys_search_ph": "Search a key, a character or a preset\u2026",
+        "keys_found": "{n} of {total} keys match.",
+        "keys_free": "Nothing is bound to that \u2014 it is free.",
         "keys_col_key": "Key",
         "keys_col_what": "What it does",
         "keys_col_where": "Where",
@@ -637,6 +656,22 @@ LANG = {
         "fav_preview_tip": ("Draw every row in its own font. Switch it off "
                             "if the list feels slow, or if the names read "
                             "better plain."),
+        "key_outline_toggle": "Outline on / off",
+        "key_outline_wider": "Outline wider",
+        "key_outline_narrower": "Outline narrower",
+        "key_outline2_toggle": "2nd outline on / off",
+        "key_outline2_wider": "2nd outline wider",
+        "key_outline2_narrower": "2nd outline narrower",
+        "st_outline_on": "Outline on.",
+        "st_outline_off": "Outline off.",
+        "st_outline_w": "Outline: {px} px",
+        "st_outline2_off": "2nd outline off.",
+        "st_outline2_w": "2nd outline: {px} px",
+        "fav_tab_search": "Search",
+        "fav_tab_presets": "Presets",
+        "fav_preset_key": "Hotkey: {key}",
+        "fav_preset_nokey": "No hotkey for this one.",
+        "fav_tab_fonts": "Fonts",
         "key_font_search": "Find a font",
         "key_font_search_tip": ("Ctrl+Space anywhere in Krita: type a few "
                                 "letters and the font is on the text. "
@@ -1675,6 +1710,9 @@ LANG = {
         "keys_reset_btn": "Standardtasten",
         "keys_bound": "{key} ist belegt.",
         "keys_taken": "{key} geh\u00f6rt schon zu \u201e{what}\u201c ({where}).",
+        "keys_search_ph": "Taste, Charakter oder Preset suchen\u2026",
+        "keys_found": "{n} von {total} Tasten passen.",
+        "keys_free": "Darauf liegt nichts \u2014 die Taste ist frei.",
         "keys_col_key": "Taste",
         "keys_col_what": "Was sie macht",
         "keys_col_where": "Wo",
@@ -1721,6 +1759,22 @@ LANG = {
         "fav_preview_tip": ("Jede Zeile in ihrer eigenen Schrift zeichnen. "
                             "Ausschalten, wenn die Liste tr\u00e4ge wird "
                             "oder die Namen sich schlicht besser lesen."),
+        "key_outline_toggle": "Kontur an / aus",
+        "key_outline_wider": "Kontur breiter",
+        "key_outline_narrower": "Kontur schmaler",
+        "key_outline2_toggle": "2. Kontur an / aus",
+        "key_outline2_wider": "2. Kontur breiter",
+        "key_outline2_narrower": "2. Kontur schmaler",
+        "st_outline_on": "Kontur an.",
+        "st_outline_off": "Kontur aus.",
+        "st_outline_w": "Kontur: {px} px",
+        "st_outline2_off": "2. Kontur aus.",
+        "st_outline2_w": "2. Kontur: {px} px",
+        "fav_tab_search": "Suche",
+        "fav_tab_presets": "Presets",
+        "fav_preset_key": "Hotkey: {key}",
+        "fav_preset_nokey": "Dafür gibt es keinen Hotkey.",
+        "fav_tab_fonts": "Schriften",
         "key_font_search": "Schrift suchen",
         "key_font_search_tip": ("Strg+Leertaste \u00fcberall in Krita: ein paar "
                                 "Buchstaben tippen und die Schrift sitzt. "
@@ -6966,6 +7020,11 @@ class TyperDocker(DockWidget):
         self.keys_hint.setStyleSheet("color: gray;")
         self.keys_hint.setWordWrap(True)
         _kyl.addWidget(self.keys_hint)
+        self.keys_search = QLineEdit()
+        self.keys_search.setClearButtonEnabled(True)
+        self.keys_search.textChanged.connect(
+            lambda *_a: self._filter_keys_table())
+        _kyl.addWidget(self.keys_search)
         self.keys_table = QTableWidget(0, 3)
         self.keys_table.verticalHeader().setVisible(False)
         self.keys_table.setEditTriggers(
@@ -8049,7 +8108,14 @@ class TyperDocker(DockWidget):
                 # what the properties window shows under "Presets"
                 presets_fn=lambda: getattr(self, "_groups", {}),
                 type_fonts_fn=self._tt_font_labels)
-            lay_fonts.addWidget(self.fonts_panel, 1)
+            # a holder that stays put: the panel is lent to the font
+            # search window and has to come back to something that is
+            # certainly still there
+            self._fonts_holder = QWidget()
+            _fh = QVBoxLayout(self._fonts_holder)
+            _fh.setContentsMargins(0, 0, 0, 0)
+            _fh.addWidget(self.fonts_panel, 1)
+            lay_fonts.addWidget(self._fonts_holder, 1)
         except Exception as _ff_exc:      # noqa: BLE001
             _lbl = QLabel("Font favourites could not load:\n%s" % _ff_exc)
             _lbl.setWordWrap(True)
@@ -8780,6 +8846,7 @@ class TyperDocker(DockWidget):
         self.trash_clear_btn.setText(t("trash_clear"))
         self._refresh_trash()
         self.keys_reset_btn.setText(t("keys_reset_btn"))
+        self.keys_search.setPlaceholderText(t("keys_search_ph"))
         self.credits_toggle.setText("❤ " + t("panel_credits"))
         self.setup_fonts_toggle.setText("🅰 " + t("setup_h_fonts"))
         self.setup_google_toggle.setText("🔑 " + t("setup_h_google"))
@@ -11145,12 +11212,10 @@ class TyperDocker(DockWidget):
         item = row.data(Qt.ItemDataRole.UserRole)
         groups, how = PS.restore(self._groups, item)
         if how == "exists":
-            ask = QMessageBox.question(
-                self.widget(), self._tr("trash_title"),
-                self._tr("trash_exists").format(name=item.get("name", "")),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if ask != QMessageBox.StandardButton.Yes:
+            if not self._confirm(
+                    self._tr("trash_title"),
+                    self._tr("trash_exists").format(
+                        name=item.get("name", ""))):
                 return
             groups, how = PS.restore(self._groups, item, overwrite=True)
         if how != "ok":
@@ -11169,12 +11234,9 @@ class TyperDocker(DockWidget):
     def on_trash_clear(self):
         if not getattr(self, "_trash", []):
             return
-        ask = QMessageBox.question(
-            self.widget(), self._tr("trash_title"),
-            self._tr("trash_clear_ask").format(n=len(self._trash)),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if ask != QMessageBox.StandardButton.Yes:
+        if not self._confirm(
+                self._tr("trash_title"),
+                self._tr("trash_clear_ask").format(n=len(self._trash))):
             return
         self._trash = []
         self._save_trash()
@@ -11810,7 +11872,10 @@ class TyperDocker(DockWidget):
         docker where every pixel is somebody's canvas.
         """
         head = table.horizontalHeader().height()
-        rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+        # a hidden row still reports its height, and a filtered list that
+        # keeps the height of the unfiltered one is just empty grid
+        rows = sum(table.rowHeight(r) for r in range(table.rowCount())
+                   if not table.isRowHidden(r))
         table.setFixedHeight(min(cap, head + rows + 4))
 
     def _refresh_keys_table(self):
@@ -11820,6 +11885,11 @@ class TyperDocker(DockWidget):
         if table is None:
             return
         rows = self.all_hotkeys()
+        # what the search matches against, one string per row, kept beside
+        # the table because column 0 is a widget and has no text to read
+        self._keys_haystack = [
+            " ".join((key, native_key_text(key), what, where)).lower()
+            for key, what, where, _m in rows]
         table.setHorizontalHeaderLabels([self._tr("keys_col_key"),
                                          self._tr("keys_col_what"),
                                          self._tr("keys_col_where")])
@@ -11843,8 +11913,32 @@ class TyperDocker(DockWidget):
                     f.setBold(True)
                     it.setFont(f)
                 table.setItem(r, c, it)
+        self._filter_keys_table()
+
+    def _filter_keys_table(self):
+        """Show the rows that match what is in the search field."""
+        table = getattr(self, "keys_table", None)
+        if table is None:
+            return
+        hay = getattr(self, "_keys_haystack", [])
+        field = getattr(self, "keys_search", None)
+        terms = ((field.text() if field is not None else "")
+                 or "").lower().split()
+        shown = 0
+        for r in range(table.rowCount()):
+            text = hay[r] if r < len(hay) else ""
+            hide = bool(terms) and not all(t in text for t in terms)
+            table.setRowHidden(r, hide)
+            if not hide:
+                shown += 1
         self._fit_table_height(table)
-        only_builtin = len(rows) <= len(BUILTIN_KEYS)
+        total = table.rowCount()
+        if terms:
+            self.keys_hint.setText(
+                self._tr("keys_found").format(n=shown, total=total)
+                if shown else self._tr("keys_free"))
+            return
+        only_builtin = total <= len(BUILTIN_KEYS)
         self.keys_hint.setText(
             self._tr("keys_hint")
             + ("  " + self._tr("keys_none") if only_builtin else ""))
@@ -11975,6 +12069,74 @@ class TyperDocker(DockWidget):
         except Exception:                           # noqa: BLE001
             pass
 
+    # --- the outlines, by key --------------------------------------------
+
+    def toggle_outline(self):
+        """The outline on or off, without opening its dialog."""
+        self.outline_chk.toggle()
+        self._set_status(self._tr(
+            "st_outline_on" if self.outline_chk.isChecked()
+            else "st_outline_off"))
+
+    def _nudge_outline(self, spin, step, what):
+        """Move one outline's width by `step`, and say where it landed."""
+        if spin is None:
+            return
+        was = spin.value()
+        now = max(spin.minimum(), min(spin.maximum(), was + step))
+        if now == was:
+            return
+        spin.setValue(now)
+        self._set_status(self._tr(what).format(px=now))
+
+    def outline_wider(self):
+        self._nudge_outline(self.outline_spin, OUTLINE_STEP, "st_outline_w")
+
+    def outline_narrower(self):
+        self._nudge_outline(self.outline_spin, -OUTLINE_STEP, "st_outline_w")
+
+    def toggle_outline2(self):
+        """The second outline has no switch of its own: 0 is off.
+
+        So the toggle has to remember the width it is switching away
+        from, or switching it back on would land on a number nobody
+        chose.
+        """
+        spin = getattr(self, "outline2_spin", None)
+        if spin is None:
+            return
+        if spin.value() > 0:
+            self._outline2_was = spin.value()
+            spin.setValue(0)
+            self._set_status(self._tr("st_outline2_off"))
+            return
+        back = getattr(self, "_outline2_was", 0) or OUTLINE2_DEFAULT
+        spin.setValue(min(spin.maximum(), back))
+        self._set_status(self._tr("st_outline2_w").format(px=spin.value()))
+
+    def outline2_wider(self):
+        self._nudge_outline(getattr(self, "outline2_spin", None),
+                            OUTLINE_STEP, "st_outline2_w")
+
+    def outline2_narrower(self):
+        self._nudge_outline(getattr(self, "outline2_spin", None),
+                            -OUTLINE_STEP, "st_outline2_w")
+
+    def _preset_key_map(self):
+        """{(manga, character, preset): key} - spelled for this machine.
+
+        The font window shows these as a preset's tooltip, and how a key
+        is written is this file's business: Ctrl here is Strg there.
+        """
+        out = {}
+        for manga, per in (getattr(self, "_keybinds", {}) or {}).items():
+            for combo, ref in (per or {}).items():
+                if not isinstance(ref, (list, tuple)) or len(ref) < 2:
+                    continue
+                out[(str(manga), str(ref[0] or ""), str(ref[1]))] = \
+                    native_key_text(combo)
+        return out
+
     def open_font_search(self):
         """Type a few letters, press Enter, the font is on the text.
 
@@ -12004,8 +12166,21 @@ class TyperDocker(DockWidget):
         dlg = FontSearchDialog(self.widget(), self._tr, ordered, stars=low,
                                title_key="key_font_search",
                                preview=self._load_search_preview(),
-                               on_preview=self._save_search_preview)
-        family, ok = dlg.run()
+                               on_preview=self._save_search_preview,
+                               panel=panel,
+                               presets=getattr(self, "_groups", {}),
+                               preset_keys=self._preset_key_map())
+        if panel is not None:
+            dlg.take_panel()
+        try:
+            family, ok = dlg.run()
+        finally:
+            # back into the Fonts tab whichever way the window went away,
+            # and before the window itself is gone
+            if panel is not None:
+                dlg.give_panel_back()
+                self._fonts_holder.layout().addWidget(panel)
+                panel.show()
         if not ok or not family:
             return
         self._apply_favorite_font(family)
@@ -12151,18 +12326,28 @@ class TyperDocker(DockWidget):
         self._set_status(self._tr("st_preset_saved_in").format(
             name=name, char=target))
 
+    def _confirm(self, title, text):
+        """Ask yes/no. The one place that does, so a test can answer it.
+
+        Headless there is no window to be modal to, and QMessageBox is an
+        access violation rather than a dialog - so every confirmation in
+        the docker goes through here and a test replaces this method.
+        """
+        return QMessageBox.question(
+            self.widget(), title, text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        ) == QMessageBox.StandardButton.Yes
+
     def on_preset_delete(self):
         ch, name = self._preset_ref(self.preset_combo.currentData())
         presets = self._cur_chars().get(ch, {})
         if not name or name not in presets:
             self._set_status(self._tr("st_preset_none"), error=True)
             return
-        ask = QMessageBox.question(
-            self.widget(), self._tr("preset_del"),
-            self._tr("preset_del_ask").format(name=name, char=ch),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if ask != QMessageBox.StandardButton.Yes:
+        if not self._confirm(
+                self._tr("preset_del"),
+                self._tr("preset_del_ask").format(name=name, char=ch)):
             return
         del self._groups[self._group][ch][name]
         LP.drop_keybinds(self._keybinds, self._group, ch, name)

@@ -13,6 +13,85 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.6", {
+        "en": [
+            "Six keys for the outlines, because switching one on and "
+            "nudging its width is something you do over and over on one "
+            "page and it meant opening a dialog every time. Ctrl+Alt+O "
+            "turns the outline on and off, Ctrl+Alt+Up/Down makes it "
+            "wider or narrower, and the same with Shift held does the "
+            "second outline. All six are rebindable in Setup. The "
+            "second outline has no switch of its own - 0 px is what off "
+            "means there - so its toggle remembers the width it is "
+            "switching away from and puts that back.",
+            "The font window (Ctrl+Space) has three tabs now. Search is "
+            "the list it always was. Fonts is the Fonts tab itself, "
+            "lent to the window while it is open, so the fonts you "
+            "starred and sorted into categories are a click away "
+            "instead of a window away. Presets is new: pick a manga, "
+            "pick a character, and there are the fonts they talk in, "
+            "each with the preset it was saved in. That answers \u201cI "
+            "want the font this character uses\u201d, which a list of "
+            "family names cannot. A manga whose presets were saved "
+            "without characters skips that middle column.",
+            "Resting on one of those presets shows its hotkey, so the "
+            "window also answers how to reach it without the mouse.",
+            "The hotkey list in Setup has a search over it. It matches "
+            "the key, what it does and which manga it belongs to all at "
+            "once, and the key in both spellings - the stored "
+            "Ctrl+Alt+O and the Strg+Alt+O you see. It says \u201c3 of "
+            "97 keys match\u201d while you type, or that nothing is "
+            "bound to it and the key is free, which is the question you "
+            "were asking.",
+            "Fixed: the confirmation added to deleting a preset went "
+            "through a message box the automated tests could not "
+            "answer, and they had been stopping at that point ever "
+            "since without saying so. Every confirmation in the docker "
+            "goes through one place now, which a test can answer - and "
+            "what each answer does is tested both ways.",
+        ],
+        "de": [
+            "Sechs Tasten für die Konturen, weil eine anzuschalten und "
+            "in der Breite nachzuziehen etwas ist, das man auf einer "
+            "Seite immer wieder tut — und dafür jedes Mal ein Fenster "
+            "aufgehen musste. Strg+Alt+O schaltet die Kontur an und "
+            "aus, Strg+Alt+Hoch/Runter macht sie breiter oder schmaler, "
+            "dasselbe mit Umschalt gilt der zweiten Kontur. Alle sechs "
+            "sind in Setup umbelegbar. Die zweite Kontur hat keinen "
+            "eigenen Schalter — dort heißt 0 px aus —, deshalb merkt "
+            "sich ihr Umschalter die Breite, von der er wegschaltet, "
+            "und legt sie zurück.",
+            "Das Schriftfenster (Strg+Leertaste) hat jetzt drei Reiter. "
+            "Suche ist die Liste, die es immer war. Schriften ist der "
+            "Fonts-Tab selbst, dem Fenster geliehen, solange es offen "
+            "ist — die Schriften, die du mit Stern und Kategorien "
+            "sortiert hast, sind also einen Klick entfernt statt ein "
+            "Fenster. Presets ist neu: Manga auswählen, Charakter "
+            "auswählen, und da stehen die Schriften, in denen er "
+            "spricht, jede mit dem Preset, in dem sie gespeichert "
+            "wurde. Das beantwortet „ich will die Schrift, die dieser "
+            "Charakter benutzt“ — was eine Liste von Schriftnamen nicht "
+            "kann. Bei einem Manga, dessen Presets ohne Charaktere "
+            "gespeichert sind, fällt die mittlere Spalte weg.",
+            "Wer auf so einem Preset verweilt, sieht dessen Hotkey — "
+            "das Fenster sagt also auch, wie man ohne Maus dorthin "
+            "kommt.",
+            "Über der Hotkey-Liste in Setup steht eine Suche. Sie "
+            "trifft Taste, Bedeutung und Manga gleichzeitig, und die "
+            "Taste in beiden Schreibweisen — dem gespeicherten "
+            "Ctrl+Alt+O und dem Strg+Alt+O, das du siehst. Während du "
+            "tippst steht darunter „3 von 97 Tasten passen“ oder eben, "
+            "dass nichts darauf liegt und die Taste frei ist — also "
+            "genau die Frage, die man gestellt hat.",
+            "Behoben: die Rückfrage vor dem Löschen eines Presets lief "
+            "über ein Meldungsfenster, das die automatischen Tests "
+            "nicht beantworten konnten — und sie blieben seitdem an "
+            "dieser Stelle stehen, ohne es zu sagen. Jede Rückfrage im "
+            "Docker geht jetzt durch eine einzige Stelle, die ein Test "
+            "beantworten kann, und was jede Antwort bewirkt, ist in "
+            "beide Richtungen geprüft.",
+        ],
+    }),
     ("1.22.5", {
         "en": [
             "TextShapR recommends a better shape, and this time it was "
