@@ -1861,6 +1861,64 @@ caption's own size, not with the effect's. It gets the first outline if there
 is one, for the same reason the lettering does: it has to stay readable on
 dark art.
 
+### The one thing a new installation is told
+
+A docker teaches itself by being looked at. Every button says what it is
+when you hover it; the one thing in TypeR that cannot be seen at all is
+that it answers to the keyboard, from anywhere in Krita, canvas included.
+Somebody who never opens Setup never finds out, and the feature might as
+well not be there.
+
+So a brand-new installation gets one short window at its first start, and
+never again. **Ctrl+Space** is the example it gives, and that is not a
+coin toss: it is the only key that is already true on a fresh install.
+The outline keys need a text layer, and the preset keys need presets that
+do not exist yet. A greeting that demonstrates something which does not
+work yet is worse than none.
+
+The slot was free and had been kept free on purpose - `_whatsnew_baseline`
+declines to greet a first-time user with release notes - so this is not a
+window on top of another one, it is the window that moment was saved for.
+`_startup_notices` shows one or the other, never both.
+
+Three decisions worth keeping:
+
+- **Three lines, two buttons.** The first start is also the moment of the
+  least patience. One of the buttons goes straight to the hotkey list, so
+  the window answers "how do I make my own" by showing the place rather
+  than explaining it; `show_keys_panel` finds that panel wherever it has
+  been dragged, collapsed or detached to.
+- **It waits for a canvas.** Krita opens on a start screen: no document,
+  and no docker on screen either. Shown there, the greeting floated over
+  nothing and its button switched a tab nobody could see - the switch had
+  happened, and only turned up later when a document was opened. So
+  `_startup_notices` checks `_notices_ready` and stays pending until
+  `canvasChanged` calls it back. A canvas is not enough on its own: the
+  next thing measured was the greeting landing on top of the *Create new
+  document* dialog while it was being filled in. The check also wants no
+  modal dialog waiting for an answer and Krita in front - taking the
+  focus while its owner is in another application is not a greeting.
+  Nothing calls back when a dialog is merely closed, so a pending notice
+  re-arms its own timer and looks again.
+- **Recorded when it is shown, not when it is decided.** Those are far
+  apart in time now, and a session that never opens a document must not
+  silently eat its own greeting. It goes up through `_show_greeting`, a
+  seam like `_confirm`, because headless a modal dialog is an access
+  violation and the tests have to be able to answer it.
+- **Its own setting.** Switching the update notice off must not silence
+  the greeting, and an update must not bring it back.
+
+There is one deliberate escape hatch. Everyone who already has TypeR
+counts as an old hand and is never greeted - which would make this the
+one thing in the plugin nobody who has the plugin can ever see, and so
+the one thing nobody can check. Writing the word `again` into the setting
+asks for it once more:
+
+```python
+Krita.instance().writeSetting("typer_kr", "greeted", "again")
+```
+
+
 ## Conventions
 
 - **Qt-free where possible.** `layout.py`, `balloons.py`, `texttypes.py`,

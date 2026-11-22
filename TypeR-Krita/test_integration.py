@@ -3549,6 +3549,103 @@ if imported:
         import traceback
         traceback.print_exc()
 
+# --- the hello a brand-new installation gets ------------------------------
+# The slot was free on purpose: a fresh install is not greeted with release
+# notes. What it is greeted with is the one thing in a docker that cannot be
+# seen - that it answers to the keyboard. It waits for a canvas, because at
+# Krita's start screen there is no docker on screen to point at.
+if imported:
+    try:
+        _KR_APP._settings.clear()
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _gd = TK.TyperDocker()
+        # the decision is taken in __init__, before building the docker
+        # writes settings of its own that would make it look used
+        check("a brand-new installation is greeted", _gd._greet_due is True)
+        check("but nothing is written down before it is shown",
+              ("typer_kr", "greeted") not in _KR_APP._settings)
+
+        # the seam the greeting goes through, so no modal opens headless
+        _greet_key = []
+        _gd._show_greeting = lambda key: (_greet_key.append(key), False)[1]
+
+        _canvas = []
+        _gd._notices_ready = lambda: bool(_canvas)
+        _gd._notices_pending = True
+        _gd._startup_notices()
+        check("with no canvas it waits rather than greeting",
+              _gd._greet_due is True and _gd._notices_pending is True
+              and _greet_key == [])
+        # closing a dialog calls nobody back, so it has to ask again itself
+        check("...and arms itself to look again",
+              _gd._whatsnew_timer.isActive() is True)
+        # the real check, not the stub: this docker is never put on screen
+        check("the real check says no while the docker is not shown",
+              TK.TyperDocker._notices_ready(_gd) is False)
+        _canvas.append(True)
+        _gd.canvasChanged(None)
+        check("the first canvas brings it", _gd._greet_due is False
+              and _gd._notices_pending is False and len(_greet_key) == 1)
+        check("it names the key the way this keyboard spells it",
+              _greet_key[0] == TK.native_key_text("Ctrl+Space"))
+        check("...and only then is it written down",
+              _KR_APP._settings[("typer_kr", "greeted")] == TK.VERSION)
+        check("so asking again says no", _gd._first_run_due() is False)
+        check("and a second canvas says nothing more",
+              _gd._maybe_greet() is False and _gd._startup_notices() is None)
+
+        del _KR_APP._settings[("typer_kr", "greeted")]
+        _KR_APP._settings[("typer_kr", "presets")] = "{}"
+        check("someone who has used TypeR before is not greeted",
+              _gd._first_run_due() is False)
+
+        # ...but can ask for it, which is the only way anyone who has
+        # TypeR can ever look at the thing
+        _KR_APP._settings[("typer_kr", "greeted")] = TK.GREET_AGAIN
+        check("asking for it brings it back", _gd._first_run_due() is True)
+        _gd._greet_due = True
+        _gd._maybe_greet()
+        check("...and showing it uses the asking up",
+              _KR_APP._settings[("typer_kr", "greeted")] == TK.VERSION
+              and _gd._first_run_due() is False)
+
+        # the button that was the point of the whole window
+        _gd._show_greeting = lambda key: True
+        _gd._greet_due = True
+        _gd.keys_toggle.setChecked(False)
+        _gd.main_tabs.setCurrentIndex(0)
+        _gd._maybe_greet()
+        _bar = _gd.main_tabs.tabBar()
+        check("the keys button lands on the list: right tab, opened",
+              _gd.keys_toggle.isChecked() is True
+              and _bar.tabData(_gd.main_tabs.currentIndex()) == "setup")
+
+        # moved to another tab, the greeting still has to find it
+        _gd._panel_tab["keys_overview"] = "style"
+        _gd.main_tabs.setCurrentIndex(0)
+        check("wherever the panel has been dragged to",
+              _gd.show_keys_panel() is True
+              and _bar.tabData(_gd.main_tabs.currentIndex()) == "style")
+        _gd._panel_tab["keys_overview"] = "setup"
+
+        _fr = TK.FirstRunDialog(None, _gd._tr, "Strg+Leertaste")
+        check("the window says the key in so many words",
+              "Strg+Leertaste" in _fr.findChild(TK.QLabel).text())
+        check("and does not jump to the list on its own",
+              _fr.wants_keys() is False)
+        _fr._take_me_there()
+        check("the keys button asks for it", _fr.wants_keys() is True)
+        _fr.deleteLater()
+
+        _gd.deleteLater()
+        _KR_APP._settings.clear()
+        _KR_APP._settings[("typer_kr", "tabOrderRepairV2")] = "done"
+        _KR_APP._settings[("typer_kr", "seenVersion")] = TK.VERSION
+    except Exception:                               # pragma: no cover
+        check("first-run suite ran", False)
+        import traceback
+        traceback.print_exc()
+
 # --- the font search can show the Fonts tab beside its list ---------------
 # The second tab holds the REAL panel, borrowed while the window is open.
 # A copy would keep its own idea of the categories and the two would
@@ -3559,6 +3656,7 @@ if imported:
 from typer_kr.fontfav_ui import FontSearchDialog as _FSD       # noqa: E402
 from typer_kr._qt import QWidget as _QW2, QVBoxLayout as _QVL2  # noqa: E402
 from typer_kr.fontfav_ui import _ROLE_FAMILY as _ROLE2   # noqa: E402
+from typer_kr._qt import Qt as _Qt2                      # noqa: E402
 
 _ftr = lambda k, **kw: k                                  # noqa: E731
 _fhome = _QW2()
@@ -3568,6 +3666,44 @@ _fhl.addWidget(_fpanel)
 
 check("without a panel the font search is what it always was",
       _FSD(None, _ftr, ["Arial", "Impact"]).tabs is None)
+
+# right-click a font in the search list to star it. The panel is on loan
+# to the window anyway, so the star goes through its store: one store,
+# one save, and the Fonts tab behind the tab bar is right at once.
+from typer_kr.fontfav_ui import FontFavoritesPanel as _FFP   # noqa: E402
+_sav = {}
+_spanel = _FFP(families_fn=lambda: ["Arial", "Impact"],
+               apply_fn=lambda f: None,
+               load_fn=lambda: _sav.get("j", ""),
+               save_fn=lambda j: _sav.__setitem__("j", j),
+               tr=_ftr)
+check("the panel can be told to star a family from outside",
+      _spanel.set_favorite("Impact") and _spanel._store.fonts() == ["Impact"])
+check("...and it is written down, not just shown",
+      "Impact" in _sav.get("j", ""))
+check("...asking for what is already so changes nothing",
+      _spanel.set_favorite("Impact") is False)
+check("...and it comes off again",
+      _spanel.set_favorite("Impact", False) and _spanel._store.fonts() == [])
+check("a family with no name is not starred",
+      _spanel.set_favorite("   ") is False)
+
+_sdlg = _FSD(None, _ftr, ["Arial", "Impact"], stars=set(), panel=_spanel)
+check("the search list offers a menu when there is somewhere to star to",
+      _sdlg.list.contextMenuPolicy()
+      == _Qt2.ContextMenuPolicy.CustomContextMenu)
+check("...and offers none when there is not",
+      _FSD(None, _ftr, ["Arial"]).list.contextMenuPolicy()
+      != _Qt2.ContextMenuPolicy.CustomContextMenu)
+_sdlg._stars.add("impact")
+_sdlg._restar_rows("Impact")
+check("the row shows the star the moment it is given",
+      _sdlg.list.item(1).text() == "★  Impact"
+      and _sdlg.list.item(0).text() == "Arial")
+_sdlg._stars.discard("impact")
+_sdlg._restar_rows("Impact")
+check("...and loses it again without collecting stars",
+      _sdlg.list.item(1).text() == "Impact")
 
 _fdlg = _FSD(None, _ftr, ["Arial", "Impact"], stars={"arial"}, panel=_fpanel)
 check("with one it has two tabs",

@@ -93,7 +93,7 @@ from . import ai_backend as AB
 # Human-facing version number for this build (bump on releases).
 # Version scheme: a real feature update bumps the minor (1.7 → 1.8 → 1.9 →
 # 1.10 …); a pure bug-fix release bumps a third patch number (1.8 → 1.8.1 …).
-VERSION = "1.22.6"
+VERSION = "1.22.7"
 
 # BubblR (the AI bubble-detection tab) is still experimental and depends on the
 # external BubblR-AI model. It is LOCKED OFF in public releases: the tab is
@@ -209,6 +209,10 @@ BUILTIN_KEYS = (
     ("Ctrl+Alt+Shift+O", "toggle_outline2", "key_outline2_toggle"),
     ("Ctrl+Alt+Shift+Up", "outline2_wider", "key_outline2_wider"),
     ("Ctrl+Alt+Shift+Down", "outline2_narrower", "key_outline2_narrower"),
+    # The colour dialog, which is two clicks away in the panel and wanted
+    # mid-page. Krita's own Ctrl+Alt+C (canvas size) loses it while the
+    # docker is up: the watcher accepts the ShortcutOverride.
+    ("Ctrl+Alt+C", "on_pick_color", "key_text_color"),
 )
 
 #: how far one press moves an outline. Outlines live between about 2 and
@@ -217,6 +221,15 @@ OUTLINE_STEP = 1
 
 #: what the second outline is put back to if it never had another width
 OUTLINE2_DEFAULT = 4
+
+#: written into the "greeted" setting to ask for the first-run greeting
+#: once more - see TyperDocker._first_run_due
+GREET_AGAIN = "again"
+
+#: how long the start-up notices wait before looking again, when the way
+#: is not clear. Long enough not to pester, short enough that it still
+#: feels like a greeting rather than an interruption later on.
+NOTICE_RETRY_MS = 2500
 
 
 def key_name(key):
@@ -330,6 +343,45 @@ class WhatsNewDialog(QDialog):
 
     def keep_showing(self):
         return self.again_chk.isChecked()
+
+
+class FirstRunDialog(QDialog):
+    """The one thing a brand-new installation is told: there are keys.
+
+    A docker teaches itself by being looked at, and the one thing in it
+    that cannot be seen is what answers to the keyboard. So a fresh
+    installation gets three lines and a way to the list, exactly once.
+
+    Short on purpose. The moment of the first start is also the moment
+    of the least patience, and anything longer turns into a tutorial,
+    which is read by nobody and resented by everybody.
+    """
+
+    def __init__(self, parent, tr, key_text):
+        super().__init__(parent)
+        self.setWindowTitle(tr("welcome_title"))
+        self._wants_keys = False
+        lay = QVBoxLayout(self)
+        body = QLabel(tr("welcome_body").format(key=key_text), self)
+        body.setWordWrap(True)
+        body.setMinimumWidth(380)
+        lay.addWidget(body)
+        buttons = QDialogButtonBox(self)
+        keys_btn = buttons.addButton(tr("welcome_keys"),
+                                     QDialogButtonBox.ButtonRole.ActionRole)
+        buttons.addButton(tr("welcome_ok"),
+                          QDialogButtonBox.ButtonRole.AcceptRole)
+        keys_btn.clicked.connect(self._take_me_there)
+        buttons.accepted.connect(self.accept)
+        lay.addWidget(buttons)
+
+    def _take_me_there(self):
+        self._wants_keys = True
+        self.accept()
+
+    def wants_keys(self):
+        """Did they ask to be shown the whole list?"""
+        return self._wants_keys
 
 
 def native_key_text(combo):
@@ -662,6 +714,7 @@ LANG = {
         "key_outline2_toggle": "2nd outline on / off",
         "key_outline2_wider": "2nd outline wider",
         "key_outline2_narrower": "2nd outline narrower",
+        "key_text_color": "Pick the text color",
         "st_outline_on": "Outline on.",
         "st_outline_off": "Outline off.",
         "st_outline_w": "Outline: {px} px",
@@ -671,6 +724,8 @@ LANG = {
         "fav_tab_presets": "Presets",
         "fav_preset_key": "Hotkey: {key}",
         "fav_preset_nokey": "No hotkey for this one.",
+        "fav_ctx_add": "\u2605 Add to favourites",
+        "fav_ctx_remove": "Take out of favourites",
         "fav_tab_fonts": "Fonts",
         "key_font_search": "Find a font",
         "key_font_search_tip": ("Ctrl+Space anywhere in Krita: type a few "
@@ -1206,6 +1261,17 @@ LANG = {
         "update_tip": ("Opens the project page. Download it, run UPDATE.bat "
                        "and restart Krita; the Build value at the bottom "
                        "right tells you it took."),
+        "welcome_title": "Welcome to TypeR",
+        "welcome_body": ("TypeR listens for keys anywhere in Krita \u2014 "
+                         "the canvas included, so you never have to walk "
+                         "back to the docker mid-page.<br><br>"
+                         "<b>{key}</b> opens the font search: type a few "
+                         "letters and the font is on the text.<br><br>"
+                         "Your own keys \u2014 one per character or preset, "
+                         "so a change of speaker is one press \u2014 are "
+                         "under Setup, together with the full list."),
+        "welcome_keys": "Show me the keys",
+        "welcome_ok": "Start",
         "whatsnew_title": "What's new in TypeR {version}",
         "whatsnew_version": "Version",
         "whatsnew_again": "Tell me after the next update too",
@@ -1765,6 +1831,7 @@ LANG = {
         "key_outline2_toggle": "2. Kontur an / aus",
         "key_outline2_wider": "2. Kontur breiter",
         "key_outline2_narrower": "2. Kontur schmaler",
+        "key_text_color": "Textfarbe wählen",
         "st_outline_on": "Kontur an.",
         "st_outline_off": "Kontur aus.",
         "st_outline_w": "Kontur: {px} px",
@@ -1774,6 +1841,8 @@ LANG = {
         "fav_tab_presets": "Presets",
         "fav_preset_key": "Hotkey: {key}",
         "fav_preset_nokey": "Dafür gibt es keinen Hotkey.",
+        "fav_ctx_add": "\u2605 Zu Favoriten hinzuf\u00fcgen",
+        "fav_ctx_remove": "Aus den Favoriten nehmen",
         "fav_tab_fonts": "Schriften",
         "key_font_search": "Schrift suchen",
         "key_font_search_tip": ("Strg+Leertaste \u00fcberall in Krita: ein paar "
@@ -2443,6 +2512,19 @@ LANG = {
         "update_tip": ("\u00d6ffnet die Projektseite. Herunterladen, UPDATE.bat "
                        "ausf\u00fchren, Krita neu starten; der Build-Wert unten "
                        "rechts sagt dir, dass es ankam."),
+        "welcome_title": "Willkommen bei TypeR",
+        "welcome_body": ("TypeR h\u00f6rt \u00fcberall in Krita auf Tasten "
+                         "\u2014 auch auf der Leinwand, du musst also "
+                         "mitten auf der Seite nicht zum Docker "
+                         "zur\u00fcck.<br><br>"
+                         "<b>{key}</b> \u00f6ffnet die Schriftsuche: ein "
+                         "paar Buchstaben tippen und die Schrift sitzt."
+                         "<br><br>Eigene Tasten \u2014 eine pro Charakter "
+                         "oder Preset, ein Sprecherwechsel ist dann ein "
+                         "Druck \u2014 vergibst du unter Setup, wo auch "
+                         "die vollst\u00e4ndige Liste steht."),
+        "welcome_keys": "Zeig mir die Tasten",
+        "welcome_ok": "Los geht\u2019s",
         "whatsnew_title": "Neu in TypeR {version}",
         "whatsnew_version": "Version",
         "whatsnew_again": "Beim nächsten Update wieder zeigen",
@@ -6797,6 +6879,13 @@ class TyperDocker(DockWidget):
         # installed once the docker's state is complete.
         self._keybinds = self._load_keybinds()
         self._builtin_keys = self._load_builtin_keys()
+        # Asked here, before anything is built: starting up writes settings
+        # of TypeR's own, and any one of them makes the installation look
+        # used. See _first_run_due.
+        self._greet_due = self._first_run_due()
+        # Set before anything can fire: the first canvas may arrive before
+        # the start-up timer does, when Krita reopens a document.
+        self._notices_pending = True
         self._key_hook = None
         # the keys held down right now, in the order they were pressed (the
         # order is part of the binding), and the preset a smaller combination
@@ -8274,7 +8363,7 @@ class TyperDocker(DockWidget):
         # C++ object - a hard crash, not an exception.
         self._whatsnew_timer = QTimer(self)
         self._whatsnew_timer.setSingleShot(True)
-        self._whatsnew_timer.timeout.connect(self._maybe_show_whatsnew)
+        self._whatsnew_timer.timeout.connect(self._startup_notices)
         self._whatsnew_timer.start(0)
         self._start_update_check()
 
@@ -11755,10 +11844,151 @@ class TyperDocker(DockWidget):
             return []
         return WN.lines_for(entries, self._lang)
 
-    def _maybe_show_whatsnew(self):
-        """Announce this version's changes once, the first start after it."""
+    def _first_run_due(self):
+        """True exactly once, for an installation that has never run TypeR.
+
+        The same evidence the release notes go by: anything TypeR has
+        ever stored means there was a previous version, and somebody who
+        has used it does not need to be told that it has keys.
+
+        Only decided here - writing it down happens when the window
+        actually goes up, in _maybe_greet. The two are far apart in time
+        because the greeting waits for a canvas, and a session that
+        never opens a document must not quietly eat its own greeting.
+
+        The word "again" in that setting asks for it once more. Without
+        it the greeting is the one thing in TypeR that nobody who has
+        TypeR can ever look at, which also means nobody can check it:
+
+            Krita.instance().writeSetting("typer_kr", "greeted", "again")
+        """
+        try:
+            app = Krita.instance()
+            seen = (app.readSetting("typer_kr", "greeted", "") or "").strip()
+            if seen == GREET_AGAIN:
+                return True                       # asked for on purpose
+            if seen:
+                return False
+            for key in self._USED_BEFORE_KEYS:
+                if (app.readSetting("typer_kr", key, "") or "").strip():
+                    return False                  # an old hand
+            return True
+        except Exception:                           # noqa: BLE001
+            return False
+
+    def _show_greeting(self, key_text):
+        """Put the greeting on screen; True if they asked for the list.
+
+        A seam, like _confirm: headless, a modal dialog is an access
+        violation, so the tests answer this instead of opening it.
+        """
+        dlg = FirstRunDialog(self.widget(), self._tr, key_text)
+        dlg.exec()
+        wants = dlg.wants_keys()
+        dlg.deleteLater()
+        return wants
+
+    def _maybe_greet(self):
+        """The hello, if this installation is new. True when it was shown."""
+        if not getattr(self, "_greet_due", False):
+            return False
+        self._greet_due = False                   # once, whatever happens next
+        try:
+            Krita.instance().writeSetting("typer_kr", "greeted", VERSION)
+        except Exception:                           # noqa: BLE001
+            pass
+        key = native_key_text(
+            (self._builtin_keys or {}).get("open_font_search", "Ctrl+Space"))
+        if self._show_greeting(key):
+            self.show_keys_panel()
+        return True
+
+    def show_keys_panel(self):
+        """Bring the hotkey list into view, wherever the user keeps it.
+
+        The panel can have been dragged into another tab, collapsed, or
+        pulled out into a window of its own, and the greeting promised a
+        list either way.
+        """
+        pid = "keys_overview"
+        box = self._panels.get(pid)
+        self.raise_()                 # TypeR may be tabbed behind another
+        if pid in self._detached:
+            win = box.window() if box is not None else None
+            if win is not None:
+                win.raise_()
+            return True
+        if not self._show_tab(self._panel_tab.get(pid, "setup")):
+            return False
+        toggle = getattr(self, "keys_toggle", None)
+        if toggle is not None and not toggle.isChecked():
+            toggle.setChecked(True)               # a shut drawer is no answer
+        area = self.main_tabs.currentWidget()
+        if box is not None and isinstance(area, QScrollArea):
+            area.ensureWidgetVisible(box)
+        return True
+
+    def _notices_ready(self):
+        """Is there anything on screen for a notice to stand in front of?
+
+        Krita starts on a start screen: no document, and the dockers are
+        not shown yet. A greeting there floats over nothing, and its
+        "show me the keys" button moves a tab nobody can see - measured,
+        and the reason this check started existing.
+
+        A canvas existing is not the same as somebody being free to look
+        at something, though. The next thing measured was the greeting
+        arriving on top of the "Create new document" dialog, in the
+        middle of filling it in. So: the docker on screen, no dialog
+        waiting for an answer, and Krita actually in front - a window
+        that takes the focus while its owner is in another application
+        is not a greeting, it is a theft.
+        """
+        try:
+            body = self.widget()
+            if body is None or not body.isVisible():
+                return False
+            if QApplication.activeModalWidget() is not None:
+                return False        # they are answering something already
+            top = self.window()
+            if top is None or not top.isActiveWindow():
+                return False        # Krita is not even the front window
+        except Exception:                           # noqa: BLE001
+            return False
+        try:
+            win = Krita.instance().activeWindow()
+            return win is not None and win.activeView() is not None
+        except Exception:                           # noqa: BLE001
+            return True        # the docker is on screen; that will do
+
+    def _startup_notices(self):
+        """What the docker says of its own accord, once it is up.
+
+        A fresh installation gets the greeting and nothing else: it has
+        no news to hear, and two windows at the first start is one too
+        many. The news is still *asked* for, because asking is what
+        records this version as announced - otherwise the second start
+        would hand a brand-new user the whole changelog.
+
+        Called from two directions - the timer at start-up and the first
+        canvas - so it is written to be harmless twice.
+        """
+        if not getattr(self, "_notices_pending", False):
+            return
+        if not self._notices_ready():
+            # canvasChanged brings us back when a document arrives, but
+            # nothing calls back when a dialog is simply closed - so ask
+            # again in a moment. The timer stops of its own accord: this
+            # runs only while something is still pending.
+            try:
+                self._whatsnew_timer.start(NOTICE_RETRY_MS)
+            except Exception:                       # noqa: BLE001
+                pass
+            return
+        self._notices_pending = False
+        greeted = self._maybe_greet()
         sections = self._whatsnew_due()
-        if not sections:
+        if greeted or not sections:
             return
         dlg = WhatsNewDialog(self.widget(), self._tr, VERSION, sections)
         dlg.exec()
@@ -16302,7 +16532,11 @@ class TyperDocker(DockWidget):
         return img.save(path, "PNG")
 
     def canvasChanged(self, canvas):
-        pass
+        """Krita has a canvas now - which is what the notices waited for."""
+        try:
+            self._startup_notices()
+        except Exception:                           # noqa: BLE001
+            pass                    # never let a greeting break the canvas
 
 
 # ---------------------------------------------------------------------------

@@ -712,6 +712,27 @@ class FontFavoritesPanel(QWidget):
         elif chosen is act_props:
             self.show_properties()
 
+    def set_favorite(self, family, on=True):
+        """Star or unstar a family from outside; the panel keeps up.
+
+        The font search window calls this while it has the panel on
+        loan, so there is one store and one save, and the list behind
+        the tab bar is right the moment the menu closes.
+        """
+        fam = (family or "").strip()
+        if not fam:
+            return False
+        if bool(on) == bool(self._store.is_favorite(fam)):
+            return False                # already the way it was asked for
+        if on:
+            self._store.add_font(fam)
+        else:
+            self._store.remove_font(fam)
+        self._persist()
+        self._reload_categories()
+        self._refresh_list()
+        return True
+
     def show_properties(self, family=None):
         """Open the properties window of the selected font.
 
@@ -943,6 +964,7 @@ class _FontChooserDialog(QDialog):
         self._stars = set(stars or ())
         self._on_preview = on_preview
         self._panel = panel
+        self._star_panel = panel        # kept when the panel is handed back
         self._presets = presets or {}
         # {(manga, character, preset): "Ctrl+B"} - already spelled the way
         # this machine spells it, by whoever knows
@@ -996,6 +1018,11 @@ class _FontChooserDialog(QDialog):
             it.setSizeHint(QSize(0, 24))
             self.list.addItem(it)
         self.list.itemDoubleClicked.connect(lambda *_: self.accept())
+        if self._star_panel is not None:
+            self.list.setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu)
+            self.list.customContextMenuRequested.connect(
+                lambda pos: self._star_menu(self.list, pos))
         if preview:
             self._apply_preview(True)
         lay.addWidget(self.list, 1)
@@ -1034,6 +1061,11 @@ class _FontChooserDialog(QDialog):
         right.addWidget(self.char_list, 2)
         self.preset_list = QListWidget()
         self.preset_list.itemDoubleClicked.connect(lambda *_a: self.accept())
+        if self._star_panel is not None:
+            self.preset_list.setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu)
+            self.preset_list.customContextMenuRequested.connect(
+                lambda pos: self._star_menu(self.preset_list, pos))
         right.addWidget(self.preset_list, 3)
         row.addLayout(right, 3)
 
@@ -1110,6 +1142,43 @@ class _FontChooserDialog(QDialog):
             if self.tabs.currentWidget() is self._preset_page:
                 return self.preset_list
         return self.list
+
+    def _star_menu(self, widget, pos):
+        """Right-click: star the family under the pointer, or unstar it."""
+        it = widget.itemAt(pos)
+        if it is None:
+            return
+        fam = it.data(_ROLE_FAMILY)
+        if not fam:
+            return                      # a row with no font behind it
+        starred = fam.lower() in self._stars
+        menu = QMenu(widget)
+        act = menu.addAction(self._tr("fav_ctx_remove") if starred
+                             else self._tr("fav_ctx_add"))
+        if menu.exec(widget.viewport().mapToGlobal(pos)) is not act:
+            return
+        if not self._star_panel.set_favorite(fam, not starred):
+            return
+        if starred:
+            self._stars.discard(fam.lower())
+        else:
+            self._stars.add(fam.lower())
+        self._restar_rows(fam)
+
+    def _restar_rows(self, fam):
+        """Put the star on (or take it off) every row showing `fam`."""
+        starred = fam.lower() in self._stars
+        for widget in (self.list, self.preset_list):
+            if widget is None:
+                continue
+            for i in range(widget.count()):
+                it = widget.item(i)
+                if (it.data(_ROLE_FAMILY) or "").lower() != fam.lower():
+                    continue
+                text = it.text()
+                while text.startswith("\u2605"):
+                    text = text[1:].lstrip()
+                it.setText(("\u2605  " + text) if starred else text)
 
     def _apply_preview(self, on):
         """Every row in its own face, or all of them in the panel's font."""

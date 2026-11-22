@@ -13,6 +13,72 @@ first, and each carries both interface languages, like the rest of the plugin.
 
 #: [(version, {lang: [line, ...]}), ...] - newest first.
 CHANGELOG = [
+    ("1.22.7", {
+        "en": [
+            "Ctrl+Alt+C opens the text colour dialog. Choosing a colour "
+            "is two clicks into a panel otherwise, and it is wanted in "
+            "the middle of a page rather than at the start of one. "
+            "Krita's own Ctrl+Alt+C (canvas size) loses the key while "
+            "the docker is up, and like every TypeR key it can be "
+            "rebound in Setup.",
+            "A font you find in the search window can be kept where you "
+            "found it: right-click it and it goes into the Fonts tab's "
+            "favourites. Until now the only thing you could do with a "
+            "font you had just found was use it once - starring it "
+            "meant leaving and finding it a second time. The window has "
+            "the real Fonts panel on loan rather than a copy, so the "
+            "starred list behind the tab bar is right the moment the "
+            "menu closes.",
+            "A brand-new installation is now told that TypeR listens "
+            "for keys at all. One short window at the first start, "
+            "Ctrl+Space as the example, and a button that goes straight "
+            "to the full list in Setup - which is also the answer to "
+            "how you make your own. Ctrl+Space because it is the only "
+            "key that already works on a fresh install: the outline "
+            "keys want a text layer and the preset keys want presets "
+            "that do not exist yet.",
+            "That window waits for a document and for a moment when "
+            "nothing else wants answering, so it does not arrive on top "
+            "of a dialog or while Krita is in the background - and it "
+            "never comes twice. Nobody who already has TypeR is "
+            "greeted, which would make it the one thing in the plugin "
+            "nobody can check, so writing the word again into its "
+            "setting asks for it once more.",
+        ],
+        "de": [
+            "Strg+Alt+C öffnet den Textfarben-Dialog. Eine Farbe zu "
+            "wählen sind sonst zwei Klicks in ein Panel hinein, und "
+            "gebraucht wird sie mitten auf einer Seite, nicht am "
+            "Anfang. Kritas eigenes Strg+Alt+C (Leinwandgröße) verliert "
+            "die Taste, solange der Docker offen ist; wie jede "
+            "TypeR-Taste ist sie in Setup umbelegbar.",
+            "Eine Schrift, die du im Suchfenster findest, kannst du "
+            "dort behalten, wo du sie gefunden hast: Rechtsklick, und "
+            "sie wandert in die Favoriten des Fonts-Tabs. Bisher konnte "
+            "man mit einer gerade gefundenen Schrift nur eines tun — "
+            "sie einmal benutzen; für den Stern musste man das Fenster "
+            "verlassen und sie ein zweites Mal suchen. Das Fenster hat "
+            "den echten Fonts-Tab geliehen, keine Kopie, also stimmt "
+            "die Liste hinter der Reiterleiste in dem Moment, in dem "
+            "das Menü zugeht.",
+            "Eine frisch installierte TypeR sagt jetzt überhaupt "
+            "erstmal, dass sie auf Tasten hört. Ein kurzes Fenster beim "
+            "ersten Start, Strg+Leertaste als Beispiel und ein Knopf "
+            "direkt zur vollständigen Liste in Setup — die zugleich die "
+            "Antwort darauf ist, wie man eigene vergibt. "
+            "Strg+Leertaste, weil es die einzige Taste ist, die auf "
+            "einer frischen Installation schon stimmt: die Konturtasten "
+            "brauchen eine Textebene, die Preset-Tasten brauchen "
+            "Presets, die es noch nicht gibt.",
+            "Dieses Fenster wartet auf ein Dokument und auf einen "
+            "Moment, in dem nichts anderes beantwortet werden will — es "
+            "landet also nicht auf einem Dialog und nicht, während "
+            "Krita im Hintergrund steht —, und es kommt kein zweites "
+            "Mal. Wer TypeR schon hat, wird nie begrüßt, womit es das "
+            "einzige wäre, das niemand prüfen kann: das Wort again in "
+            "seine Einstellung geschrieben holt es noch einmal.",
+        ],
+    }),
     ("1.22.6", {
         "en": [
             "Six keys for the outlines, because switching one on and "
